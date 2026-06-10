@@ -19,16 +19,18 @@ export const WIREGENE_ADMIN_SITE_IDS = ["portal", "search", "meta", "hyunlab", "
 
 export function getBasicAuthCredentialsFromEnv(env: BasicAuthEnv = process.env) {
   const credentials: BasicAuthCredential[] = [];
+  const username = normalizeAuthEnvValue(env.APP_BASIC_AUTH_USER);
+  const password = normalizeAuthEnvValue(env.APP_BASIC_AUTH_PASSWORD);
 
-  if (env.APP_BASIC_AUTH_USER && env.APP_BASIC_AUTH_PASSWORD) {
+  if (username && password) {
     credentials.push({
-      username: env.APP_BASIC_AUTH_USER,
-      password: env.APP_BASIC_AUTH_PASSWORD,
+      username,
+      password,
       source: "APP_BASIC_AUTH_USER",
     });
   }
 
-  credentials.push(...parseBasicAuthUsers(env.APP_BASIC_AUTH_USERS));
+  credentials.push(...parseBasicAuthUsers(normalizeAuthEnvValue(env.APP_BASIC_AUTH_USERS)));
   return credentials;
 }
 
@@ -47,7 +49,15 @@ export function getBasicAuthAccountSummaries(env: BasicAuthEnv = process.env) {
 }
 
 export function getAdminUsernamesFromEnv(env: BasicAuthEnv = process.env) {
-  return new Set(parseAdminUsers([env.WIREGENE_ADMIN_EMAILS, env.APP_ADMIN_USERS, env.APP_ADMIN_USER].join(",")));
+  return new Set(
+    parseAdminUsers(
+      [
+        normalizeAuthEnvValue(env.WIREGENE_ADMIN_EMAILS),
+        normalizeAuthEnvValue(env.APP_ADMIN_USERS),
+        normalizeAuthEnvValue(env.APP_ADMIN_USER),
+      ].join(","),
+    ),
+  );
 }
 
 export function isAdminUsername(username: string, env: BasicAuthEnv = process.env) {
@@ -76,6 +86,22 @@ export function parseBasicAuthCredential(authorization: string): ProvidedBasicAu
 
 export function normalizeAuthUsername(value: string) {
   return value.trim().toLowerCase();
+}
+
+export function normalizeAuthEnvValue(value: string | undefined) {
+  if (!value) return "";
+
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === '""' || trimmed === "''") return "";
+
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+
+  return trimmed;
 }
 
 function parseBasicAuthUsers(value: string | undefined): BasicAuthCredential[] {

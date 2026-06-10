@@ -12,6 +12,7 @@ import {
   portalSites,
   type PortalSiteId,
   resetPortalAccountPassword,
+  verifyPortalAccountCredentials,
 } from "@/lib/portal-accounts";
 
 export const runtime = "nodejs";
@@ -19,7 +20,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   if (!isPortalMode(request)) return portalOnlyResponse();
-  if (!isAuthenticatedAdminRequest(request)) return authRequiredResponse();
+  if (!(await isAuthenticatedAdminRequest(request))) return authRequiredResponse();
 
   const mode = getWiregeneAppMode(request.headers.get("host"));
   const environmentAccounts = getBasicAuthAccountSummaries();
@@ -45,7 +46,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   if (!isPortalMode(request)) return portalOnlyResponse();
-  if (!isAuthenticatedAdminRequest(request)) return authRequiredResponse();
+  if (!(await isAuthenticatedAdminRequest(request))) return authRequiredResponse();
 
   try {
     const payload = (await request.json()) as {
@@ -71,7 +72,7 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   if (!isPortalMode(request)) return portalOnlyResponse();
-  if (!isAuthenticatedAdminRequest(request)) return authRequiredResponse();
+  if (!(await isAuthenticatedAdminRequest(request))) return authRequiredResponse();
 
   try {
     const payload = (await request.json()) as {
@@ -117,18 +118,26 @@ function authRequiredResponse() {
   );
 }
 
-function isAuthenticatedAdminRequest(request: Request) {
+async function isAuthenticatedAdminRequest(request: Request) {
   const credentials = getBasicAuthCredentialsFromEnv();
-  if (credentials.length === 0) return false;
-
   const providedCredential = parseBasicAuthCredential(request.headers.get("authorization") ?? "");
   if (!providedCredential) return false;
 
-  return credentials.some(
+  if (credentials.some(
     (credential) =>
       credential.username === providedCredential.username &&
       credential.password === providedCredential.password,
-  );
+  )) {
+    return true;
+  }
+
+  const portalAccount = await verifyPortalAccountCredentials({
+    username: providedCredential.username,
+    password: providedCredential.password,
+    site: "portal",
+  });
+
+  return portalAccount?.role === "admin";
 }
 
 type AdminAccountSummary = Awaited<ReturnType<typeof listPortalAccountSummaries>>[number] | ReturnType<typeof getBasicAuthAccountSummaries>[number];

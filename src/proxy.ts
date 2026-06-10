@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { appModeLabel, getWiregeneAppMode } from "@/lib/app-mode";
-import { getBasicAuthCredentialsFromEnv, parseBasicAuthCredential, type BasicAuthCredential } from "@/lib/basic-auth-users";
+import {
+  getBasicAuthCredentialsFromEnv,
+  normalizeAuthEnvValue,
+  parseBasicAuthCredential,
+  type BasicAuthCredential,
+} from "@/lib/basic-auth-users";
 
 type WiregeneAppMode = ReturnType<typeof getWiregeneAppMode>;
 
@@ -18,12 +23,6 @@ export async function proxy(request: NextRequest) {
   }
 
   const credentials = getBasicAuthCredentials();
-
-  if (credentials.length === 0) {
-    if (mode === "portal") return challenge(mode);
-    return NextResponse.next();
-  }
-
   const providedCredential = parseBasicAuthCredential(request.headers.get("authorization") ?? "");
 
   if (
@@ -41,11 +40,21 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
+  if (shouldAllowUnauthenticatedRequest(mode, credentials)) {
+    return NextResponse.next();
+  }
+
   return challenge(mode);
 }
 
 function getBasicAuthCredentials(): BasicAuthCredential[] {
   return getBasicAuthCredentialsFromEnv();
+}
+
+function shouldAllowUnauthenticatedRequest(mode: WiregeneAppMode, credentials: BasicAuthCredential[]) {
+  if (credentials.length > 0) return false;
+  if (mode === "portal") return false;
+  return !getAuthCheckSecret();
 }
 
 function isPathAllowedForMode(pathname: string, mode: WiregeneAppMode) {
@@ -104,7 +113,10 @@ function isAuthorizedInternalAuthCheckRequest(request: NextRequest) {
 }
 
 function getAuthCheckSecret() {
-  return process.env.PORTAL_AUTH_CHECK_SECRET ?? process.env.WIREGENE_AUTH_CHECK_SECRET;
+  return (
+    normalizeAuthEnvValue(process.env.PORTAL_AUTH_CHECK_SECRET) ||
+    normalizeAuthEnvValue(process.env.WIREGENE_AUTH_CHECK_SECRET)
+  );
 }
 
 function challenge(mode: WiregeneAppMode) {
