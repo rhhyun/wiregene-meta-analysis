@@ -20,7 +20,7 @@ git init
 git add .
 git commit -m "Initialize Wiregene Meta standalone app"
 git branch -M main
-git remote add origin https://github.com/rhhyun/empty.git
+git remote add origin https://github.com/rhhyun/wiregene-meta-analysis.git
 git push -u origin main
 ```
 
