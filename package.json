@@ -1,0 +1,46 @@
+{
+  "name": "research-briefing-platform",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "verify:grants": "node scripts/verify-grant-storage-apis.mjs",
+    "briefing:generate": "npx tsx src/lib/github-briefing-runner.ts",
+    "briefing:generate:synology": "npx tsx src/lib/synology-briefing-runner.ts",
+    "check:google-drive-config": "tsx scripts/check-google-drive-config.ts",
+    "google-drive:oauth": "tsx scripts/google-drive-oauth.ts",
+    "check:zotero-config": "node scripts/check-zotero-config.mjs",
+    "zotero:whoami": "node scripts/zotero-whoami.mjs"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.17.3",
+    "fast-xml-parser": "^5.7.3",
+    "googleapis": "^171.4.0",
+    "jszip": "^3.10.1",
+    "lucide-react": "^1.14.0",
+    "next": "^16.2.6",
+    "openai": "^6.36.0",
+    "pdf-parse": "^2.4.5",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "rss-parser": "^3.13.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "^16.2.6",
+    "tailwindcss": "^4",
+    "tsx": "^4.21.0",
+    "typescript": "^5"
+  }
+}

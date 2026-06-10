@@ -1,0 +1,37 @@
+name: wiregene-meta
+
+services:
+  meta:
+    image: node:24-bookworm-slim
+    container_name: ${CONTAINER_NAME:-wiregene-meta}
+    restart: unless-stopped
+    working_dir: /app
+    ports:
+      - "${HOST_PORT:-3001}:3000"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: "1"
+      HOME: /tmp
+      npm_config_cache: /tmp/.npm
+      WIREGENE_APP_MODE: meta
+      PORT: "3000"
+      REPORT_STORAGE_BACKEND: ${REPORT_STORAGE_BACKEND:-local-json}
+      REPORT_STORAGE_LOCAL_PATH: ${REPORT_STORAGE_LOCAL_PATH:-.data/meta/research-briefing-storage.json}
+    volumes:
+      - ${APP_SOURCE_DIR:-/volume1/docker/wiregene-meta-analysis}:/app
+      - ./data:/app/.data/meta
+      - ./logs:/app/.logs/meta
+    command:
+      - sh
+      - -lc
+      - >
+        set -eu;
+        node -v;
+        npm -v;
+        if [ ! -d node_modules ]; then
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi;
+        fi;
+        npm run build;
+        npm run start -- --hostname 0.0.0.0 --port 3000
