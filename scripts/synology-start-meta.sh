@@ -208,7 +208,7 @@ main() {
   cleanup_failed_meta_container
   check_host_port_available
   log "Starting Wiregene Meta from $RUNTIME_DIR."
-  compose -f "$RUNTIME_DIR/docker-compose.yml" --env-file "$RUNTIME_DIR/.env" up -d
+  compose -f "$RUNTIME_DIR/docker-compose.yml" --env-file "$RUNTIME_DIR/.env" up -d --force-recreate
   log "Wiregene Meta start requested. Check logs with: docker logs wiregene-meta"
 }
 

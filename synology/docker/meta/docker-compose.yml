@@ -29,8 +29,8 @@ services:
         set -eu;
         node -v;
         npm -v;
-        if [ ! -d node_modules ]; then
-          if [ -f package-lock.json ]; then npm ci; else npm install; fi;
+        if [ ! -d node_modules ] || [ package.json -nt node_modules/.package-lock.json ] || [ package-lock.json -nt node_modules/.package-lock.json ]; then
+          if [ -f package-lock.json ]; then npm ci --include=dev; else npm install; fi;
         fi;
         npm run build;
         npm run start -- --hostname 0.0.0.0 --port 3000

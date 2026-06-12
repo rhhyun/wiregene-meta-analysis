@@ -295,6 +295,8 @@ Changes:
 - `src/lib/pdf-text.ts`: removed the hard failure when `@napi-rs/canvas` is unavailable.
 - `src/lib/pdf-text.ts`: added pure JS fallback classes for `DOMMatrix`, `ImageData`, and `Path2D` before `pdf-parse` is required.
 - `src/lib/pdf-text.ts`: added `WIREGENE_PDF_FORCE_JS_POLYFILLS=true` test switch to force the same path that Synology needs when native canvas is unavailable.
+- `scripts/synology-start-meta.sh`: changed compose startup to `up -d --force-recreate` so a pulled code change restarts the running app instead of leaving the old server process alive.
+- `synology/docker/meta/docker-compose.yml`: changed container startup to rerun `npm ci --include=dev` when `package.json` or `package-lock.json` is newer than the installed `node_modules` lock metadata.
 - `package.json`, `package-lock.json`: package version bumped to `0.1.6`.
 - `src/lib/version.ts`: UI version bumped to `Ver 1.41`.
 
@@ -309,6 +311,9 @@ npm.cmd run lint
 # pass
 
 npm.cmd run build
+# pass
+
+"C:\Program Files\Git\bin\bash.exe" -n scripts/synology-start-meta.sh
 # pass
 ```
 
