@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { z } from "zod";
 import { config } from "./config";
+import { extractPdfTextWithPdfParse } from "./pdf-text";
 
 export type MetaFullTextDecision =
   | "include_quantitative"
@@ -276,20 +277,7 @@ function detectFileType(fileName: string, mimeType = ""): "pdf" | "text" {
 }
 
 async function extractPdfText(buffer: Buffer) {
-  const { createRequire } = await import("module");
-  const require = createRequire(import.meta.url);
-  const { PDFParse } = require("pdf-parse") as typeof import("pdf-parse");
-  const parser = new PDFParse({ data: new Uint8Array(buffer) });
-  try {
-    const result = await parser.getText({ first: maxPdfPages });
-    return {
-      text: result.text ?? "",
-      pageLimitApplied: result.total > maxPdfPages,
-      totalPages: result.total,
-    };
-  } finally {
-    await parser.destroy();
-  }
+  return extractPdfTextWithPdfParse(buffer, maxPdfPages);
 }
 
 function fallbackAnalyzeFullText({

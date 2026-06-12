@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import JSZip from "jszip";
 import { config } from "./config";
 import { stripTags } from "./format";
+import { extractPdfTextWithPdfParse } from "./pdf-text";
 import type {
   GrantDocumentKind,
   GrantDocumentLink,
@@ -268,16 +269,8 @@ async function extractGrantRfpText(buffer: Buffer, fileName: string, mimeType = 
 }
 
 async function extractPdfText(buffer: Buffer) {
-  const { createRequire } = await import("module");
-  const require = createRequire(import.meta.url);
-  const { PDFParse } = require("pdf-parse") as typeof import("pdf-parse");
-  const parser = new PDFParse({ data: new Uint8Array(buffer) });
-  try {
-    const result = await parser.getText({ first: 80 });
-    return result.text ?? "";
-  } finally {
-    await parser.destroy();
-  }
+  const result = await extractPdfTextWithPdfParse(buffer, 80);
+  return result.text;
 }
 
 async function extractHwpxText(buffer: Buffer) {

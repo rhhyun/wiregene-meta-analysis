@@ -210,6 +210,80 @@ Synology 작업 스케줄러 명령:
 /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
 ```
 
+## 2026-06-12 Full-text PDF DOMMatrix error fix
+
+User-reported production/UI error:
+
+```text
+Failed to load external module pdf-parse-08f4573089f02674: ReferenceError: DOMMatrix is not defined
+```
+
+Root cause:
+
+- The full-text PDF upload path loads `pdf-parse` on the Next.js Node server.
+- `pdf-parse@2.4.5` / `pdfjs-dist` can touch browser/canvas globals such as `DOMMatrix`, `ImageData`, and `Path2D` while the external module is loaded.
+- In the Next.js server external-module loader this happened before `DOMMatrix` existed, so the analysis failed immediately before text extraction started.
+
+Changed files:
+
+- `src/lib/pdf-text.ts`: added shared server-only PDF extraction helper. It installs `DOMMatrix`, `ImageData`, and `Path2D` from `@napi-rs/canvas` before requiring `pdf-parse`.
+- `src/lib/meta-full-text-analysis.ts`: full-text meta-analysis PDF extraction now uses the shared helper with the existing 120-page limit.
+- `src/lib/rfp-analysis.ts`: grant/RFP PDF extraction now uses the same helper with the existing 80-page limit.
+- `package.json`, `package-lock.json`: added direct dependency `@napi-rs/canvas@0.1.80`, matching the tested `pdf-parse@2.4.5` dependency set.
+
+Independent verification agents:
+
+- Agent 1 checked all affected PDF paths and confirmed the shared helper approach is the safest implementation pattern.
+- Agent 2 checked the UI/API upload flow and confirmed the relevant route is `POST /api/meta-analysis/full-text/analyze` with multipart field `file`.
+
+Local verification:
+
+```powershell
+npx.cmd tsx -e "import { extractPdfTextWithPdfParse } from './src/lib/pdf-text'; import fs from 'node:fs'; void (async () => { const b = fs.readFileSync('C:/Users/rhhyu/AppData/Local/Temp/wiregene-meta-plan-260611.pdf'); const r = await extractPdfTextWithPdfParse(b, 5); console.log(JSON.stringify({len:r.text.length,totalPages:r.totalPages,pageLimitApplied:r.pageLimitApplied,preview:r.text.slice(0,40)})); })();"
+# {"len":5287,"totalPages":14,"pageLimitApplied":true,...}
+
+npm.cmd run lint
+# pass
+
+npm.cmd run build
+# pass
+```
+
+Actual API upload verification:
+
+```powershell
+$env:WIREGENE_APP_MODE='meta'
+$env:OPENAI_API_KEY=''
+npm.cmd run dev -- --port 3017
+
+curl.exe -sS -X POST -F "file=@C:\Users\rhhyu\AppData\Local\Temp\wiregene-meta-plan-260611.pdf;type=application/pdf" http://localhost:3017/api/meta-analysis/full-text/analyze
+```
+
+Observed result:
+
+```text
+HTTP 200
+fileType: pdf
+extractedTextLength: 13156
+aiUsed: false
+decision: uncertain
+No DOMMatrix error
+```
+
+Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+If Synology still reports a canvas/DOMMatrix-related error after pulling this commit, verify the native canvas dependency inside the running container:
+
+```sh
+docker exec wiregene-meta node -e "const c=require('@napi-rs/canvas'); console.log(process.version, process.platform, process.arch, !!c.DOMMatrix, !!c.ImageData, !!c.Path2D)"
+```
+
+Expected final three values are all `true`. Scanned image-only PDFs may still return no text; that is a separate OCR issue, not this `DOMMatrix` module-load error.
+
 ## 2026-06-12 Excel workbook 표준 workflow 반영
 
 사용자 지시:
