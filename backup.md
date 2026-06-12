@@ -22,6 +22,30 @@ https://github.com/rhhyun/wiregene-meta-analysis.git
 - 작업이 끝나면 GitHub에 자동 commit/push한다.
 - Synology 자동 배포를 실행하지 못했거나 확인하지 못하면 마지막에 작업 스케줄러 명령을 남긴다.
 
+## 2026-06-12 Synology 명령 정정
+
+사용자 오류 보고:
+
+```text
+/bin/sh: /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh: No such file or directory
+```
+
+원인:
+
+- repo 안에는 `scripts/synology-start-meta.sh`가 있지만, Synology NAS의 `/volume1/docker/wiregene-meta-analysis`에 아직 GitHub repo가 clone/pull 되어 있지 않거나 오래된 checkout이라 해당 파일이 없었다.
+- 따라서 `/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh`만 안내하면 첫 실행 또는 checkout 누락 상황에서 실패한다.
+
+앞으로 Synology DSM Task Scheduler에는 아래 bootstrap 명령을 우선 사용한다. 이 명령은 repo clone/pull을 먼저 수행한 뒤 start script를 실행한다.
+
+```sh
+/bin/sh -c 'set -eu; export PATH="/usr/local/bin:/usr/bin:/bin:/var/packages/Git/target/bin:/volume1/@appstore/Git/bin:$PATH"; SRC="/volume1/docker/wiregene-meta-analysis"; REPO="https://github.com/rhhyun/wiregene-meta-analysis.git"; command -v git >/dev/null 2>&1 || { echo "git command not found. Install Synology Git package, then rerun."; exit 1; }; mkdir -p /volume1/docker; if [ -d "$SRC/.git" ]; then git -C "$SRC" pull --ff-only origin main; elif [ -e "$SRC" ]; then echo "$SRC exists but is not a git checkout. Move it aside or clone the repo there."; exit 1; else git clone "$REPO" "$SRC"; fi; /bin/sh "$SRC/scripts/synology-start-meta.sh"'
+```
+
+주의:
+
+- direct command `/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh`는 `/volume1/docker/wiregene-meta-analysis`가 이미 최신 Git checkout일 때만 유효하다.
+- `git command not found`가 나오면 Synology Git 패키지를 설치한 뒤 다시 실행한다.
+
 ## 2026-06-12 Meta 전환 작업
 
 사용자 요청:
