@@ -36,14 +36,14 @@ export async function POST(request: Request) {
   const formData = await request.formData().catch(() => null);
   if (!formData) {
     return NextResponse.json(
-      { error: "full-text PDF 또는 TXT 파일을 multipart/form-data로 보내 주세요." },
+      { error: "full-text PDF, Word(.doc/.docx), TXT 파일을 multipart/form-data로 보내 주세요." },
       { status: 400 },
     );
   }
 
   const uploaded = formData.get("file");
   if (!(uploaded instanceof File) || uploaded.size === 0) {
-    return NextResponse.json({ error: "분석할 full-text PDF/TXT 파일을 업로드해 주세요." }, { status: 400 });
+    return NextResponse.json({ error: "분석할 full-text PDF/Word/TXT 파일을 업로드해 주세요." }, { status: 400 });
   }
 
   const referenceRecord = formString(formData, "referenceRecord");
@@ -64,7 +64,7 @@ export async function POST(request: Request) {
     const message =
       error instanceof Error
         ? error.message
-        : "full-text PDF 분석에 실패했습니다. PDF가 스캔본이면 OCR 처리 후 다시 업로드해 주세요.";
+        : "full-text 분석에 실패했습니다. PDF가 스캔본이면 OCR 처리 후, Word 파일은 읽을 수 있는 .doc/.docx 또는 PDF로 다시 업로드해 주세요.";
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }

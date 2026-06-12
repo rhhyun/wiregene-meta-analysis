@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import { z } from "zod";
 import { config } from "./config";
 import { extractPdfTextWithPdfParse } from "./pdf-text";
+import { extractWordTextWithWordExtractor } from "./word-text";
 
 export type MetaFullTextDecision =
   | "include_quantitative"
@@ -23,9 +24,11 @@ export type MetaFullTextFieldEvidence = {
   needsReview: boolean;
 };
 
+export type MetaFullTextFileType = "pdf" | "word" | "text";
+
 export type MetaFullTextAnalysis = {
   fileName: string;
-  fileType: "pdf" | "text";
+  fileType: MetaFullTextFileType;
   extractedTextLength: number;
   truncated: boolean;
   analyzedAt: string;
@@ -194,13 +197,10 @@ const regionTerms = [
 
 export async function analyzeMetaFullTextUpload(input: AnalyzeMetaFullTextInput) {
   const fileType = detectFileType(input.fileName, input.mimeType);
-  const extracted =
-    fileType === "pdf"
-      ? await extractPdfText(input.buffer)
-      : { text: input.buffer.toString("utf8"), totalPages: null };
+  const extracted = await extractFullText(input.buffer, fileType);
   const text = extracted.text;
   if (!text.trim()) {
-    throw new Error("PDF에서 분석 가능한 텍스트를 추출하지 못했습니다. 스캔 PDF라면 OCR 처리 후 다시 업로드해 주세요.");
+    throw new Error("full-text article에서 분석 가능한 텍스트를 추출하지 못했습니다. 스캔 PDF는 OCR 처리 후, Word 파일은 읽을 수 있는 .doc/.docx 또는 PDF로 다시 업로드해 주세요.");
   }
 
   const analysisText = normalizeText(text);
@@ -260,12 +260,26 @@ export async function analyzeMetaFullTextUpload(input: AnalyzeMetaFullTextInput)
   };
 }
 
-function detectFileType(fileName: string, mimeType = ""): "pdf" | "text" {
+function detectFileType(fileName: string, mimeType = ""): MetaFullTextFileType {
   const lowerName = fileName.toLowerCase();
   const lowerMime = mimeType.toLowerCase();
   if (lowerName.endsWith(".pdf") || lowerMime.includes("pdf")) return "pdf";
+  if (
+    lowerName.endsWith(".doc") ||
+    lowerName.endsWith(".docx") ||
+    lowerMime.includes("msword") ||
+    lowerMime.includes("wordprocessingml")
+  ) {
+    return "word";
+  }
   if (lowerName.endsWith(".txt") || lowerName.endsWith(".md") || lowerMime.startsWith("text/")) return "text";
-  throw new Error("full-text 분석은 PDF 또는 TXT 파일만 지원합니다.");
+  throw new Error("full-text 분석은 PDF, Word(.doc/.docx), TXT 파일을 지원합니다.");
+}
+
+async function extractFullText(buffer: Buffer, fileType: MetaFullTextFileType) {
+  if (fileType === "pdf") return extractPdfText(buffer);
+  if (fileType === "word") return extractWordTextWithWordExtractor(buffer);
+  return { text: buffer.toString("utf8"), totalPages: null };
 }
 
 async function extractPdfText(buffer: Buffer) {
@@ -282,7 +296,7 @@ function fallbackAnalyzeFullText({
   extractionWarnings,
 }: {
   fileName: string;
-  fileType: "pdf" | "text";
+  fileType: MetaFullTextFileType;
   referenceRecord: string | null;
   text: string;
   analysisText: string;
@@ -386,7 +400,7 @@ async function analyzeWithOpenAI({
   fallback,
 }: {
   fileName: string;
-  fileType: "pdf" | "text";
+  fileType: MetaFullTextFileType;
   referenceRecord: string | null;
   text: string;
   extractionColumns: string[];

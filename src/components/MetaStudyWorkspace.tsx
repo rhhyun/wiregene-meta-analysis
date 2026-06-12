@@ -372,7 +372,7 @@ function SearchStage({
         <Metric label="Records identified" value={totalSearchResults(project).toLocaleString()} />
         <Metric label="Deduplicated master" value={prismaCount(project, "Records after deduplication")} />
         <Metric label="Abstract text" value={prismaCount(project, "Records with abstract text available")} />
-        <Metric label="PDF FT plan" value={prismaCount(project, "Full-text assessment queue")} />
+        <Metric label="FT article plan" value={prismaCount(project, "Full-text assessment queue")} />
         <Metric label="Active Excel PDFs" value={activeFullTextUploadCount(project).toLocaleString()} />
       </div>
       <section className="rounded-md border border-zinc-200">
@@ -524,7 +524,7 @@ function ScreeningStage({ project }: { project: MetaStudyProject }) {
     <div className="grid gap-5">
       <StageHeader
         eyebrow="Screening"
-        title={`Excel 표준 workbook 기준으로 ${activeUploadCount}개 full-text PDF만 처리합니다`}
+        title={`Excel 표준 workbook 기준으로 ${activeUploadCount}개 full-text PDF/Word 파일만 처리합니다`}
         detail="Summary/Search 숫자는 이전 PDF 값을 기준으로 유지하고, 실제 업로드 대상은 Core_Comparative_Obs 18개, Core_InstrumentSpecific 36개, Manual_FullText_Check 18개입니다."
       />
       <WorkbookFullTextBoard project={project} />
@@ -693,7 +693,7 @@ function WorkbookFullTextBoard({ project }: { project: MetaStudyProject }) {
           <p className="text-sm font-semibold text-emerald-900">Excel workbook standard workflow</p>
           <h3 className="mt-1 text-lg font-semibold text-zinc-950">업로드 대상은 3개 sheet, 나머지는 audit/support로 고정</h3>
           <p className="mt-2 max-w-4xl text-sm leading-6 text-zinc-700">
-            Summary의 초기 검색/PRISMA 숫자는 이전 PDF 값을 기준으로 유지합니다. 실제 full-text PDF 확인 중 탈락이 생기면 아래 current/included/excluded 값을 직접 수정하고 CSV로 남깁니다.
+            Summary의 초기 검색/PRISMA 숫자는 이전 PDF 값을 기준으로 유지합니다. 실제 full-text PDF/Word 확인 중 탈락이 생기면 아래 current/included/excluded 값을 직접 수정하고 CSV로 남깁니다.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -716,7 +716,7 @@ function WorkbookFullTextBoard({ project }: { project: MetaStudyProject }) {
       </div>
 
       <div className="mt-4 grid gap-3 lg:grid-cols-4">
-        <Metric label="Active upload PDFs" value={totals.current.toLocaleString()} />
+        <Metric label="Active upload files" value={totals.current.toLocaleString()} />
         <Metric label="Included draft" value={totals.included.toLocaleString()} />
         <Metric label="Excluded after full text" value={totals.excluded.toLocaleString()} />
         <Metric label="Pending review" value={totals.pending.toLocaleString()} />

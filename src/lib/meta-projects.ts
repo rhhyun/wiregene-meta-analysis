@@ -373,14 +373,14 @@ export const orchestralPainScreeningQueue: MetaScreeningQueue[] = [
     category: "Core comparative observational",
     count: 18,
     priority: "1",
-    action: "Upload these full-text PDFs first",
+    action: "Upload these full-text PDF/Word files first",
     decisionRule: "Include_Q1_CoreComparative only if instrument-group sample size and region-specific pain n/total are extractable",
   },
   {
     category: "Instrument-specific observational",
     count: 36,
     priority: "2",
-    action: "Upload after core comparative PDFs",
+    action: "Upload after core comparative full-text files",
     decisionRule: "Use as single-arm prevalence evidence if specific instrument denominator and region-specific outcome are present",
   },
   {
@@ -408,7 +408,7 @@ export const orchestralPainWorkbookSheets: MetaWorkbookSheet[] = [
     uploadRequired: false,
     priority: "Locked",
     reviewMode: "not_required",
-    action: "Keep PRISMA/search counts editable only as protocol summary; do not upload PDFs from this sheet.",
+    action: "Keep PRISMA/search counts editable only as protocol summary; do not upload full-text files from this sheet.",
     decisionRule: "Use previous PDF numbers for identified/deduplicated/abstract/full-text planning counts.",
   },
   {
@@ -419,7 +419,7 @@ export const orchestralPainWorkbookSheets: MetaWorkbookSheet[] = [
     uploadRequired: true,
     priority: "1",
     reviewMode: "standard",
-    action: "Upload these 18 full-text PDFs first.",
+    action: "Upload these 18 full-text PDF/Word files first.",
     decisionRule: "Include only when actual usable denominator-based region/laterality PRMD or pain data are extractable.",
   },
   {
@@ -430,7 +430,7 @@ export const orchestralPainWorkbookSheets: MetaWorkbookSheet[] = [
     uploadRequired: true,
     priority: "2",
     reviewMode: "standard",
-    action: "Upload after core comparative PDFs and verify instrument-specific denominators.",
+    action: "Upload after core comparative full-text files and verify instrument-specific denominators.",
     decisionRule: "Include as single-arm prevalence evidence when specific instrument/group denominator and outcome data are usable.",
   },
   {

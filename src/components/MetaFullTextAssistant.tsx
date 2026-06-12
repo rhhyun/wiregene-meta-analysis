@@ -204,7 +204,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
         }),
       );
       setAnalysis(payload.analysis);
-      setNotice("full-text PDF 분석 초안을 생성했습니다. 연구자가 반드시 원문 근거와 숫자를 검증해야 합니다.");
+      setNotice("full-text article 분석 초안을 생성했습니다. 연구자가 반드시 원문 근거와 숫자를 검증해야 합니다.");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "full-text 분석에 실패했습니다.");
     } finally {
@@ -215,19 +215,19 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
 
   const title =
     focus === "screening"
-      ? "Full-text PDF AI eligibility assistant"
-      : "Full-text PDF AI extraction assistant";
+      ? "Full-text article AI eligibility assistant"
+      : "Full-text article AI extraction assistant";
   const detail =
     focus === "screening"
-      ? "확보한 full-text PDF를 올리면 관찰연구 여부, 악기/부위/denominator 추출 가능성, 제외 사유를 먼저 판정합니다."
-      : "PDF에서 엑셀 템플릿에 맞는 parameter 초안을 만들고, n/total 오류와 누락 필드를 연구자가 검증하도록 표시합니다.";
+      ? "확보한 full-text PDF 또는 Word 파일을 올리면 관찰연구 여부, 악기/부위/denominator 추출 가능성, 제외 사유를 먼저 판정합니다."
+      : "PDF 또는 Word 파일에서 엑셀 템플릿에 맞는 parameter 초안을 만들고, n/total 오류와 누락 필드를 연구자가 검증하도록 표시합니다.";
 
   return (
     <section className="rounded-md border border-emerald-200 bg-emerald-50 p-4">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div>
           <p className="text-sm font-semibold text-emerald-800">{title}</p>
-          <h3 className="mt-1 text-lg font-semibold text-zinc-950">PDF 업로드 → AI 초안 → 연구자 검증</h3>
+          <h3 className="mt-1 text-lg font-semibold text-zinc-950">원문 업로드 → AI 초안 → 연구자 검증</h3>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-700">{detail}</p>
         </div>
         <button
@@ -250,7 +250,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
                 <UploadCloud className="h-5 w-5" aria-hidden />
               </span>
               <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-zinc-950">{file ? file.name : "PDF 또는 TXT"}</p>
+                <p className="truncate text-sm font-semibold text-zinc-950">{file ? file.name : "PDF, Word, TXT"}</p>
                 <p className="mt-1 text-xs font-medium text-zinc-500">
                   {file ? `${Math.round(file.size / 1024).toLocaleString("ko-KR")} KB` : "full-text 원문 파일"}
                 </p>
@@ -258,7 +258,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
             </div>
             <input
               type="file"
-              accept=".pdf,.txt,.md,application/pdf,text/plain"
+              accept=".pdf,.doc,.docx,.txt,.md,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
               onChange={(event) => handleFileChange(event.target.files?.[0] ?? null)}
               className="mt-3 w-full text-sm text-zinc-700 file:mr-3 file:rounded-md file:border-0 file:bg-zinc-900 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-zinc-700"
             />

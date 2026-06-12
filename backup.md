@@ -734,3 +734,43 @@ git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin
 ```
 
 If this exact worker error still appears after pulling this commit, the running deployment is still using an old server bundle or the hosting platform did not rebuild from the latest commit. Rebuild/restart from the updated repository before retesting PDF upload.
+## 2026-06-12 Full-text Word file support
+
+User clarification:
+
+```text
+full-text article은 PDF나 word 파일로 되어 있습니다
+```
+
+Implemented:
+
+- `src/lib/word-text.ts`: added server-side Word text extraction using `word-extractor`.
+- Supports Word `.doc` and `.docx` uploads from a Buffer without Microsoft Office or native binaries.
+- `src/lib/meta-full-text-analysis.ts`: full-text analysis file type expanded from `pdf | text` to `pdf | word | text`.
+- Word MIME/type detection added for `.doc`, `.docx`, `application/msword`, and `application/vnd.openxmlformats-officedocument.wordprocessingml.document`.
+- `src/app/api/meta-analysis/full-text/analyze/route.ts`: API error messages now say PDF/Word/TXT instead of PDF/TXT only.
+- `src/components/MetaFullTextAssistant.tsx`: upload UI now accepts `.pdf,.doc,.docx,.txt,.md` and displays `PDF, Word, TXT`.
+- `package.json`, `package-lock.json`: added `word-extractor@1.0.4`; package version bumped to `0.1.8`.
+- `src/lib/version.ts`: UI version bumped to `Ver 1.43`.
+
+Verification:
+
+```text
+Synthetic .docx Word extraction helper test: pass, extracted 72 chars.
+Direct full-text route upload with .docx: HTTP 200, fileType word, extractedTextLength 72, aiUsed false, decision uncertain.
+PDF regression route test: HTTP 200, fileType pdf, extractedTextLength 13,156.
+npm.cmd run lint: pass.
+npm.cmd run build: pass.
+```
+
+Notes:
+
+- `.docx` and `.doc` are both routed through `word-extractor`.
+- If a Word file is damaged, encrypted, or not actually a Word document despite its extension, the API returns a Word-specific read error instead of a PDF/OCR error.
+- AI output is still a draft for human verification; Word support only changes full-text ingestion.
+
+Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
