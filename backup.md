@@ -697,3 +697,40 @@ Synology 작업 스케줄러 명령:
 ```sh
 /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
 ```
+## 2026-06-12 PDF worker bundling fix
+
+User-reported error:
+
+```text
+Setting up fake worker failed: "Cannot find module '/var/task/node_modules/pdf-parse/dist/pdf-parse/cjs/pdf.worker.mjs' imported from /var/task/node_modules/pdf-parse/dist/pdf-parse/cjs/index.cjs".
+```
+
+Root cause:
+
+- The previous DOMMatrix fix allowed `pdf-parse` to initialize, but the deployed Next/Vercel server bundle did not include the `pdf.worker.mjs` file that `pdf-parse` dynamically imports.
+- On Vercel this appears under `/var/task/node_modules/pdf-parse/dist/pdf-parse/cjs/pdf.worker.mjs`.
+- On Windows local verification, giving pdf.js a raw absolute path also failed because the ESM loader requires a `file://` URL for Windows paths.
+
+Changes:
+
+- `src/lib/pdf-text.ts`: after loading `pdf-parse`, resolve the worker file next to `pdf-parse`'s CJS entry and pass it to `PDFParse.setWorker(...)` as a `file://` URL.
+- `next.config.ts`: added `outputFileTracingIncludes` for the meta full-text API and grant/RFP PDF API so `pdf.worker.mjs` is included in serverless output tracing.
+- `package.json`, `package-lock.json`: package version bumped to `0.1.7`.
+- `src/lib/version.ts`: UI version bumped to `Ver 1.42`.
+
+Verification:
+
+```text
+Forced JS fallback PDF helper test: pass, 14 pages, 13,156 chars, DOMMatrix function.
+npm.cmd run lint: pass.
+npm.cmd run build: pass.
+Direct Next route handler upload test: HTTP 200, hasAnalysis true, fileType pdf, extractedTextLength 13,156, truncated false, aiUsed false.
+```
+
+Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+If this exact worker error still appears after pulling this commit, the running deployment is still using an old server bundle or the hosting platform did not rebuild from the latest commit. Rebuild/restart from the updated repository before retesting PDF upload.
