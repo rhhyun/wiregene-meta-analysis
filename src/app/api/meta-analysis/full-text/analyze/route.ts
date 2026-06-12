@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { analyzeMetaFullTextUpload } from "@/lib/meta-full-text-analysis";
+import {
+  metaFullTextHistoryStorageErrorDetails,
+  saveMetaFullTextHistory,
+} from "@/lib/meta-full-text-history";
 import { orchestralPainProject } from "@/lib/meta-projects";
 
 export const runtime = "nodejs";
@@ -47,6 +51,9 @@ export async function POST(request: Request) {
   }
 
   const referenceRecord = formString(formData, "referenceRecord");
+  const sourceSheet = formString(formData, "sourceSheet");
+  const sourceLabel = formString(formData, "sourceLabel");
+  const reviewMode = formString(formData, "reviewMode");
   const requestedColumns = columnsSchema.parse(formString(formData, "extractionColumns"));
   const extractionColumns = allowedExtractionColumns(requestedColumns);
 
@@ -59,7 +66,45 @@ export async function POST(request: Request) {
       extractionColumns,
     });
 
-    return NextResponse.json({ analysis });
+    try {
+      const savedRecord = await saveMetaFullTextHistory({
+        analysis,
+        sourceSheet,
+        sourceLabel,
+        reviewMode,
+        referenceRecord: referenceRecord || null,
+      });
+
+      return NextResponse.json({
+        analysis,
+        savedRecord: {
+          id: savedRecord.id,
+          fileName: savedRecord.fileName,
+          sourceSheet: savedRecord.sourceSheet,
+          sourceLabel: savedRecord.sourceLabel,
+          reviewMode: savedRecord.reviewMode,
+          savedAt: savedRecord.savedAt,
+          analyzedAt: savedRecord.analysis.analyzedAt,
+          titleGuess: savedRecord.analysis.titleGuess,
+          decision: savedRecord.analysis.eligibility.decision,
+          confidence: savedRecord.analysis.eligibility.confidence,
+          aiUsed: savedRecord.analysis.aiUsed,
+          model: savedRecord.analysis.model,
+          aiWarning: savedRecord.analysis.aiWarning,
+          reviewScore: savedRecord.analysis.reviewEvaluation.score,
+          reviewGrade: savedRecord.analysis.reviewEvaluation.grade,
+          extractionRowCount: savedRecord.analysis.extraction.rows.length,
+          missingCriticalFieldCount: savedRecord.analysis.extraction.missingCriticalFields.length,
+          validationIssueCount: savedRecord.analysis.extraction.validationIssues.length,
+        },
+      });
+    } catch (saveError) {
+      return NextResponse.json({
+        analysis,
+        savedRecord: null,
+        saveError: metaFullTextHistoryStorageErrorDetails(saveError),
+      });
+    }
   } catch (error) {
     const message =
       error instanceof Error

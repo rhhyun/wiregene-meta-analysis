@@ -6,11 +6,14 @@ import {
   CheckCircle2,
   ClipboardCheck,
   FileSpreadsheet,
+  History,
   Loader2,
+  RefreshCw,
+  Save,
   SearchCheck,
   UploadCloud,
 } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { apiErrorMessage } from "@/components/grant-error-message";
 import type { MetaFullTextAnalysis } from "@/lib/meta-full-text-analysis";
 
@@ -26,12 +29,87 @@ type MetaFullTextAssistantProps = {
 
 type ReviewerDecision = "pending" | "include_quantitative" | "include_narrative_support" | "exclude" | "conflict";
 
+type MetaFullTextHistorySummary = {
+  id: string;
+  fileName: string;
+  sourceSheet: string | null;
+  sourceLabel: string | null;
+  reviewMode: string | null;
+  savedAt: string;
+  analyzedAt: string;
+  titleGuess: string | null;
+  decision: MetaFullTextAnalysis["eligibility"]["decision"];
+  confidence: number;
+  aiUsed: boolean;
+  model: string | null;
+  aiWarning: string | null;
+  reviewScore: number;
+  reviewGrade: string;
+  extractionRowCount: number;
+  missingCriticalFieldCount: number;
+  validationIssueCount: number;
+};
+
+type MetaFullTextVerification = {
+  reviewerOneDecision: string;
+  reviewerTwoDecision: string;
+  fixedExclusionReason: string;
+  conflictStatus: string;
+  reviewerNotes: string;
+  updatedAt: string | null;
+};
+
+type MetaFullTextHistoryRecord = {
+  id: string;
+  fileName: string;
+  sourceSheet: string | null;
+  sourceLabel: string | null;
+  reviewMode: string | null;
+  referenceRecord: string | null;
+  savedAt: string;
+  analysis: MetaFullTextAnalysis;
+  verification: MetaFullTextVerification;
+};
+
 async function readAnalysisPayload(response: Response) {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(apiErrorMessage(payload, "full-text 분석에 실패했습니다."));
   }
-  return payload as { analysis: MetaFullTextAnalysis };
+  return payload as {
+    analysis: MetaFullTextAnalysis;
+    savedRecord?: MetaFullTextHistorySummary | null;
+    saveError?: unknown;
+  };
+}
+
+async function readHistoryListPayload(response: Response) {
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(apiErrorMessage(payload, "Saved full-text analyses could not be loaded."));
+  }
+  return payload as { records: MetaFullTextHistorySummary[] };
+}
+
+async function readHistoryRecordPayload(response: Response) {
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(apiErrorMessage(payload, "Saved full-text analysis could not be loaded."));
+  }
+  return payload as { record: MetaFullTextHistoryRecord };
+}
+
+function savedErrorMessage(details: unknown) {
+  if (!details || typeof details !== "object") return "Analysis finished, but the result was not saved.";
+  const record = details as Record<string, unknown>;
+  return [
+    "Analysis finished, but the result was not saved.",
+    record.code ? `code=${record.code}` : "",
+    record.message ? `message=${record.message}` : "",
+    record.help ? `help=${record.help}` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 function decisionLabel(decision: MetaFullTextAnalysis["eligibility"]["decision"]) {
@@ -100,6 +178,10 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
   const [worksheetName, setWorksheetName] = useState(worksheetOptions[0]?.sheetName ?? "");
   const [referenceRecord, setReferenceRecord] = useState("");
   const [analysis, setAnalysis] = useState<MetaFullTextAnalysis | null>(null);
+  const [historyItems, setHistoryItems] = useState<MetaFullTextHistorySummary[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
+  const [currentHistoryId, setCurrentHistoryId] = useState<string | null>(null);
   const [reviewerOneDecision, setReviewerOneDecision] = useState<ReviewerDecision>("pending");
   const [reviewerTwoDecision, setReviewerTwoDecision] = useState<ReviewerDecision>("pending");
   const [fixedExclusionReason, setFixedExclusionReason] = useState(fixedExclusionReasons[0]);
@@ -108,6 +190,11 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isSavingVerification, setIsSavingVerification] = useState(false);
+
+  useEffect(() => {
+    void loadHistory();
+  }, []);
 
   const extractionCsv = useMemo(() => {
     if (!analysis) return "";
@@ -173,9 +260,89 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
     setReviewerNotes("");
   }
 
+  function applyVerification(verification?: Partial<MetaFullTextVerification> | null) {
+    setReviewerOneDecision((verification?.reviewerOneDecision as ReviewerDecision) || "pending");
+    setReviewerTwoDecision((verification?.reviewerTwoDecision as ReviewerDecision) || "pending");
+    setFixedExclusionReason(verification?.fixedExclusionReason || fixedExclusionReasons[0]);
+    setConflictStatus(verification?.conflictStatus || "needs human verification");
+    setReviewerNotes(verification?.reviewerNotes || "");
+  }
+
+  function upsertHistoryItem(item: MetaFullTextHistorySummary) {
+    setHistoryItems((current) => [item, ...current.filter((record) => record.id !== item.id)].slice(0, 50));
+  }
+
+  async function loadHistory() {
+    setHistoryLoading(true);
+    setHistoryError("");
+    try {
+      const payload = await readHistoryListPayload(
+        await fetch("/api/meta-analysis/full-text/history?limit=50", { cache: "no-store" }),
+      );
+      setHistoryItems(payload.records);
+    } catch (caught) {
+      setHistoryError(caught instanceof Error ? caught.message : "Saved full-text analyses could not be loaded.");
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  async function loadSavedAnalysis(id: string) {
+    setError("");
+    setNotice("");
+    try {
+      const payload = await readHistoryRecordPayload(
+        await fetch(`/api/meta-analysis/full-text/history/${encodeURIComponent(id)}`, { cache: "no-store" }),
+      );
+      const record = payload.record;
+      setAnalysis(record.analysis);
+      setCurrentHistoryId(record.id);
+      setReferenceRecord(record.referenceRecord ?? "");
+      if (record.sourceSheet) setWorksheetName(record.sourceSheet);
+      applyVerification(record.verification);
+      setNotice(`Loaded saved analysis: ${record.fileName}`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Saved full-text analysis could not be loaded.");
+    }
+  }
+
+  async function saveVerification() {
+    if (!currentHistoryId) {
+      setError("This analysis is not linked to a saved history record yet.");
+      return;
+    }
+
+    setIsSavingVerification(true);
+    setError("");
+    setNotice("");
+    try {
+      const payload = await readHistoryRecordPayload(
+        await fetch(`/api/meta-analysis/full-text/history/${encodeURIComponent(currentHistoryId)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            reviewerOneDecision,
+            reviewerTwoDecision,
+            fixedExclusionReason,
+            conflictStatus,
+            reviewerNotes,
+          }),
+        }),
+      );
+      applyVerification(payload.record.verification);
+      setNotice("Reviewer verification was saved.");
+      void loadHistory();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Reviewer verification could not be saved.");
+    } finally {
+      setIsSavingVerification(false);
+    }
+  }
+
   function handleFileChange(nextFile: File | null) {
     setFile(nextFile);
     setAnalysis(null);
+    setCurrentHistoryId(null);
     setError("");
     setNotice("");
     resetVerificationState();
@@ -214,6 +381,9 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
           .join("\n"),
       );
       formData.set("extractionColumns", extractionColumns.join(","));
+      formData.set("sourceSheet", selectedWorksheet?.sheetName ?? "");
+      formData.set("sourceLabel", selectedWorksheet?.label ?? "");
+      formData.set("reviewMode", selectedWorksheet?.reviewMode ?? "");
 
       const payload = await readAnalysisPayload(
         await fetch("/api/meta-analysis/full-text/analyze", {
@@ -222,12 +392,24 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
         }),
       );
       setAnalysis(payload.analysis);
+      if (payload.savedRecord) {
+        setCurrentHistoryId(payload.savedRecord.id);
+        upsertHistoryItem(payload.savedRecord);
+      } else {
+        setCurrentHistoryId(null);
+      }
       setNotice(
         payload.analysis.aiUsed
           ? `OpenAI ${payload.analysis.model}로 full-text article 분석 초안을 생성했습니다. 연구자가 반드시 원문 근거와 숫자를 검증해야 합니다.`
           : payload.analysis.aiWarning ||
               "OpenAI analysis was not used, so fallback rules generated only a low-confidence draft. Check AI settings and rerun before final review.",
       );
+      if (payload.savedRecord) {
+        setNotice(`Saved analysis: ${payload.savedRecord.fileName}`);
+      }
+      if (payload.saveError) {
+        setError(savedErrorMessage(payload.saveError));
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "full-text 분석에 실패했습니다.");
     } finally {
@@ -263,6 +445,56 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
           {isAnalyzing ? "분석 중" : "full-text 분석"}
         </button>
       </div>
+
+      <section className="mt-4 rounded-md border border-emerald-200 bg-white p-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2">
+            <History className="h-4 w-4 text-emerald-700" aria-hidden />
+            <p className="text-sm font-semibold text-zinc-950">Saved full-text analyses</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void loadHistory()}
+            disabled={historyLoading}
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-xs font-semibold text-zinc-700 transition hover:border-emerald-300 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${historyLoading ? "animate-spin" : ""}`} aria-hidden />
+            Refresh
+          </button>
+        </div>
+        {historyError ? (
+          <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-950">
+            {historyError}
+          </div>
+        ) : null}
+        <div className="mt-3 grid gap-2">
+          {historyItems.length > 0 ? (
+            historyItems.slice(0, 8).map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => void loadSavedAnalysis(item.id)}
+                className={`grid gap-1 rounded-md border p-3 text-left transition hover:border-emerald-300 hover:bg-emerald-50 ${
+                  currentHistoryId === item.id ? "border-emerald-400 bg-emerald-50" : "border-zinc-200 bg-white"
+                }`}
+              >
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="truncate text-sm font-semibold text-zinc-950">{item.fileName}</p>
+                  <p className="text-xs font-semibold text-zinc-500">{new Date(item.savedAt).toLocaleString("ko-KR")}</p>
+                </div>
+                <p className="text-xs font-medium leading-5 text-zinc-600">
+                  {item.sourceSheet ?? "no sheet"} · {decisionLabel(item.decision)} · confidence {item.confidence} ·{" "}
+                  {item.aiUsed ? `AI ${item.model}` : "fallback"} · review {item.reviewScore}/{item.reviewGrade}
+                </p>
+              </button>
+            ))
+          ) : (
+            <p className="rounded-md border border-dashed border-zinc-200 bg-zinc-50 p-3 text-sm font-semibold text-zinc-500">
+              No saved full-text analyses yet.
+            </p>
+          )}
+        </div>
+      </section>
 
       <div className="mt-4 grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">
         <label className="grid gap-2 text-sm font-semibold text-zinc-700">
@@ -450,6 +682,15 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
                 <p className="text-sm font-semibold text-zinc-950">Human verification worksheet</p>
                 <p className="mt-1 text-xs leading-5 text-zinc-500">AI 초안과 독립적으로 reviewer 1/2 판정, 고정 제외사유, conflict 상태를 기록합니다.</p>
               </div>
+              <button
+                type="button"
+                onClick={() => void saveVerification()}
+                disabled={isSavingVerification || !currentHistoryId}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-3 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
+              >
+                {isSavingVerification ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Save className="h-4 w-4" aria-hidden />}
+                Save verification
+              </button>
               <button
                 type="button"
                 onClick={() => void copyToClipboard(verificationCsv, "verification CSV를")}

@@ -74,3 +74,10 @@ OAuth variables (`GOOGLE_DRIVE_CLIENT_ID`, `GOOGLE_DRIVE_CLIENT_SECRET`,
 `GOOGLE_DRIVE_REFRESH_TOKEN`) or a service account plus `GOOGLE_DRIVE_FOLDER_ID`.
 If you do not want in-app key storage on Vercel, set `OPENAI_API_KEY` directly as
 a deployment environment variable instead.
+
+Full-text PDF/Word analysis results are saved automatically after each run.
+Saved records include the analysis JSON, source sheet metadata, AI warning/source,
+and reviewer verification fields. On Vercel, the history storage uses Google
+Drive automatically when Google Drive credentials are configured, or it can be
+forced with `META_FULL_TEXT_HISTORY_STORAGE_BACKEND=google-drive`. The default
+Drive file is `meta-full-text-history.json`.

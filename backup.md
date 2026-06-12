@@ -926,6 +926,64 @@ Official reference checked:
 
 - OpenAI Structured Outputs documentation says `additionalProperties: false` must always be set in objects, and all fields should be required with nullable types used for optional values.
 
+## 2026-06-13 Full-text analysis history auto-save
+
+User request:
+
+```text
+이제 잘 작동합니다. 나중에 확인하려면 결과들이 다 저장되어야 합니다.
+현재 세팅으로 자동저장이 되는 상황인지요?
+저장하면 리스트업을 하고 나중에 리스트 클릭하면 확인도 하는 기능이 기본적으로 있어야 합니다.
+```
+
+Answer before this change:
+
+- No. Full-text PDF/Word analysis results were only held in the browser state and copied through CSV buttons.
+- Refreshing the page or opening the app from another PC would not show previous full-text analysis results.
+
+Implemented:
+
+- `src/lib/meta-full-text-history.ts`: new server-side history storage for full-text analysis results.
+- Stores analysis JSON, source sheet metadata, source label, review mode, reference row text, AI source/warning, and reviewer verification fields.
+- Storage backend:
+  - Vercel/serverless: automatically uses Google Drive if Google Drive credentials are configured.
+  - Can be forced with `META_FULL_TEXT_HISTORY_STORAGE_BACKEND=google-drive`.
+  - Synology/local Docker: defaults to `.data/meta/meta-full-text-history.json`.
+  - Default Google Drive file: `meta-full-text-history.json`.
+- `src/app/api/meta-analysis/full-text/analyze/route.ts`: auto-saves every completed analysis and returns `savedRecord`; if save fails, returns `saveError` while still showing the analysis.
+- `src/app/api/meta-analysis/full-text/history/route.ts`: lists saved full-text analysis summaries.
+- `src/app/api/meta-analysis/full-text/history/[id]/route.ts`: loads a saved analysis and updates reviewer verification fields.
+- `src/components/MetaFullTextAssistant.tsx`: added **Saved full-text analyses** list, refresh button, click-to-open saved record, current saved-record highlighting, and **Save verification** button.
+- `synology/docker/meta/.env.example`: added full-text history storage env placeholders.
+- `scripts/synology-start-meta.sh`: seeds full-text history storage env values from DSM scheduler environment.
+- `SERVICE.md` and `synology/docker/meta/README.md`: documented automatic full-text history saving.
+- `package.json`, `package-lock.json`: package version bumped to `0.1.18`.
+- `src/lib/version.ts`: UI version bumped to `Ver 1.53`.
+
+Verification:
+
+```text
+Local full-text history storage test: saved=true, listed=1, loaded=history-test.txt, verification update persisted.
+npx.cmd tsc --noEmit: pass.
+bash -n scripts/synology-start-meta.sh: pass.
+git diff --check: pass, CRLF warnings only.
+npm.cmd run lint: pass.
+npm.cmd run build: pass.
+Browser check on http://127.0.0.1:3022 Screening tab: Saved full-text analyses, Refresh, and empty-list state rendered.
+```
+
+Vercel behavior:
+
+- With the current Vercel Google Drive credentials working, this will auto-save to `google-drive:meta-full-text-history.json` after redeploy.
+- If storage fails, the result remains visible and a `saveError` warning is shown so the user knows the record was not persisted.
+
+Recommended Vercel env, optional but explicit:
+
+```text
+META_FULL_TEXT_HISTORY_STORAGE_BACKEND=google-drive
+META_FULL_TEXT_HISTORY_DRIVE_FILENAME=meta-full-text-history.json
+```
+
 ## 2026-06-13 Meta AI settings storage write fix
 
 User report:
