@@ -197,7 +197,7 @@ export function MetaStudyWorkspace({
           ))}
         </div>
 
-        {currentUser?.isAdmin ? (
+        {currentUser ? (
           <button
             type="button"
             onClick={() => setAiSettingsOpen(true)}

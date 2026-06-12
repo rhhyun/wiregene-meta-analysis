@@ -14,7 +14,7 @@ const updateSchema = z.object({
 });
 
 export async function GET(request: Request) {
-  const user = await requireMetaAdmin(request);
+  const user = await requireMetaUser(request);
   if (!user.ok) return user.response;
 
   try {
@@ -33,7 +33,7 @@ export async function GET(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const user = await requireMetaAdmin(request);
+  const user = await requireMetaUser(request);
   if (!user.ok) return user.response;
 
   try {
@@ -48,15 +48,15 @@ export async function PATCH(request: Request) {
   }
 }
 
-async function requireMetaAdmin(request: Request) {
+async function requireMetaUser(request: Request) {
   const currentUser = await getCurrentWiregeneUser(request.headers.get("authorization"), {
     mode: "meta",
   });
 
-  if (!currentUser?.isAdmin) {
+  if (!currentUser) {
     return {
       ok: false as const,
-      response: NextResponse.json({ error: "Meta administrator permission is required." }, { status: 403 }),
+      response: NextResponse.json({ error: "Meta login is required." }, { status: 401 }),
     };
   }
 

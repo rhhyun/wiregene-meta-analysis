@@ -863,6 +863,43 @@ git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin
 
 Never write the real OpenAI API key or real `META_AI_SETTINGS_SECRET` into `backup.md` or Git-tracked files.
 
+## 2026-06-13 AI settings menu visibility fix
+
+User report:
+
+```text
+왼쪽에 AI 설정 메뉴가 안보입니다
+```
+
+Root cause:
+
+- The Meta sidebar showed **AI 평가 설정** only when `currentUser.isAdmin` was true.
+- On Synology/Meta standalone Basic Auth, a user can be authenticated but not marked admin if `WIREGENE_ADMIN_EMAILS`, `APP_ADMIN_USERS`, or `APP_ADMIN_USER` is not set.
+- The AI settings API also required `isAdmin`, so the menu could be hidden for the normal Meta login user.
+
+Fix:
+
+- `src/components/MetaStudyWorkspace.tsx`: show **AI 평가 설정** to any authenticated Meta user (`currentUser`) instead of admin-only.
+- `src/app/api/meta-analysis/ai-settings/route.ts`: allow authenticated Meta users to GET/PATCH AI settings. Unauthenticated requests still return `401`.
+- `package.json`, `package-lock.json`: package version bumped to `0.1.12`.
+- `src/lib/version.ts`: UI version bumped to `Ver 1.47`.
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit: pass.
+Non-admin Basic Auth AI settings API test: GET 200 with settings payload.
+npm.cmd run lint: pass.
+npm.cmd run build: pass.
+Browser verification with non-admin Basic Auth user on http://127.0.0.1:3018: Ver 1.47 visible, no admin badge, AI 평가 설정 button visible, settings panel opens with API key/model/save controls.
+```
+
+Regular Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 ## 2026-06-12 Hyunlab-style OpenAI quality review for full-text meta-analysis
 
 User request:
