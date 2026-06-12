@@ -70,6 +70,10 @@ function boolLabel(value: boolean | null) {
   return "확인 필요";
 }
 
+function criteriaLabel(value: string) {
+  return value.replaceAll("_", " ");
+}
+
 const reviewerDecisionOptions: { value: ReviewerDecision; label: string }[] = [
   { value: "pending", label: "검증 전" },
   { value: "include_quantitative", label: "정량 포함" },
@@ -123,6 +127,11 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
         "source_sheet",
         "ai_decision",
         "ai_confidence",
+        "ai_review_score",
+        "ai_review_grade",
+        "ai_review_summary",
+        "ai_review_improvement",
+        "ai_review_criteria_json",
         "reviewer_1_decision",
         "reviewer_2_decision",
         "fixed_exclusion_reason",
@@ -136,6 +145,11 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
           source_sheet: selectedWorksheet?.sheetName ?? "",
           ai_decision: analysis.eligibility.decision,
           ai_confidence: String(analysis.eligibility.confidence),
+          ai_review_score: String(analysis.reviewEvaluation.score),
+          ai_review_grade: analysis.reviewEvaluation.grade,
+          ai_review_summary: analysis.reviewEvaluation.summary,
+          ai_review_improvement: analysis.reviewEvaluation.improvement,
+          ai_review_criteria_json: JSON.stringify(analysis.reviewEvaluation.criteria),
           reviewer_1_decision: reviewerOneDecision,
           reviewer_2_decision: reviewerTwoDecision,
           fixed_exclusion_reason: fixedExclusionReason,
@@ -342,6 +356,45 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
             <InfoBox label="추출 row" value={`${analysis.extraction.rows.length.toLocaleString()} rows`} />
             <InfoBox label="누락 critical fields" value={`${analysis.extraction.missingCriticalFields.length.toLocaleString()}`} />
           </div>
+
+          <section className="rounded-md border border-zinc-200 bg-white p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-zinc-950">AI review evaluation</p>
+                <p className="mt-1 text-xs leading-5 text-zinc-500">
+                  Hyunlab 주간보고 평가 방식처럼 full-text 판정과 추출 결과 자체를 기준별로 다시 점검합니다.
+                </p>
+              </div>
+              <div className="grid min-w-48 grid-cols-2 gap-2 text-center">
+                <div className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2">
+                  <p className="text-xs font-semibold uppercase text-zinc-500">score</p>
+                  <p className="mt-1 text-2xl font-semibold text-zinc-950">{analysis.reviewEvaluation.score}</p>
+                </div>
+                <div className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2">
+                  <p className="text-xs font-semibold uppercase text-zinc-500">grade</p>
+                  <p className="mt-1 text-sm font-semibold leading-6 text-zinc-950">{analysis.reviewEvaluation.grade}</p>
+                </div>
+              </div>
+            </div>
+            <div className="mt-3 grid gap-3 lg:grid-cols-2">
+              <InfoBox label="Quality summary" value={analysis.reviewEvaluation.summary || "needs review"} />
+              <InfoBox label="Improvement" value={analysis.reviewEvaluation.improvement || "needs review"} />
+            </div>
+            <div className="mt-3 grid gap-2 lg:grid-cols-3">
+              {Object.entries(analysis.reviewEvaluation.criteria).map(([key, item]) => (
+                <div key={key} className="rounded-md border border-zinc-200 bg-zinc-50 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-xs font-semibold uppercase text-zinc-500">{criteriaLabel(key)}</p>
+                    <span className="shrink-0 rounded-md bg-white px-2 py-1 text-xs font-semibold text-zinc-700 ring-1 ring-zinc-200">
+                      {item.score}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs font-semibold text-zinc-700">{item.status}</p>
+                  <p className="mt-1 text-sm leading-6 text-zinc-600">{item.comment}</p>
+                </div>
+              ))}
+            </div>
+          </section>
 
           <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
             <ResultPanel title="Eligibility reasons" items={analysis.eligibility.reasons} />

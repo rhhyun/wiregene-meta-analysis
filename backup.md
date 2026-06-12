@@ -806,3 +806,54 @@ git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin
 ```
 
 Never write the real OpenAI API key into `backup.md` or Git-tracked files.
+
+## 2026-06-12 Hyunlab-style OpenAI quality review for full-text meta-analysis
+
+User request:
+
+```text
+현재 hyunlab-wiregene-platform이 Openai platform을 사용하여 연구원들 주간보고를 평가하는데 사용 중입니다. 이를 여기에도 활용하는게 좋겠습니다
+```
+
+Implemented:
+
+- `src/lib/meta-full-text-analysis.ts`: added required `reviewEvaluation` to every full-text analysis result.
+- `reviewEvaluation` follows the Hyunlab weekly-report evaluation pattern: `score`, `grade`, `summary`, `improvement`, criteria-level score/status/comment, and `modelName`.
+- OpenAI full-text analysis now requests Structured Outputs with a JSON schema and asks the model to score its own extraction against meta-analysis criteria.
+- Meta-specific review criteria added:
+  - eligibility fit
+  - extraction completeness
+  - evidence traceability
+  - quantitative integrity
+  - reviewer actionability
+  - risk visibility
+- Added a conservative safety downgrade: if OpenAI proposes `include_quantitative` but no explicit denominator-based outcome pair or no numeric cell-level evidence is present, the decision is downgraded to `uncertain` and a validation issue is shown.
+- Fallback mode now records a low quality-review score (`25`, `fallback-human-verification-required`) instead of looking like a normal AI result.
+- `src/components/MetaFullTextAssistant.tsx`: added an `AI review evaluation` panel showing score, grade, summary, improvement, and criteria cards.
+- `src/components/MetaFullTextAssistant.tsx`: verification CSV now includes AI review score/grade/summary/improvement/criteria JSON so the Excel verification trail can preserve this information.
+- `SERVICE.md`, `docs/synology-meta-portal-split.md`, and `synology/docker/meta/README.md`: documented that OpenAI enables eligibility/extraction plus Hyunlab-style quality review.
+- `package.json`, `package-lock.json`: package version bumped to `0.1.10`.
+- `src/lib/version.ts`: UI version bumped to `Ver 1.45`.
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit: pass.
+npm.cmd run lint: pass.
+npm.cmd run build: pass.
+Direct full-text route fallback test with synthetic TXT: HTTP 200, aiUsed false, decision uncertain, reviewScore 25, reviewGrade fallback-human-verification-required, all six review criteria returned.
+```
+
+Synology OpenAI setup command:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && OPENAI_API_KEY='YOUR_OPENAI_API_KEY' OPENAI_MODEL='gpt-5-nano' /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+Regular Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+Never write the real OpenAI API key into `backup.md` or Git-tracked files.

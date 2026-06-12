@@ -46,11 +46,15 @@ git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin
 APP_BASIC_AUTH_USER='YOUR_LOGIN_ID' APP_BASIC_AUTH_PASSWORD='YOUR_PASSWORD' WIREGENE_ADMIN_EMAILS='YOUR_ADMIN_EMAIL' /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
 ```
 
-For full-text article screening/extraction accuracy, configure OpenAI:
+For full-text article screening/extraction accuracy, configure OpenAI. When
+enabled, the full-text workflow uses OpenAI Structured Outputs to produce both
+the eligibility/extraction draft and a Hyunlab-style quality review
+(`score`, `grade`, `summary`, `improvement`, and criteria-level comments).
 
 ```sh
 git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && OPENAI_API_KEY='YOUR_OPENAI_API_KEY' OPENAI_MODEL='gpt-5-nano' /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
 ```
 
-Without `OPENAI_API_KEY`, the full-text assistant uses fallback rules and the
-result is marked `aiUsed=false`.
+Without `OPENAI_API_KEY`, the full-text assistant uses conservative fallback
+rules, marks the result `aiUsed=false`, and assigns a low quality-review score
+requiring human verification.

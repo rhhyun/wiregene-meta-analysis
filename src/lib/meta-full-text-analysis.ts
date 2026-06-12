@@ -26,6 +26,21 @@ export type MetaFullTextFieldEvidence = {
 
 export type MetaFullTextFileType = "pdf" | "word" | "text";
 
+export type MetaFullTextReviewCriterion = {
+  score: number;
+  status: string;
+  comment: string;
+};
+
+export type MetaFullTextReviewEvaluation = {
+  score: number;
+  grade: string;
+  summary: string;
+  improvement: string;
+  criteria: Record<string, MetaFullTextReviewCriterion>;
+  modelName: string | null;
+};
+
 export type MetaFullTextAnalysis = {
   fileName: string;
   fileType: MetaFullTextFileType;
@@ -71,6 +86,7 @@ export type MetaFullTextAnalysis = {
   };
   evidence: MetaFullTextEvidence[];
   nextActions: string[];
+  reviewEvaluation: MetaFullTextReviewEvaluation;
 };
 
 export type AnalyzeMetaFullTextInput = {
@@ -81,11 +97,29 @@ export type AnalyzeMetaFullTextInput = {
   extractionColumns: string[];
 };
 
+type AiMetaFullTextReviewEvaluation = Partial<{
+  score: number;
+  grade: string;
+  summary: string;
+  improvement: string;
+  criteria: Record<string, Partial<MetaFullTextReviewCriterion>>;
+  modelName: string | null;
+}>;
+
 type AiMetaFullTextAnalysis = Partial<
-  Pick<MetaFullTextAnalysis, "titleGuess" | "eligibility" | "study" | "extraction" | "evidence" | "nextActions">
+  Pick<MetaFullTextAnalysis, "titleGuess" | "eligibility" | "study" | "extraction" | "evidence" | "nextActions"> & {
+    reviewEvaluation: AiMetaFullTextReviewEvaluation;
+  }
 >;
 
 const primitiveCellSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
+const aiReviewCriterionSchema = z
+  .object({
+    score: z.coerce.number().optional(),
+    status: z.string().optional(),
+    comment: z.string().optional(),
+  })
+  .passthrough();
 const aiMetaFullTextAnalysisSchema = z
   .object({
     titleGuess: z.string().nullable().optional(),
@@ -142,6 +176,16 @@ const aiMetaFullTextAnalysisSchema = z
       .optional(),
     evidence: z.array(z.object({ label: z.string(), excerpt: z.string() })).optional(),
     nextActions: z.array(z.string()).optional(),
+    reviewEvaluation: z
+      .object({
+        score: z.coerce.number().optional(),
+        grade: z.string().optional(),
+        summary: z.string().optional(),
+        improvement: z.string().optional(),
+        criteria: z.record(z.string(), aiReviewCriterionSchema).optional(),
+        modelName: z.string().nullable().optional(),
+      })
+      .optional(),
   })
   .passthrough();
 
@@ -194,6 +238,87 @@ const regionTerms = [
   "jaw",
   "headache",
 ];
+
+const metaReviewEvaluationCriteria = {
+  eligibility_fit:
+    "Full text eligibility matches the review protocol: original observational musician data, relevant PRMD/pain outcome, no intervention/review/case-report exclusion.",
+  extraction_completeness:
+    "Critical Excel fields and at least one useful denominator-based outcome row are extracted when the article supports inclusion.",
+  evidence_traceability:
+    "Key eligibility and numeric extraction claims have short source excerpts plus page/table/figure/supplement hints when available.",
+  quantitative_integrity:
+    "Numerators, denominators, percentages, totals, laterality, and instrument-group mappings are not invented and pass internal consistency checks.",
+  reviewer_actionability:
+    "The output tells the human reviewer exactly what to verify, correct, include, or exclude next.",
+  risk_visibility:
+    "Uncertainty, OCR/table limitations, non-English risk, treatment/intervention design, overlap cohorts, and missing denominators are explicitly visible.",
+};
+
+const metaFullTextResponseFormat = {
+  type: "json_schema",
+  name: "meta_full_text_analysis",
+  description: "Full-text screening, extraction, and quality review for a meta-analysis article.",
+  schema: {
+    type: "object",
+    additionalProperties: true,
+    required: ["eligibility", "study", "extraction", "evidence", "nextActions", "reviewEvaluation"],
+    properties: {
+      titleGuess: { type: ["string", "null"] },
+      eligibility: {
+        type: "object",
+        additionalProperties: true,
+        properties: {
+          decision: {
+            type: "string",
+            enum: ["include_quantitative", "include_narrative_support", "exclude", "uncertain"],
+          },
+          confidence: { type: "number", minimum: 0, maximum: 100 },
+          summary: { type: "string" },
+          reasons: { type: "array", items: { type: "string" } },
+          exclusionReasons: { type: "array", items: { type: "string" } },
+          reviewerChecks: { type: "object", additionalProperties: true },
+        },
+      },
+      study: { type: "object", additionalProperties: true },
+      extraction: {
+        type: "object",
+        additionalProperties: true,
+        properties: {
+          rows: { type: "array", items: { type: "object", additionalProperties: true } },
+          fieldEvidence: { type: "array", items: { type: "object", additionalProperties: true } },
+          missingCriticalFields: { type: "array", items: { type: "string" } },
+          validationIssues: { type: "array", items: { type: "string" } },
+        },
+      },
+      evidence: { type: "array", items: { type: "object", additionalProperties: true } },
+      nextActions: { type: "array", items: { type: "string" } },
+      reviewEvaluation: {
+        type: "object",
+        additionalProperties: true,
+        required: ["score", "grade", "summary", "improvement", "criteria"],
+        properties: {
+          score: { type: "number", minimum: 0, maximum: 100 },
+          grade: { type: "string" },
+          summary: { type: "string" },
+          improvement: { type: "string" },
+          modelName: { type: ["string", "null"] },
+          criteria: {
+            type: "object",
+            additionalProperties: {
+              type: "object",
+              additionalProperties: true,
+              properties: {
+                score: { type: "number", minimum: 0, maximum: 100 },
+                status: { type: "string" },
+                comment: { type: "string" },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+} as const;
 
 export async function analyzeMetaFullTextUpload(input: AnalyzeMetaFullTextInput) {
   const fileType = detectFileType(input.fileName, input.mimeType);
@@ -248,6 +373,7 @@ export async function analyzeMetaFullTextUpload(input: AnalyzeMetaFullTextInput)
     extraction: normalizeExtraction(ai.extraction, fallback.extraction, input.extractionColumns),
     evidence: normalizeEvidence([...(ai.evidence ?? []), ...fallback.evidence]).slice(0, 10),
     nextActions: normalizeList([...(ai.nextActions ?? []), ...fallback.nextActions]).slice(0, 8),
+    reviewEvaluation: normalizeReviewEvaluation(ai.reviewEvaluation, fallback.reviewEvaluation, config.openaiModel),
     aiUsed: true,
     model: config.openaiModel,
   });
@@ -388,6 +514,23 @@ function fallbackAnalyzeFullText({
       "스캔 PDF 또는 표 구조가 무너진 PDF는 OCR/table extraction 후 다시 분석하세요.",
       "AI 결과는 최종판정이 아니라 reviewer verification 초안으로만 사용하세요.",
     ],
+    reviewEvaluation: {
+      score: 25,
+      grade: "fallback-human-verification-required",
+      summary:
+        "OpenAI analysis was not available, so this full-text judgment is a low-confidence rule-based draft. The reviewer must verify inclusion/exclusion and every denominator/numerator value against the source article.",
+      improvement:
+        "Configure OPENAI_API_KEY, rerun the article, and manually check the article tables, figures, and supplements for denominator, numerator, instrument group, region, and laterality data.",
+      criteria: {
+        eligibility_fit: reviewCriterion(20, "uncertain", "Rule-based signals cannot confirm protocol eligibility from the full text."),
+        extraction_completeness: reviewCriterion(15, "insufficient", "Fallback mode cannot reliably extract study parameters from article tables."),
+        evidence_traceability: reviewCriterion(25, "limited", "Only short text snippets are available; page or table hints are not guaranteed."),
+        quantitative_integrity: reviewCriterion(20, "needs_manual_check", "n/total consistency cannot be trusted until source tables are checked."),
+        reviewer_actionability: reviewCriterion(45, "partial", "Next reviewer checks are listed, but the draft is not enough for final coding."),
+        risk_visibility: reviewCriterion(55, "visible", "OpenAI absence and OCR/table limitations are explicitly surfaced."),
+      },
+      modelName: null,
+    },
   });
 }
 
@@ -410,6 +553,9 @@ async function analyzeWithOpenAI({
   try {
     const response = await openai.responses.create({
       model: config.openaiModel,
+      text: {
+        format: metaFullTextResponseFormat,
+      },
       input: `You are a meticulous systematic-review and meta-analysis extraction assistant.
 
 Task:
@@ -423,8 +569,15 @@ Important rules:
 - Extract numbers exactly as reported. If only percent is reported without denominator, put a note instead of fabricating n.
 - For every non-empty extracted numeric cell, provide cell-level evidence with field name, value, short exact excerpt, and page/table/figure/supplement hint when available.
 - Do not fill instrument group or asymmetry mapping from background-only mentions; use actual sample/group information only.
+- Never infer left/right laterality from instrument playing side. Fill left/right cells only when the article explicitly reports left/right outcomes.
+- If an article is treatment/intervention/RCT/effect-focused, do not mark it quantitative unless independent baseline observational prevalence with explicit denominator/numerator is clearly extractable.
+- If a numeric cell lacks source evidence, leave the cell empty or mark it needs review instead of fabricating a value.
 - Keep evidence excerpts short.
+- Also evaluate the quality of your own screening/extraction using the reviewEvaluation criteria below.
 - Return only one JSON object.
+
+Review evaluation criteria:
+${JSON.stringify(metaReviewEvaluationCriteria, null, 2)}
 
 Return this JSON schema:
 {
@@ -535,7 +688,22 @@ Return this JSON schema:
     "validationIssues": ["issue"]
   },
   "evidence": [{"label":"string","excerpt":"short exact excerpt"}],
-  "nextActions": ["Korean next action"]
+  "nextActions": ["Korean next action"],
+  "reviewEvaluation": {
+    "score": 0,
+    "grade": "high|moderate|low|unsafe",
+    "summary": "Korean 1-2 sentence quality assessment",
+    "improvement": "Korean concrete instruction for the human reviewer",
+    "criteria": {
+      "eligibility_fit": {"score": 0, "status": "pass|partial|fail|unclear", "comment": "Korean comment"},
+      "extraction_completeness": {"score": 0, "status": "pass|partial|fail|unclear", "comment": "Korean comment"},
+      "evidence_traceability": {"score": 0, "status": "pass|partial|fail|unclear", "comment": "Korean comment"},
+      "quantitative_integrity": {"score": 0, "status": "pass|partial|fail|unclear", "comment": "Korean comment"},
+      "reviewer_actionability": {"score": 0, "status": "pass|partial|fail|unclear", "comment": "Korean comment"},
+      "risk_visibility": {"score": 0, "status": "pass|partial|fail|unclear", "comment": "Korean comment"}
+    },
+    "modelName": "${config.openaiModel}"
+  }
 }
 
 Extraction columns that must be present in every row:
@@ -562,7 +730,9 @@ Full-text:
 ${text}`,
     });
 
-    const parsed = JSON.parse(extractJson(response.output_text)) as unknown;
+    const outputText = extractOpenAiOutputText(response);
+    if (!outputText.trim()) throw new Error("OpenAI returned an empty full-text analysis response.");
+    const parsed = JSON.parse(extractJson(outputText)) as unknown;
     const validated = aiMetaFullTextAnalysisSchema.safeParse(parsed);
     if (!validated.success) {
       console.error("Meta full-text OpenAI analysis schema validation failed.", validated.error.flatten());
@@ -577,21 +747,33 @@ ${text}`,
 
 function normalizeAnalysis(analysis: MetaFullTextAnalysis): MetaFullTextAnalysis {
   const extraction = normalizeExtraction(analysis.extraction, analysis.extraction, analysis.extraction.columns);
-  return {
-    ...analysis,
-    eligibility: {
+  const safety = applyEligibilitySafety(
+    {
       ...analysis.eligibility,
       confidence: clamp(Number(analysis.eligibility.confidence) || 0, 0, 100),
       reasons: normalizeList(analysis.eligibility.reasons),
       exclusionReasons: normalizeList(analysis.eligibility.exclusionReasons),
     },
+    extraction,
+  );
+  return {
+    ...analysis,
+    eligibility: safety.eligibility,
     study: {
       ...analysis.study,
       instruments: normalizeList(analysis.study.instruments),
     },
-    extraction,
+    extraction: {
+      ...extraction,
+      validationIssues: normalizeList([...extraction.validationIssues, ...safety.validationIssues]),
+    },
     evidence: normalizeEvidence(analysis.evidence),
     nextActions: normalizeList(analysis.nextActions),
+    reviewEvaluation: normalizeReviewEvaluation(
+      analysis.reviewEvaluation,
+      defaultReviewEvaluation(analysis.model),
+      analysis.reviewEvaluation.modelName ?? analysis.model,
+    ),
   };
 }
 
@@ -624,6 +806,116 @@ function normalizeExtraction(
     ]),
     validationIssues,
   };
+}
+
+function applyEligibilitySafety(
+  eligibility: MetaFullTextAnalysis["eligibility"],
+  extraction: MetaFullTextAnalysis["extraction"],
+): { eligibility: MetaFullTextAnalysis["eligibility"]; validationIssues: string[] } {
+  if (eligibility.decision !== "include_quantitative") return { eligibility, validationIssues: [] };
+
+  const hasOutcomePair = extraction.rows.some((row) =>
+    Object.entries(row).some(([field, value]) => {
+      if (!field.endsWith("_n") || !String(value).trim()) return false;
+      const total = row[`${field.slice(0, -2)}_total`];
+      return Boolean(total?.trim());
+    }),
+  );
+  const hasNumericCellEvidence = extraction.fieldEvidence.some(
+    (item) => /(?:_n|_total)$/.test(item.field) && item.evidence.trim(),
+  );
+
+  if (hasOutcomePair && hasNumericCellEvidence) return { eligibility, validationIssues: [] };
+
+  const validationIssues = [
+    !hasOutcomePair
+      ? "include_quantitative was downgraded because no explicit denominator-based outcome pair was extracted."
+      : "",
+    !hasNumericCellEvidence
+      ? "include_quantitative was downgraded because extracted numeric cells do not have cell-level source evidence."
+      : "",
+  ].filter(Boolean);
+
+  return {
+    eligibility: {
+      ...eligibility,
+      decision: "uncertain",
+      confidence: Math.min(eligibility.confidence, 50),
+      reasons: normalizeList([
+        ...eligibility.reasons,
+        "Quantitative inclusion requires explicit n/total outcome pairs with cell-level source evidence; this record was downgraded for human verification.",
+      ]),
+      reviewerChecks: {
+        ...eligibility.reviewerChecks,
+        extractableNumeratorDenominator: hasOutcomePair && hasNumericCellEvidence ? true : null,
+      },
+    },
+    validationIssues,
+  };
+}
+
+function reviewCriterion(score: number, status: string, comment: string): MetaFullTextReviewCriterion {
+  return {
+    score: clamp(Number(score) || 0, 0, 100),
+    status: String(status || "unclear").replace(/\s+/g, " ").trim().slice(0, 60),
+    comment: conciseReviewText(comment, 420),
+  };
+}
+
+function defaultReviewEvaluation(modelName: string | null): MetaFullTextReviewEvaluation {
+  return {
+    score: 0,
+    grade: "unsafe",
+    summary: "No quality review was returned. Treat this result as unsafe until a human reviewer checks the article.",
+    improvement: "Rerun with OpenAI enabled and verify eligibility, extraction cells, and source evidence manually.",
+    criteria: Object.fromEntries(
+      Object.keys(metaReviewEvaluationCriteria).map((key) => [
+        key,
+        reviewCriterion(0, "missing", "This quality criterion was not returned by the analysis."),
+      ]),
+    ),
+    modelName,
+  };
+}
+
+function normalizeReviewEvaluation(
+  value: AiMetaFullTextReviewEvaluation | MetaFullTextReviewEvaluation | undefined,
+  fallback: MetaFullTextReviewEvaluation,
+  modelName: string | null,
+): MetaFullTextReviewEvaluation {
+  const source = (value && typeof value === "object" ? value : {}) as AiMetaFullTextReviewEvaluation;
+  const fallbackCriteria = fallback.criteria ?? {};
+  return {
+    score: clamp(Number(source.score ?? fallback.score ?? 0) || 0, 0, 100),
+    grade: conciseReviewText(source.grade ?? fallback.grade ?? "unsafe", 80),
+    summary: conciseReviewText(source.summary ?? fallback.summary ?? "", 520),
+    improvement: conciseReviewText(source.improvement ?? fallback.improvement ?? "", 520),
+    criteria: normalizeReviewCriteria(source.criteria, fallbackCriteria),
+    modelName: source.modelName ?? modelName ?? fallback.modelName ?? null,
+  };
+}
+
+function normalizeReviewCriteria(
+  value: AiMetaFullTextReviewEvaluation["criteria"] | MetaFullTextReviewEvaluation["criteria"] | undefined,
+  fallback: MetaFullTextReviewEvaluation["criteria"],
+) {
+  const source = (value && typeof value === "object" ? value : {}) as Record<
+    string,
+    Partial<MetaFullTextReviewCriterion>
+  >;
+  return Object.fromEntries(
+    Object.keys(metaReviewEvaluationCriteria).map((key) => {
+      const raw = source[key] ?? fallback[key] ?? reviewCriterion(0, "missing", "Criterion was not evaluated.");
+      return [
+        key,
+        reviewCriterion(
+          Number(raw.score ?? 0),
+          String(raw.status ?? "unclear"),
+          String(raw.comment ?? metaReviewEvaluationCriteria[key as keyof typeof metaReviewEvaluationCriteria]),
+        ),
+      ];
+    }),
+  );
 }
 
 function emptyExtractionRow(columns: string[]) {
@@ -791,11 +1083,51 @@ function conciseEvidence(value: string) {
   return normalized.length > 520 ? `${normalized.slice(0, 517)}...` : normalized;
 }
 
+function conciseReviewText(value: unknown, limit: number) {
+  const normalized = String(value ?? "").replace(/\s+/g, " ").trim();
+  return normalized.length > limit ? `${normalized.slice(0, Math.max(0, limit - 3))}...` : normalized;
+}
+
 function extractJson(value: string) {
   const trimmed = value.trim();
   if (trimmed.startsWith("{")) return trimmed;
   const match = trimmed.match(/\{[\s\S]*\}/);
   return match?.[0] ?? "{}";
+}
+
+function extractOpenAiOutputText(response: unknown) {
+  if (!response || typeof response !== "object") return "";
+  const record = response as Record<string, unknown>;
+  if (typeof record.output_text === "string") return record.output_text;
+
+  const output = record.output;
+  if (Array.isArray(output)) {
+    const chunks = output.flatMap((item) => {
+      if (!item || typeof item !== "object") return [];
+      const content = (item as Record<string, unknown>).content;
+      if (!Array.isArray(content)) return [];
+      return content.flatMap((part) => {
+        if (!part || typeof part !== "object") return [];
+        const partRecord = part as Record<string, unknown>;
+        return typeof partRecord.text === "string" ? [partRecord.text] : [];
+      });
+    });
+    if (chunks.length > 0) return chunks.join("\n");
+  }
+
+  const choices = record.choices;
+  if (Array.isArray(choices)) {
+    const chunks = choices.flatMap((choice) => {
+      if (!choice || typeof choice !== "object") return [];
+      const message = (choice as Record<string, unknown>).message;
+      if (!message || typeof message !== "object") return [];
+      const content = (message as Record<string, unknown>).content;
+      return typeof content === "string" ? [content] : [];
+    });
+    if (chunks.length > 0) return chunks.join("\n");
+  }
+
+  return "";
 }
 
 function clamp(value: number, min: number, max: number) {
