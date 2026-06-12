@@ -67,6 +67,20 @@ seed_runtime_env_from_process() {
   done
 }
 
+ensure_runtime_env_value() {
+  key="$1"
+  expected="$2"
+  current=$(env_value "$key")
+  if [ "$current" != "$expected" ]; then
+    set_env_value "$key" "$expected"
+    if [ -z "$current" ]; then
+      log "Set $key in $RUNTIME_DIR/.env to expected value."
+    else
+      log "Corrected $key in $RUNTIME_DIR/.env from '$current' to '$expected'."
+    fi
+  fi
+}
+
 compose() {
   if docker compose version >/dev/null 2>&1; then
     docker compose "$@"
@@ -93,6 +107,9 @@ prepare_runtime() {
   fi
 
   seed_runtime_env_from_process
+  ensure_runtime_env_value APP_SOURCE_DIR "$APP_DIR"
+  ensure_runtime_env_value CONTAINER_NAME "wiregene-meta"
+  ensure_runtime_env_value WIREGENE_APP_MODE "meta"
 }
 
 env_value() {
@@ -125,10 +142,7 @@ warn_runtime_env() {
     log "WARNING: No admin key found in $RUNTIME_DIR/.env. Set WIREGENE_ADMIN_EMAILS or APP_ADMIN_USERS if an admin badge/permission list is required."
   fi
 
-  warn_unexpected_value APP_SOURCE_DIR "$APP_DIR"
   warn_unexpected_value HOST_PORT "3001"
-  warn_unexpected_value CONTAINER_NAME "wiregene-meta"
-  warn_unexpected_value WIREGENE_APP_MODE "meta"
 }
 
 main() {

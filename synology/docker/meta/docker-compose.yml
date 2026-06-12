@@ -1,5 +1,4 @@
-name: wiregene-meta
-
+version: "3.3"
 services:
   meta:
     image: node:24-bookworm-slim

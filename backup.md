@@ -87,6 +87,32 @@ git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && APP_
 - 로컬 Windows 환경에 `sh`/`bash`가 없어 shell syntax check는 실행하지 못했다.
 - 변경은 POSIX `sh` 문법만 사용했다.
 
+## 2026-06-12 Synology Compose 호환성 및 APP_SOURCE_DIR 오류 처리
+
+사용자 오류 보고:
+
+```text
+WARNING: APP_SOURCE_DIR is '/volume1/docker/research-briefing-platform' in /volume1/docker/meta/.env, expected '/volume1/docker/wiregene-meta-analysis'.
+The Compose file '/volume1/docker/meta/docker-compose.yml' is invalid because:
+'name' does not match any of the regexes: '^x-'
+```
+
+원인:
+
+- `/volume1/docker/meta/.env`에 이전 search repo 경로 `APP_SOURCE_DIR=/volume1/docker/research-briefing-platform`이 남아 있었다.
+- Synology의 구형 `docker-compose`는 Compose spec의 top-level `name:`을 지원하지 않아 `synology/docker/meta/docker-compose.yml`을 읽지 못했다.
+
+변경 내용:
+
+- `synology/docker/meta/docker-compose.yml`: top-level `name:`을 제거하고 `version: "3.3"` + `services:` 구조로 변경했다.
+- `scripts/synology-start-meta.sh`: 실행 시 `/volume1/docker/meta/.env`의 `APP_SOURCE_DIR`, `CONTAINER_NAME`, `WIREGENE_APP_MODE`를 meta 서비스 기대값으로 자동 교정하도록 수정했다.
+
+다음 Synology 실행 명령:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 ## 2026-06-12 Meta 전환 작업
 
 사용자 요청:
