@@ -8,8 +8,6 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const maxUploadBytes = 30 * 1024 * 1024;
-
 const textListSchema = z
   .string()
   .optional()
@@ -41,13 +39,6 @@ export async function POST(request: Request) {
 
   try {
     if (uploaded instanceof File && uploaded.size > 0) {
-      if (uploaded.size > maxUploadBytes) {
-        return NextResponse.json(
-          { error: "업로드 파일은 30MB 이하로 올려 주세요." },
-          { status: 413 },
-        );
-      }
-
       const analysis = await analyzeGrantRfpUpload({
         buffer: Buffer.from(await uploaded.arrayBuffer()),
         fileName: uploaded.name,
@@ -61,12 +52,6 @@ export async function POST(request: Request) {
 
     if (documentUrl) {
       const downloaded = await fetchGrantRfpDocument(documentUrl);
-      if (downloaded.buffer.byteLength > maxUploadBytes) {
-        return NextResponse.json(
-          { error: "직접 다운로드한 원문이 30MB를 초과합니다. 필요한 RFP 파일만 내려받아 업로드해 주세요." },
-          { status: 413 },
-        );
-      }
       const analysis = await analyzeGrantRfpUpload({
         ...downloaded,
         documentUrl,

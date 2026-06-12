@@ -284,6 +284,59 @@ docker exec wiregene-meta node -e "const c=require('@napi-rs/canvas'); console.l
 
 Expected final three values are all `true`. Scanned image-only PDFs may still return no text; that is a separate OCR issue, not this `DOMMatrix` module-load error.
 
+## 2026-06-12 Remove app-side PDF size/page limits
+
+User instruction:
+
+```text
+PDF 용량제한이나 페이지제한이 있으면 안됩니다
+```
+
+Changes:
+
+- `src/app/api/meta-analysis/full-text/analyze/route.ts`: removed the app-side 60MB full-text upload limit and the `Content-Length` pre-check.
+- `src/app/api/grants/rfp-analysis/route.ts`: removed the app-side 30MB upload/download checks for PDF/RFP documents.
+- `src/lib/pdf-text.ts`: changed PDF text extraction from page-limited `parser.getText({ first: ... })` to full-document `parser.getText()`.
+- `src/lib/meta-full-text-analysis.ts`: removed the 120-page PDF extraction cap and removed the 70,000-character pre-analysis slice, so the extracted full text is passed through without app-side truncation.
+- `src/lib/rfp-analysis.ts`: removed the RFP PDF 80-page extraction cap by using the same full-document PDF helper.
+
+Verification:
+
+```powershell
+rg -n "maxUploadBytes|maxPdfPages|getText\(\{ first|extractPdfTextWithPdfParse\([^)]*,|60MB|30MB|처음 .*페이지만|pageLimitApplied" src
+# no matches
+
+npx.cmd tsx -e "import { extractPdfTextWithPdfParse } from './src/lib/pdf-text'; import fs from 'node:fs'; void (async () => { const b = fs.readFileSync('C:/Users/rhhyu/AppData/Local/Temp/wiregene-meta-plan-260611.pdf'); const r = await extractPdfTextWithPdfParse(b); console.log(JSON.stringify({len:r.text.length,totalPages:r.totalPages,preview:r.text.slice(0,40)})); })();"
+# {"len":13156,"totalPages":14,...}
+
+npm.cmd run lint
+# pass
+
+npm.cmd run build
+# pass
+```
+
+Actual API verification:
+
+```text
+POST http://localhost:3018/api/meta-analysis/full-text/analyze
+sample PDF: wiregene-meta-plan-260611.pdf
+HTTP 200
+extractedTextLength: 13156
+truncated: false
+```
+
+Important deployment note:
+
+- The app code no longer enforces PDF upload size or page-count limits.
+- Very large uploads can still be affected by external infrastructure limits, for example reverse proxy, Docker memory, browser memory, DSM/Nginx upload settings, or hosting provider request limits. Those are outside this app code and must be adjusted separately if encountered.
+
+Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 ## 2026-06-12 Excel workbook 표준 workflow 반영
 
 사용자 지시:

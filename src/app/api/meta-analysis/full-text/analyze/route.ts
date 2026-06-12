@@ -6,7 +6,6 @@ import { orchestralPainProject } from "@/lib/meta-projects";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const maxUploadBytes = 60 * 1024 * 1024;
 const maxColumnPayloadCharacters = 4_000;
 
 const columnsSchema = z
@@ -34,11 +33,6 @@ function allowedExtractionColumns(requestedColumns: string[]) {
 }
 
 export async function POST(request: Request) {
-  const contentLength = Number(request.headers.get("content-length") ?? 0);
-  if (Number.isFinite(contentLength) && contentLength > maxUploadBytes + maxColumnPayloadCharacters) {
-    return NextResponse.json({ error: "업로드 파일은 60MB 이하로 올려 주세요." }, { status: 413 });
-  }
-
   const formData = await request.formData().catch(() => null);
   if (!formData) {
     return NextResponse.json(
@@ -50,10 +44,6 @@ export async function POST(request: Request) {
   const uploaded = formData.get("file");
   if (!(uploaded instanceof File) || uploaded.size === 0) {
     return NextResponse.json({ error: "분석할 full-text PDF/TXT 파일을 업로드해 주세요." }, { status: 400 });
-  }
-
-  if (uploaded.size > maxUploadBytes) {
-    return NextResponse.json({ error: "업로드 파일은 60MB 이하로 올려 주세요." }, { status: 413 });
   }
 
   const referenceRecord = formString(formData, "referenceRecord");

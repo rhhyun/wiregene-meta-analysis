@@ -269,7 +269,7 @@ async function extractGrantRfpText(buffer: Buffer, fileName: string, mimeType = 
 }
 
 async function extractPdfText(buffer: Buffer) {
-  const result = await extractPdfTextWithPdfParse(buffer, 80);
+  const result = await extractPdfTextWithPdfParse(buffer);
   return result.text;
 }
 

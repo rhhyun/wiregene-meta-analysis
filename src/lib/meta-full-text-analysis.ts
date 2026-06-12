@@ -82,9 +82,6 @@ type AiMetaFullTextAnalysis = Partial<
   Pick<MetaFullTextAnalysis, "titleGuess" | "eligibility" | "study" | "extraction" | "evidence" | "nextActions">
 >;
 
-const maxAnalysisCharacters = 70_000;
-const maxPdfPages = 120;
-
 const primitiveCellSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
 const aiMetaFullTextAnalysisSchema = z
   .object({
@@ -200,19 +197,14 @@ export async function analyzeMetaFullTextUpload(input: AnalyzeMetaFullTextInput)
   const extracted =
     fileType === "pdf"
       ? await extractPdfText(input.buffer)
-      : { text: input.buffer.toString("utf8"), pageLimitApplied: false, totalPages: null };
+      : { text: input.buffer.toString("utf8"), totalPages: null };
   const text = extracted.text;
   if (!text.trim()) {
     throw new Error("PDF에서 분석 가능한 텍스트를 추출하지 못했습니다. 스캔 PDF라면 OCR 처리 후 다시 업로드해 주세요.");
   }
 
-  const analysisText = normalizeText(text).slice(0, maxAnalysisCharacters);
-  const extractionWarnings = extractionLimitWarnings({
-    fileType,
-    pageLimitApplied: extracted.pageLimitApplied,
-    totalPages: extracted.totalPages,
-    fullTextLength: text.length,
-  });
+  const analysisText = normalizeText(text);
+  const extractionWarnings: string[] = [];
   const fallback = fallbackAnalyzeFullText({
     fileName: input.fileName,
     fileType,
@@ -277,7 +269,7 @@ function detectFileType(fileName: string, mimeType = ""): "pdf" | "text" {
 }
 
 async function extractPdfText(buffer: Buffer) {
-  return extractPdfTextWithPdfParse(buffer, maxPdfPages);
+  return extractPdfTextWithPdfParse(buffer);
 }
 
 function fallbackAnalyzeFullText({
@@ -323,7 +315,7 @@ function fallbackAnalyzeFullText({
     fileName,
     fileType,
     extractedTextLength: text.length,
-    truncated: text.length > maxAnalysisCharacters || extractionWarnings.length > 0,
+    truncated: extractionWarnings.length > 0,
     analyzedAt: new Date().toISOString(),
     aiUsed: false,
     model: null,
@@ -778,31 +770,6 @@ function parseStrictNumber(value: string | undefined) {
   const normalized = value.trim().replace(/,/g, "");
   if (!/^-?\d+(?:\.0+)?$/.test(normalized)) return null;
   return Number(normalized);
-}
-
-function extractionLimitWarnings({
-  fileType,
-  pageLimitApplied,
-  totalPages,
-  fullTextLength,
-}: {
-  fileType: "pdf" | "text";
-  pageLimitApplied: boolean;
-  totalPages: number | null;
-  fullTextLength: number;
-}) {
-  const warnings: string[] = [];
-  if (fileType === "pdf" && pageLimitApplied) {
-    warnings.push(
-      `PDF가 ${totalPages?.toLocaleString("ko-KR") ?? "알 수 없는"}페이지라 처음 ${maxPdfPages}페이지만 텍스트 추출했습니다. supplement/table 누락 가능성을 확인하세요.`,
-    );
-  }
-  if (fullTextLength > maxAnalysisCharacters) {
-    warnings.push(
-      `분석 입력이 ${maxAnalysisCharacters.toLocaleString("ko-KR")}자로 제한되어 후반부 table/supplement가 누락될 수 있습니다.`,
-    );
-  }
-  return warnings;
 }
 
 function conciseEvidence(value: string) {

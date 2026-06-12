@@ -1,6 +1,5 @@
 type PdfParseTextResult = {
   text: string;
-  pageLimitApplied: boolean;
   totalPages: number;
 };
 
@@ -10,7 +9,7 @@ type PdfCanvasModule = {
   Path2D?: unknown;
 };
 
-export async function extractPdfTextWithPdfParse(buffer: Buffer, maxPages: number): Promise<PdfParseTextResult> {
+export async function extractPdfTextWithPdfParse(buffer: Buffer): Promise<PdfParseTextResult> {
   const { createRequire } = await import("module");
   const require = createRequire(import.meta.url);
   installPdfParseNodePolyfills(require);
@@ -18,10 +17,9 @@ export async function extractPdfTextWithPdfParse(buffer: Buffer, maxPages: numbe
   const { PDFParse } = require("pdf-parse") as typeof import("pdf-parse");
   const parser = new PDFParse({ data: new Uint8Array(buffer) });
   try {
-    const result = await parser.getText({ first: maxPages });
+    const result = await parser.getText();
     return {
       text: result.text ?? "",
-      pageLimitApplied: result.total > maxPages,
       totalPages: result.total,
     };
   } finally {
