@@ -37,6 +37,20 @@ Or seed a new Basic Auth pair without editing the file manually:
 APP_BASIC_AUTH_USER='YOUR_LOGIN_ID' APP_BASIC_AUTH_PASSWORD='YOUR_PASSWORD' WIREGENE_ADMIN_EMAILS='YOUR_ADMIN_EMAIL' /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
 ```
 
+If port `3001` is already used, the script prints the running container that
+owns the port and stops before changing anything. If that old container should
+be replaced by Meta, rerun:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && META_STOP_PORT_OWNER=true /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+To test Meta on another temporary port instead:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && HOST_PORT=3003 /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 The default service listens on host port `3001`.
 
 ## Required Source

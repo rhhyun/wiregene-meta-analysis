@@ -113,6 +113,49 @@ The Compose file '/volume1/docker/meta/docker-compose.yml' is invalid because:
 git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
 ```
 
+## 2026-06-12 Synology HOST_PORT 3001 충돌 처리
+
+사용자 오류 보고:
+
+```text
+Bind for 0.0.0.0:3001 failed: port is already allocated
+Host is already in use by another container
+```
+
+원인:
+
+- meta 서비스가 사용하려는 host port `3001`을 이미 다른 Docker 컨테이너가 점유하고 있다.
+- 스크립트가 compose 실행 전에 port owner를 점검하지 않아 Docker compose 에러까지 진행되었다.
+
+변경 내용:
+
+- `scripts/synology-start-meta.sh`: compose 실행 전 host port owner를 `docker ps`로 확인한다.
+- 다른 컨테이너가 port를 쓰고 있으면 컨테이너 ID/name/ports를 로그로 출력하고 중단한다.
+- 기본 동작은 다른 컨테이너를 자동 중지하지 않는다.
+- `META_STOP_PORT_OWNER=true`를 명시했을 때만 port owner container를 `docker stop`한 뒤 meta를 시작한다.
+- `HOST_PORT=3003`처럼 scheduler 환경변수로 다른 port를 지정하면 `/volume1/docker/meta/.env`의 `HOST_PORT`를 갱신하도록 했다.
+- 이전 실패로 생성된 non-running `wiregene-meta` stale container는 자동 제거한다.
+
+다음 실행 명령:
+
+먼저 최신 스크립트로 일반 재시도:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+로그에 표시된 기존 3001 컨테이너를 meta로 교체하려면:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && META_STOP_PORT_OWNER=true /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+기존 3001 컨테이너를 유지하고 임시로 3003에서 meta를 테스트하려면:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && HOST_PORT=3003 /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 ## 2026-06-12 Meta 전환 작업
 
 사용자 요청:

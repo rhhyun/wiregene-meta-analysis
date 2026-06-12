@@ -65,6 +65,16 @@ seed_runtime_env_from_process() {
       log "Filled $key in $RUNTIME_DIR/.env from scheduler environment."
     fi
   done
+
+  for key in HOST_PORT; do
+    value=$(process_env_value "$key")
+    [ -n "$value" ] || continue
+    current=$(env_value "$key")
+    if [ "$current" != "$value" ]; then
+      set_env_value "$key" "$value"
+      log "Set $key in $RUNTIME_DIR/.env from scheduler environment."
+    fi
+  done
 }
 
 ensure_runtime_env_value() {
@@ -145,10 +155,58 @@ warn_runtime_env() {
   warn_unexpected_value HOST_PORT "3001"
 }
 
+cleanup_failed_meta_container() {
+  container_name=$(env_value CONTAINER_NAME)
+  [ -n "$container_name" ] || container_name="wiregene-meta"
+
+  command -v docker >/dev/null 2>&1 || return 0
+  if docker ps --format '{{.Names}}' | grep -x "$container_name" >/dev/null 2>&1; then
+    return 0
+  fi
+  if docker ps -a --format '{{.Names}}' | grep -x "$container_name" >/dev/null 2>&1; then
+    log "Removing non-running stale container: $container_name"
+    docker rm "$container_name" >/dev/null 2>&1 || fail "Could not remove stale container: $container_name"
+  fi
+}
+
+check_host_port_available() {
+  host_port=$(env_value HOST_PORT)
+  [ -n "$host_port" ] || host_port="3001"
+  container_name=$(env_value CONTAINER_NAME)
+  [ -n "$container_name" ] || container_name="wiregene-meta"
+
+  command -v docker >/dev/null 2>&1 || return 0
+
+  port_owners=$(
+    docker ps --format '{{.ID}}	{{.Names}}	{{.Ports}}' |
+      awk -v port="$host_port" 'index($0, ":" port "->") > 0 { print }'
+  )
+  [ -n "$port_owners" ] || return 0
+
+  other_owners=$(printf "%s\n" "$port_owners" | awk -v name="$container_name" '$2 != name { print }')
+  [ -n "$other_owners" ] || return 0
+
+  log "HOST_PORT=$host_port is already used by another running container:"
+  printf "%s\n" "$other_owners" | while IFS= read -r owner; do
+    log "PORT_OWNER: $owner"
+  done
+
+  if [ "${META_STOP_PORT_OWNER:-false}" = "true" ]; then
+    owner_ids=$(printf "%s\n" "$other_owners" | awk '{ print $1 }')
+    log "META_STOP_PORT_OWNER=true; stopping container(s) using HOST_PORT=$host_port."
+    docker stop $owner_ids >/dev/null
+    return 0
+  fi
+
+  fail "HOST_PORT=$host_port is already allocated. Stop the listed container in Synology Container Manager, set HOST_PORT to a free port in $RUNTIME_DIR/.env, or rerun with META_STOP_PORT_OWNER=true if this old container should be replaced."
+}
+
 main() {
   log "Wiregene Meta DSM scheduler start requested."
   prepare_runtime
   warn_runtime_env
+  cleanup_failed_meta_container
+  check_host_port_available
   log "Starting Wiregene Meta from $RUNTIME_DIR."
   compose -f "$RUNTIME_DIR/docker-compose.yml" --env-file "$RUNTIME_DIR/.env" up -d
   log "Wiregene Meta start requested. Check logs with: docker logs wiregene-meta"
