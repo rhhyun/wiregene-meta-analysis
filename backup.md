@@ -75,3 +75,93 @@ Synology 작업 스케줄러 명령:
 ```sh
 /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
 ```
+
+## 2026-06-12 업로드 자료 재반영 및 Meta 워크플로 보강
+
+사용자 문제 제기:
+
+```text
+전에 올린 자료가 전혀 반영되지 않았고, 검색식과 결과에 대한 PRISMA 표도 만들지 못했으며, meta 페이지에서 연구자가 할 수 있는 것이 없다.
+```
+
+첨부/확인 자료:
+
+```text
+G:\내 드라이브\1_Thesis\Review_Pain Violin\Plan\260611 Plan Pain_Asymm musicians_Hyun.pdf
+C:\Users\rhhyu\AppData\Local\Temp\codex-clipboard-411d1438-59b2-46be-bbc4-5dd481680bbe.png
+C:\Users\rhhyu\AppData\Local\Temp\codex-clipboard-66a4fe8e-9663-427c-9ed7-c66ef080abb8.png
+C:\Users\rhhyu\AppData\Local\Temp\codex-clipboard-abd46788-c76b-4c84-851c-09c1740f9138.png
+C:\Users\rhhyu\AppData\Local\Temp\codex-clipboard-864ace2d-7c54-4699-91f3-f68ac1c47c85.png
+C:\Users\rhhyu\AppData\Local\Temp\codex-clipboard-95795aa6-625e-4c83-b172-e2a254a7e01b.png
+```
+
+에이전트 분담 및 검증:
+
+- 검색식/PRISMA 전문 에이전트: 스크린샷 5개 DB 검색식과 결과 수를 추출하고, PDF에는 exact search string과 DB별 hit count가 없다는 점을 확인했다.
+- 메타분석/통계 워크플로 에이전트: 기존 Meta 페이지가 실제 연구 워크플로가 아니라 정적 가이드에 가깝다는 문제를 검토했고, Search log, PRISMA counter, screening decision, extraction validation, analysis readiness가 우선 필요하다고 제안했다.
+
+반영된 DB별 검색 결과:
+
+| Database | Date | n |
+|---|---:|---:|
+| PubMed | 2026-06-07 | 221 |
+| Web of Science | 2026-06-07 | 413 |
+| Scopus | 2026-06-07 | 561 |
+| Embase | 2026-06-07 | 343 |
+| Cochrane | 2026-06-07 | 114 |
+| Total identified |  | 1,652 |
+
+PRISMA/진행 상태:
+
+- Records identified from databases: 1,652
+- Records after deduplication: 259
+- PubMed/WoS/Scopus source linked: 257
+- Abstract text available: 253
+- Full-text assessment queue: 82
+- Core comparative observational: PDF 표에는 18, 본문 계산에는 19로 불일치가 있어 앱에서는 82편 queue 기준을 따르되 주의 문구를 표시한다.
+- 1,393 removed before screening은 `1,652 - 259` 계산값이며 dedup log 확인 전까지 순수 duplicate라고 단정하지 않는다.
+
+변경 내용:
+
+- `package.json`, `package-lock.json`: 버전을 `0.1.2`로 올렸다.
+- `src/lib/version.ts`: UI 표시 버전을 `Ver 1.37`로 올렸다.
+- `src/lib/meta-analysis-pubmed.ts`: 앱 기본 PubMed 검색식을 업로드 스크린샷의 260607 PubMed 구조로 교체하고 English/humans filter를 반영했다.
+- `src/lib/meta-projects.ts`: PubMed, Web of Science, Scopus, Embase, Cochrane exact search string, hit count, limits, export action을 데이터화했다.
+- `src/lib/meta-projects.ts`: PDF의 PRISMA 진행 상태, full-text queue, 6개 extraction block과 전체 extraction columns를 반영했다.
+- `src/components/MetaStudyWorkspace.tsx`: Search 탭에 DB별 search log table, query copy, search log CSV copy, PRISMA 2020 identification table, PRISMA CSV copy, 검색식 불일치 risk flag를 추가했다.
+- `src/components/MetaStudyWorkspace.tsx`: Screening 탭에 82편 full-text triage queue, screening CSV header, two-reviewer fields, fixed exclusion reason 목록을 추가했다.
+- `src/components/MetaStudyWorkspace.tsx`: Extraction 탭에 6개 extraction block, 전체 CSV header copy, CSV validator를 추가했다. Validator는 필수 header 누락과 `*_n > *_total` 오류를 잡는다.
+- `src/components/MetaStudyWorkspace.tsx`: Analysis 탭에 outcome별 analysis readiness dashboard를 추가했다.
+
+검증 결과:
+
+```powershell
+npm.cmd run lint      # 통과
+npm.cmd run build     # 통과
+git diff --check      # 공백 오류 없음
+```
+
+브라우저 검증:
+
+```text
+WIREGENE_APP_MODE=meta / http://127.0.0.1:3012
+Wiregene Meta 표시 확인
+Ver 1.37 표시 확인
+Search 탭: Search log from uploaded screenshots, PRISMA 2020 identification table, 1,652, PubMed 221, Scopus 561 표시 확인
+Screening 탭: Core 19, Instrument-specific 40, Manual 23, exclusion reason 표시 확인
+Extraction 탭: extraction blocks, left/right fields, risk factor fields, CSV validator 표시 확인
+Extraction validator: neck_n 12 / neck_total 10 예시 오류 표시 확인
+Analysis 탭: laterality, TMJ/jaw modifier, meta-regression guard 표시 확인
+```
+
+남은 주의점:
+
+- Cochrane 검색식은 다른 DB보다 좁아 protocol supplement에서 별도 확인이 필요하다.
+- PubMed/Cochrane의 1990-2026 제한과 WoS/Scopus/Cochrane의 English limit는 스크린샷상 명확하지 않아 run log 확인이 필요하다.
+- 실제 포함 논문 수와 분석 가능 outcome은 full-text extraction이 끝나야 확정된다.
+
+Synology 작업 스케줄러 명령:
+
+```sh
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```

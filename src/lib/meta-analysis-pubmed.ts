@@ -10,19 +10,19 @@ export const pubMedSystematicBlocks: PubMedQueryBlock[] = [
     key: "population",
     label: "1. Musician population",
     query:
-      '"Music"[MeSH Terms] OR musician*[Title/Abstract] OR instrumentalist*[Title/Abstract] OR "music student"[Title/Abstract] OR "music students"[Title/Abstract] OR "music school"[Title/Abstract] OR "music schools"[Title/Abstract] OR conservatoire*[Title/Abstract] OR ((conservatory[Title/Abstract] OR conservatories[Title/Abstract]) AND music*[Title/Abstract]) OR orchestra*[Title/Abstract] OR pianist*[Title/Abstract] OR violinist*[Title/Abstract] OR violist*[Title/Abstract] OR cellist*[Title/Abstract] OR guitarist*[Title/Abstract] OR drummer*[Title/Abstract] OR flutist*[Title/Abstract] OR flautist*[Title/Abstract] OR clarinetist*[Title/Abstract] OR saxophonist*[Title/Abstract] OR trumpeter*[Title/Abstract] OR trombonist*[Title/Abstract] OR oboist*[Title/Abstract] OR bassoonist*[Title/Abstract] OR harpist*[Title/Abstract]',
+      'musician*[Title/Abstract] OR instrumentalist*[Title/Abstract] OR orchestra*[Title/Abstract] OR "performing artist*"[Title/Abstract]',
+  },
+  {
+    key: "instrument",
+    label: "2. Instrument terms",
+    query:
+      'violin*[Title/Abstract] OR viola*[Title/Abstract] OR cello*[Title/Abstract] OR "double bass"[Title/Abstract] OR contrabass[Title/Abstract] OR flute*[Title/Abstract] OR guitar*[Title/Abstract] OR mandolin*[Title/Abstract] OR clarinet*[Title/Abstract] OR oboe*[Title/Abstract] OR bassoon*[Title/Abstract] OR trumpet*[Title/Abstract] OR trombone*[Title/Abstract] OR "french horn"[Title/Abstract] OR percussion*[Title/Abstract] OR piano*[Title/Abstract] OR harp[Title/Abstract]',
   },
   {
     key: "condition",
-    label: "2. PRMD/pain condition",
+    label: "3. Pain/PRMD condition",
     query:
-      '"Musculoskeletal Pain"[MeSH Terms] OR "Musculoskeletal Diseases"[MeSH Terms] OR "Cumulative Trauma Disorders"[MeSH Terms] OR "Occupational Diseases"[MeSH Terms] OR musculoskeletal[Title/Abstract] OR pain[Title/Abstract] OR painful[Title/Abstract] OR injur*[Title/Abstract] OR "performance-related musculoskeletal disorder"[Title/Abstract] OR "performance-related musculoskeletal disorders"[Title/Abstract] OR "performance related musculoskeletal disorder"[Title/Abstract] OR "performance related musculoskeletal disorders"[Title/Abstract] OR PRMD[Title/Abstract] OR PRMDs[Title/Abstract] OR "playing-related musculoskeletal disorder"[Title/Abstract] OR "playing-related musculoskeletal disorders"[Title/Abstract] OR "playing related musculoskeletal disorder"[Title/Abstract] OR "playing related musculoskeletal disorders"[Title/Abstract] OR "playing-related pain"[Title/Abstract] OR "playing related pain"[Title/Abstract] OR "overuse injury"[Title/Abstract] OR "overuse injuries"[Title/Abstract] OR "overuse syndrome"[Title/Abstract] OR "overuse syndromes"[Title/Abstract] OR "repetitive strain injury"[Title/Abstract] OR "repetitive stress injury"[Title/Abstract] OR "cumulative trauma"[Title/Abstract]',
-  },
-  {
-    key: "prevalence",
-    label: "3. Prevalence/design",
-    query:
-      '"Prevalence"[MeSH Terms] OR "Epidemiology"[MeSH Terms] OR "Cross-Sectional Studies"[MeSH Terms] OR prevalence[Title/Abstract] OR prevalent[Title/Abstract] OR epidemiolog*[Title/Abstract] OR frequency[Title/Abstract] OR incidence[Title/Abstract] OR survey[Title/Abstract] OR surveys[Title/Abstract] OR questionnaire*[Title/Abstract] OR "cross-sectional"[Title/Abstract] OR "cross sectional"[Title/Abstract]',
+      '"Musculoskeletal Pain"[Mesh] OR "Musculoskeletal Diseases"[Mesh] OR pain[Title/Abstract] OR musculoskeletal[Title/Abstract] OR PRMD[Title/Abstract] OR "playing-related"[Title/Abstract] OR "playing-related musculoskeletal disorder*"[Title/Abstract] OR "performance-related musculoskeletal disorder*"[Title/Abstract] OR "performance-related pain"[Title/Abstract] OR "musician* pain"[Title/Abstract] OR overuse[Title/Abstract] OR injury[Title/Abstract] OR disorder*[Title/Abstract] OR "repetitive strain"[Title/Abstract] OR "overuse syndrome"[Title/Abstract]',
   },
   {
     key: "region",
@@ -34,13 +34,14 @@ export const pubMedSystematicBlocks: PubMedQueryBlock[] = [
 ];
 
 export const pubMedHumanFilter = 'NOT (animals[MeSH Terms] NOT humans[MeSH Terms])';
+export const pubMedEnglishFilter = "english[Language]";
 
 export function buildSystematicPubMedQuery(blocks: PubMedQueryBlock[] = pubMedSystematicBlocks) {
   const combinedBlocks = blocks
     .filter((block) => block.includedInFinal !== false)
     .map((block) => `(${block.query})`)
     .join(" AND ");
-  return `${combinedBlocks} ${pubMedHumanFilter}`;
+  return `${combinedBlocks} ${pubMedHumanFilter} AND ${pubMedEnglishFilter}`;
 }
 
 export function buildPubMedSearchUrl(query: string) {

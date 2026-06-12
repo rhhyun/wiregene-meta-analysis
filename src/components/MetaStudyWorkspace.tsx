@@ -65,12 +65,42 @@ const analysisSafeguards = [
   ["AI/ML position", "clustering, UMAP, heatmap은 분류 타당성 검증용 exploratory analysis로 둡니다."],
 ];
 
-const databasePlan = [
-  ["PubMed", "MeSH + Title/Abstract 검색식, PMID 중심 dedup"],
-  ["Scopus", "TITLE-ABS-KEY 변환, DOI/title 중심 dedup"],
-  ["Web of Science", "TS 검색식 변환, accession number와 DOI 보존"],
-  ["Embase", "Emtree + ti/ab 변환, Embase ID 보존"],
-  ["Cochrane", "CENTRAL/RIS import, source tag 보존"],
+const screeningDecisionColumns = [
+  "record_id",
+  "title",
+  "doi",
+  "pmid",
+  "source_database",
+  "ai_priority",
+  "reviewer_1_decision",
+  "reviewer_2_decision",
+  "conflict",
+  "final_decision",
+  "exclusion_reason",
+  "full_text_status",
+  "notes",
+];
+
+const fullTextExclusionReasons = [
+  "no region-specific pain outcome",
+  "no instrument-specific data",
+  "no extractable denominator",
+  "biomechanics only without pain outcome",
+  "review/book chapter",
+  "conference abstract",
+  "wrong population",
+  "non-English full text",
+  "RCT/intervention/treatment-effect study",
+];
+
+const analysisReadinessRows = [
+  ["Overall PRMD prevalence", "overall_PRMD_n + overall_PRMD_total", "Pending full-text extraction"],
+  ["Neck prevalence", "neck_n + neck_total by asymmetry_class", "Primary region outcome"],
+  ["Left/right shoulder laterality", "left_shoulder_n/total and right_shoulder_n/total", "Novelty-critical"],
+  ["Left/right wrist-hand laterality", "left_wrist_hand_n/total and right_wrist_hand_n/total", "Novelty-critical"],
+  ["Upper/lower back prevalence", "upper_back_n/total and lower_back_n/total", "Moderate asymmetry hypothesis"],
+  ["TMJ/jaw modifier", "tmj_jaw_n + tmj_jaw_total + orofacial modifier", "Brass/woodwind sensitivity"],
+  ["Meta-regression", ">=10 studies per covariate with asymmetry_class and recall_window", "Not ready until extraction count confirms"],
 ];
 
 const methodSentences = [
@@ -227,7 +257,7 @@ function ProjectWorkspace({
         {stage === "overview" ? <OverviewStage project={project} pubMedUrl={pubMedUrl} /> : null}
         {stage === "protocol" ? <ProtocolStage project={project} /> : null}
         {stage === "search" ? <SearchStage project={project} pubMedQuery={pubMedQuery} pubMedUrl={pubMedUrl} /> : null}
-        {stage === "screening" ? <ScreeningStage /> : null}
+        {stage === "screening" ? <ScreeningStage project={project} /> : null}
         {stage === "extraction" ? <ExtractionStage project={project} /> : null}
         {stage === "analysis" ? <AnalysisStage project={project} /> : null}
         {stage === "manuscript" ? <ManuscriptStage project={project} /> : null}
@@ -331,21 +361,76 @@ function SearchStage({
     <div className="grid gap-5">
       <StageHeader
         eyebrow="Search Design"
-        title="최근 10년 우선, 부족하면 기간 제한 없이 확장합니다"
-        detail="검색 결과는 중요도, 최신순, journal impact, method relevance로 정렬 가능하게 만드는 방향이 가장 효율적입니다."
+        title="업로드 자료 기반 DB별 검색식과 PRISMA 식별 수"
+        detail="PDF에는 정확한 검색식이 없고, 2026-06-07 스크린샷에만 DB별 검색식과 결과 수가 있습니다. 이 표를 protocol supplement와 PRISMA identification source로 고정합니다."
       />
-      <div className="grid gap-3 lg:grid-cols-2">
-        {project.searchBlocks.map((block) => (
-          <article key={block.label} className="rounded-md border border-zinc-200 p-4">
-            <p className="text-xs font-semibold uppercase text-emerald-700">{block.role}</p>
-            <h3 className="mt-1 text-sm font-semibold text-zinc-950">{block.label}</h3>
-            <p className="mt-3 rounded-md bg-zinc-50 p-3 text-sm leading-6 text-zinc-700">{block.query}</p>
-          </article>
-        ))}
+      <div className="grid gap-3 lg:grid-cols-4">
+        <Metric label="Records identified" value={totalSearchResults(project).toLocaleString()} />
+        <Metric label="Deduplicated master" value={prismaCount(project, "Records after deduplication")} />
+        <Metric label="Abstract text" value={prismaCount(project, "Records with abstract text available")} />
+        <Metric label="Full-text queue" value={prismaCount(project, "Full-text assessment queue")} />
       </div>
+      <section className="rounded-md border border-zinc-200">
+        <div className="flex flex-col gap-3 border-b border-zinc-200 bg-zinc-50 p-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-zinc-950">Search log from uploaded screenshots</p>
+            <p className="mt-1 text-xs leading-5 text-zinc-500">
+              각 행은 검색일, DB, 정확 검색식, 결과 수, 제한 조건, export 작업을 보존합니다.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void navigator.clipboard?.writeText(searchLogCsv(project))}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-sm font-semibold text-zinc-700 transition hover:border-emerald-300 hover:bg-emerald-50"
+          >
+            <ClipboardList className="h-4 w-4" aria-hidden />
+            search log CSV 복사
+          </button>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[940px] border-collapse text-left text-sm">
+            <thead className="bg-white text-xs uppercase text-zinc-500">
+              <tr>
+                <th className="border-b border-zinc-200 px-4 py-3">Database</th>
+                <th className="border-b border-zinc-200 px-4 py-3">Date</th>
+                <th className="border-b border-zinc-200 px-4 py-3">Records</th>
+                <th className="border-b border-zinc-200 px-4 py-3">Limits / Risk</th>
+                <th className="border-b border-zinc-200 px-4 py-3">Export action</th>
+                <th className="border-b border-zinc-200 px-4 py-3">Query</th>
+              </tr>
+            </thead>
+            <tbody>
+              {project.searchRuns.map((run) => (
+                <tr key={run.database}>
+                  <td className="border-b border-zinc-100 px-4 py-3 font-semibold text-zinc-950">{run.database}</td>
+                  <td className="border-b border-zinc-100 px-4 py-3 text-zinc-700">{run.searchedAt}</td>
+                  <td className="border-b border-zinc-100 px-4 py-3">
+                    <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">
+                      {run.resultCount.toLocaleString()}
+                    </span>
+                  </td>
+                  <td className="border-b border-zinc-100 px-4 py-3 text-xs leading-5 text-zinc-600">{run.limits}</td>
+                  <td className="border-b border-zinc-100 px-4 py-3 text-xs leading-5 text-zinc-600">{run.exportAction}</td>
+                  <td className="border-b border-zinc-100 px-4 py-3">
+                    <button
+                      type="button"
+                      onClick={() => void navigator.clipboard?.writeText(run.query)}
+                      className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-zinc-300 px-2 text-xs font-semibold text-zinc-700 transition hover:border-emerald-300 hover:bg-emerald-50"
+                    >
+                      <ClipboardList className="h-3.5 w-3.5" aria-hidden />
+                      복사
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <section className="grid gap-4 rounded-md border border-emerald-200 bg-emerald-50 p-4 xl:grid-cols-[1fr_16rem]">
         <div className="min-w-0">
-          <p className="text-sm font-semibold text-emerald-800">Final PubMed query</p>
+          <p className="text-sm font-semibold text-emerald-800">PubMed query used by the app</p>
           <pre className="mt-3 max-h-64 overflow-auto rounded-md bg-white p-4 text-xs leading-5 text-zinc-700">{pubMedQuery}</pre>
         </div>
         <div className="grid content-start gap-3">
@@ -364,30 +449,125 @@ function SearchStage({
             className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-emerald-300 bg-white px-3 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100"
           >
             <ClipboardList className="h-4 w-4" aria-hidden />
-            검색식 복사
+            PubMed 검색식 복사
           </button>
         </div>
       </section>
-      <div className="grid gap-3 lg:grid-cols-5">
-        {databasePlan.map(([database, detail]) => (
-          <div key={database} className="rounded-md border border-zinc-200 p-3">
-            <p className="text-sm font-semibold text-zinc-950">{database}</p>
-            <p className="mt-2 text-xs leading-5 text-zinc-600">{detail}</p>
+
+      <section className="rounded-md border border-zinc-200">
+        <div className="flex flex-col gap-3 border-b border-zinc-200 bg-zinc-50 p-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-zinc-950">PRISMA 2020 identification table</p>
+            <p className="mt-1 text-xs leading-5 text-zinc-500">
+              1,393건은 1,652 - 259 계산값입니다. dedup log 확인 전까지 순수 duplicates라고 단정하지 않습니다.
+            </p>
           </div>
-        ))}
+          <button
+            type="button"
+            onClick={() => void navigator.clipboard?.writeText(prismaCsv(project))}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-sm font-semibold text-zinc-700 transition hover:border-emerald-300 hover:bg-emerald-50"
+          >
+            <FileSpreadsheet className="h-4 w-4" aria-hidden />
+            PRISMA CSV 복사
+          </button>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[760px] border-collapse text-left text-sm">
+            <thead className="bg-white text-xs uppercase text-zinc-500">
+              <tr>
+                <th className="border-b border-zinc-200 px-4 py-3">PRISMA item</th>
+                <th className="border-b border-zinc-200 px-4 py-3">n</th>
+                <th className="border-b border-zinc-200 px-4 py-3">Status</th>
+                <th className="border-b border-zinc-200 px-4 py-3">Source / note</th>
+              </tr>
+            </thead>
+            <tbody>
+              {project.prismaRows.map((row) => (
+                <tr key={row.step}>
+                  <td className="border-b border-zinc-100 px-4 py-3 font-semibold text-zinc-950">{row.step}</td>
+                  <td className="border-b border-zinc-100 px-4 py-3 text-zinc-700">
+                    {row.count === null ? "TBD" : row.count.toLocaleString()}
+                  </td>
+                  <td className="border-b border-zinc-100 px-4 py-3">
+                    <StatusBadge status={row.status} />
+                  </td>
+                  <td className="border-b border-zinc-100 px-4 py-3 text-sm leading-6 text-zinc-600">{row.note}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <div className="rounded-md border border-amber-200 bg-amber-50 p-4">
+        <p className="text-sm font-semibold text-amber-900">Search consistency flags</p>
+        <div className="mt-2 grid gap-2 text-sm leading-6 text-amber-900 lg:grid-cols-2">
+          <p>PubMed/Cochrane screenshot에는 명시적 1990-2026 제한이 보이지 않아 supplement에서 확인 필요.</p>
+          <p>Cochrane 식은 다른 DB보다 좁고 orchestra/performing artist/다수 악기명이 누락되어 sensitivity flag로 표시.</p>
+          <p>Embase/WoS의 horn은 Scopus/PubMed의 french horn보다 넓어 noise 가능성 있음.</p>
+          <p>English limit는 PubMed/Embase만 스크린샷에 명확하며 WoS/Scopus/Cochrane은 run log 확인 필요.</p>
+        </div>
       </div>
     </div>
   );
 }
 
-function ScreeningStage() {
+function ScreeningStage({ project }: { project: MetaStudyProject }) {
   return (
     <div className="grid gap-5">
       <StageHeader
         eyebrow="Screening"
-        title="AI는 속도를 높이고, 판단은 reviewer 구조로 고정합니다"
-        detail="검색 결과가 들어오면 title/abstract relevance ranking으로 먼저 정렬하고, PRISMA count와 exclusion reason을 자동 누적합니다."
+        title="259편 screening master에서 82편 full-text queue를 먼저 처리합니다"
+        detail="PDF 기준 strict abstract screening은 완료되어 있고, 지금 연구자가 해야 할 일은 Core 19 + Instrument-specific 40 + Manual 23의 denominator와 부위별 n/total 확인입니다."
       />
+      <section className="rounded-md border border-zinc-200">
+        <div className="flex flex-col gap-3 border-b border-zinc-200 bg-zinc-50 p-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-zinc-950">Full-text triage queue</p>
+            <p className="mt-1 text-xs leading-5 text-zinc-500">Core count는 PDF 표 18, 본문 계산 19로 불일치합니다. 앱은 본문 계산의 82편 queue를 따르되 note로 검증합니다.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void navigator.clipboard?.writeText(screeningDecisionColumns.join(","))}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-sm font-semibold text-zinc-700 transition hover:border-emerald-300 hover:bg-emerald-50"
+          >
+            <FileSpreadsheet className="h-4 w-4" aria-hidden />
+            screening CSV header 복사
+          </button>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[820px] border-collapse text-left text-sm">
+            <thead className="bg-white text-xs uppercase text-zinc-500">
+              <tr>
+                <th className="border-b border-zinc-200 px-4 py-3">Queue</th>
+                <th className="border-b border-zinc-200 px-4 py-3">n</th>
+                <th className="border-b border-zinc-200 px-4 py-3">Priority</th>
+                <th className="border-b border-zinc-200 px-4 py-3">Action</th>
+                <th className="border-b border-zinc-200 px-4 py-3">Decision rule</th>
+              </tr>
+            </thead>
+            <tbody>
+              {project.screeningQueue.map((item) => (
+                <tr key={item.category}>
+                  <td className="border-b border-zinc-100 px-4 py-3 font-semibold text-zinc-950">{item.category}</td>
+                  <td className="border-b border-zinc-100 px-4 py-3 text-zinc-700">{item.count.toLocaleString()}</td>
+                  <td className="border-b border-zinc-100 px-4 py-3">
+                    <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">
+                      {item.priority}
+                    </span>
+                  </td>
+                  <td className="border-b border-zinc-100 px-4 py-3 text-sm leading-6 text-zinc-600">{item.action}</td>
+                  <td className="border-b border-zinc-100 px-4 py-3 text-sm leading-6 text-zinc-600">{item.decisionRule}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <div className="grid gap-3 lg:grid-cols-2">
+        <Checklist title="Two-reviewer decision fields" items={screeningDecisionColumns} />
+        <Checklist title="Fixed full-text exclusion reasons" items={fullTextExclusionReasons} />
+      </div>
       <div className="grid gap-3 lg:grid-cols-2">
         {screeningRules.map(([title, detail]) => (
           <CheckCard key={title} title={title} detail={detail} />
@@ -398,12 +578,15 @@ function ScreeningStage() {
 }
 
 function ExtractionStage({ project }: { project: MetaStudyProject }) {
+  const [csvText, setCsvText] = useState("");
+  const validation = useMemo(() => validateExtractionCsv(csvText, project.extractionColumns), [csvText, project.extractionColumns]);
+
   return (
     <div className="grid gap-5">
       <StageHeader
         eyebrow="Extraction"
-        title="Data sheet는 분석 코드가 바로 읽을 수 있는 형태로 고정합니다"
-        detail="부위별 n/total, 좌우성, recall window, pain definition, asymmetry class, covariate를 한 번에 추출합니다."
+        title="PDF의 6개 extraction 블록을 실제 CSV 템플릿과 검증기로 고정합니다"
+        detail="숫자가 있으면 원 논문 table, figure, supplement에서 denominator와 numerator를 그대로 입력하고, n/total이 없으면 quantitative synthesis에 넣지 않습니다."
       />
       <button
         type="button"
@@ -413,13 +596,51 @@ function ExtractionStage({ project }: { project: MetaStudyProject }) {
         <FileSpreadsheet className="h-4 w-4" aria-hidden />
         CSV header 복사
       </button>
-      <div className="flex flex-wrap gap-2">
-        {project.extractionColumns.map((column) => (
-          <span key={column} className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-semibold text-zinc-600">
-            {column}
-          </span>
+      <div className="grid gap-3 lg:grid-cols-2">
+        {project.extractionSections.map((section) => (
+          <section key={section.section} className="rounded-md border border-zinc-200 p-4">
+            <h3 className="text-sm font-semibold text-zinc-950">{section.section}</h3>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {section.fields.map((field) => (
+                <span key={field} className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-semibold text-zinc-600">
+                  {field}
+                </span>
+              ))}
+            </div>
+          </section>
         ))}
       </div>
+      <section className="grid gap-4 rounded-md border border-emerald-200 bg-emerald-50 p-4 lg:grid-cols-[1fr_18rem]">
+        <label className="grid gap-2 text-sm font-semibold text-emerald-900">
+          Extraction CSV validator
+          <textarea
+            value={csvText}
+            onChange={(event) => setCsvText(event.target.value)}
+            rows={9}
+            placeholder={`${project.extractionColumns.slice(0, 8).join(",")},...\nS001,Author,2024,Title,Journal,Korea,10.0000/example,123456,...`}
+            className="rounded-md border border-emerald-300 bg-white px-3 py-2 text-sm font-normal leading-6 text-zinc-800 outline-none focus:border-emerald-500"
+          />
+        </label>
+        <div className="grid content-start gap-3">
+          <Metric label="Rows checked" value={validation.rowCount.toLocaleString()} />
+          <Metric label="Errors" value={validation.errors.length.toLocaleString()} />
+          <Metric label="Warnings" value={validation.warnings.length.toLocaleString()} />
+          <button
+            type="button"
+            onClick={() => void navigator.clipboard?.writeText(project.extractionColumns.join(","))}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-emerald-300 bg-white px-3 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100"
+          >
+            <ClipboardList className="h-4 w-4" aria-hidden />
+            header 다시 복사
+          </button>
+        </div>
+      </section>
+      {validation.errors.length > 0 || validation.warnings.length > 0 ? (
+        <section className="grid gap-3 lg:grid-cols-2">
+          <ValidationList title="Errors" items={validation.errors} tone="error" />
+          <ValidationList title="Warnings" items={validation.warnings} tone="warning" />
+        </section>
+      ) : null}
     </div>
   );
 }
@@ -448,6 +669,34 @@ function AnalysisStage({ project }: { project: MetaStudyProject }) {
           <CheckCard key={title} title={title} detail={detail} />
         ))}
       </div>
+      <section className="rounded-md border border-zinc-200">
+        <div className="border-b border-zinc-200 bg-zinc-50 p-4">
+          <p className="text-sm font-semibold text-zinc-950">Analysis readiness dashboard</p>
+          <p className="mt-1 text-xs leading-5 text-zinc-500">
+            현재는 extraction 전이므로 모든 정량 분석은 pending입니다. 각 outcome의 n/total이 들어오면 prevalence MA와 laterality 분석 가능 여부를 확인합니다.
+          </p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[760px] border-collapse text-left text-sm">
+            <thead className="bg-white text-xs uppercase text-zinc-500">
+              <tr>
+                <th className="border-b border-zinc-200 px-4 py-3">Outcome</th>
+                <th className="border-b border-zinc-200 px-4 py-3">Required fields</th>
+                <th className="border-b border-zinc-200 px-4 py-3">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {analysisReadinessRows.map(([outcome, required, status]) => (
+                <tr key={outcome}>
+                  <td className="border-b border-zinc-100 px-4 py-3 font-semibold text-zinc-950">{outcome}</td>
+                  <td className="border-b border-zinc-100 px-4 py-3 text-sm leading-6 text-zinc-600">{required}</td>
+                  <td className="border-b border-zinc-100 px-4 py-3 text-sm leading-6 text-zinc-600">{status}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
     </div>
   );
 }
@@ -478,6 +727,222 @@ function ManuscriptStage({ project }: { project: MetaStudyProject }) {
         </div>
       </section>
     </div>
+  );
+}
+
+function totalSearchResults(project: MetaStudyProject) {
+  return project.searchRuns.reduce((total, run) => total + run.resultCount, 0);
+}
+
+function prismaCount(project: MetaStudyProject, step: string) {
+  const row = project.prismaRows.find((candidate) => candidate.step === step);
+  return row?.count === null || row?.count === undefined ? "TBD" : row.count.toLocaleString();
+}
+
+function searchLogCsv(project: MetaStudyProject) {
+  return csvRows([
+    ["database", "searched_at", "label", "result_count", "limits", "source", "export_action", "query"],
+    ...project.searchRuns.map((run) => [
+      run.database,
+      run.searchedAt,
+      run.label,
+      String(run.resultCount),
+      run.limits,
+      run.source,
+      run.exportAction,
+      run.query,
+    ]),
+  ]);
+}
+
+function prismaCsv(project: MetaStudyProject) {
+  const identified = totalSearchResults(project);
+  const deduplicated = project.prismaRows.find((row) => row.step === "Records after deduplication")?.count ?? null;
+  const removedBeforeScreening =
+    typeof deduplicated === "number" ? identified - deduplicated : null;
+
+  return csvRows([
+    ["prisma_item", "n", "status", "source_note"],
+    ["Records identified from databases", String(identified), "locked", "Sum of uploaded screenshot counts"],
+    [
+      "Records removed before screening",
+      removedBeforeScreening === null ? "TBD" : String(removedBeforeScreening),
+      "working",
+      "Calculated as identified minus deduplicated master; do not label as pure duplicates until dedup log confirms",
+    ],
+    ...project.prismaRows.map((row) => [
+      row.step,
+      row.count === null ? "TBD" : String(row.count),
+      row.status,
+      row.note,
+    ]),
+  ]);
+}
+
+function csvRows(rows: string[][]) {
+  return rows
+    .map((row) =>
+      row
+        .map((cell) => {
+          const safeCell = cell.replaceAll('"', '""');
+          return /[",\n\r]/.test(safeCell) ? `"${safeCell}"` : safeCell;
+        })
+        .join(","),
+    )
+    .join("\n");
+}
+
+function StatusBadge({ status }: { status: "locked" | "working" | "pending" }) {
+  const styles = {
+    locked: "bg-emerald-50 text-emerald-700",
+    working: "bg-amber-50 text-amber-700",
+    pending: "bg-zinc-100 text-zinc-600",
+  };
+
+  return (
+    <span className={`rounded-full px-2 py-1 text-xs font-semibold ${styles[status]}`}>
+      {status}
+    </span>
+  );
+}
+
+type ExtractionValidation = {
+  rowCount: number;
+  errors: string[];
+  warnings: string[];
+};
+
+function validateExtractionCsv(csvText: string, expectedColumns: string[]): ExtractionValidation {
+  const lines = csvText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length === 0) {
+    return { rowCount: 0, errors: [], warnings: [] };
+  }
+
+  const headers = parseCsvLine(lines[0]);
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  const required = [
+    "study_id",
+    "first_author",
+    "year",
+    "specific_instrument",
+    "asymmetry_class",
+    "pain_definition",
+    "recall_window",
+  ];
+  const missingRequired = required.filter((column) => !headers.includes(column));
+  if (missingRequired.length > 0) {
+    errors.push(`필수 header 누락: ${missingRequired.join(", ")}`);
+  }
+
+  const unknownHeaders = headers.filter((header) => !expectedColumns.includes(header));
+  if (unknownHeaders.length > 0) {
+    warnings.push(`템플릿에 없는 header: ${unknownHeaders.join(", ")}`);
+  }
+
+  lines.slice(1).forEach((line, index) => {
+    const rowNumber = index + 2;
+    const cells = parseCsvLine(line);
+    if (cells.length !== headers.length) {
+      errors.push(`row ${rowNumber}: header ${headers.length}개와 cell ${cells.length}개가 맞지 않습니다.`);
+    }
+
+    headers.forEach((header, columnIndex) => {
+      if (!header.endsWith("_n")) return;
+      const totalHeader = `${header.slice(0, -2)}_total`;
+      const totalIndex = headers.indexOf(totalHeader);
+      if (totalIndex < 0) return;
+
+      const eventValue = toNumber(cells[columnIndex]);
+      const totalValue = toNumber(cells[totalIndex]);
+      if (eventValue === null || totalValue === null) return;
+      if (eventValue > totalValue) {
+        errors.push(`row ${rowNumber}: ${header}(${eventValue})가 ${totalHeader}(${totalValue})보다 큽니다.`);
+      }
+    });
+  });
+
+  if (lines.length === 1) {
+    warnings.push("header만 있습니다. 최소 1개 study row를 붙여 넣으면 n/total 검증을 수행합니다.");
+  }
+
+  return {
+    rowCount: Math.max(lines.length - 1, 0),
+    errors,
+    warnings,
+  };
+}
+
+function parseCsvLine(line: string) {
+  const cells: string[] = [];
+  let cell = "";
+  let inQuotes = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const nextChar = line[index + 1];
+
+    if (char === '"' && inQuotes && nextChar === '"') {
+      cell += '"';
+      index += 1;
+      continue;
+    }
+
+    if (char === '"') {
+      inQuotes = !inQuotes;
+      continue;
+    }
+
+    if (char === "," && !inQuotes) {
+      cells.push(cell.trim());
+      cell = "";
+      continue;
+    }
+
+    cell += char;
+  }
+
+  cells.push(cell.trim());
+  return cells;
+}
+
+function toNumber(value: string | undefined) {
+  if (!value) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function ValidationList({
+  title,
+  items,
+  tone,
+}: {
+  title: string;
+  items: string[];
+  tone: "error" | "warning";
+}) {
+  const color =
+    tone === "error"
+      ? "border-rose-200 bg-rose-50 text-rose-800"
+      : "border-amber-200 bg-amber-50 text-amber-800";
+
+  return (
+    <section className={`rounded-md border p-4 ${color}`}>
+      <h3 className="text-sm font-semibold">{title}</h3>
+      {items.length > 0 ? (
+        <ul className="mt-2 grid gap-1 text-sm leading-6">
+          {items.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-2 text-sm leading-6">없음</p>
+      )}
+    </section>
   );
 }
 
