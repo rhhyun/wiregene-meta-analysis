@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Research Briefing Platform",
-  description: "PubMed, news, database, and Zotero connected research briefing platform.",
+  title: "Wiregene Meta",
+  description: "Wiregene systematic review and meta-analysis workspace.",
 };
 
 export default function RootLayout({

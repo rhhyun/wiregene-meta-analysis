@@ -79,7 +79,9 @@ export default async function Home({
   const initialSearchQuery = Array.isArray(params.q) ? params.q[0] : params.q;
   const requestHeaders = await headers();
   const appMode = getWiregeneAppMode(requestHeaders.get("host"));
-  const currentUser = getCurrentWiregeneUser(requestHeaders.get("authorization"));
+  const currentUser = await getCurrentWiregeneUser(requestHeaders.get("authorization"), {
+    mode: appMode,
+  });
 
   if (appMode === "meta") {
     return (

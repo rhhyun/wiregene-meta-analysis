@@ -81,7 +81,10 @@ async function isPortalAccountCredentialAllowed(
   if (!secret) return false;
 
   try {
-    const response = await fetch(process.env.PORTAL_AUTH_CHECK_URL ?? "https://portal.wiregene.com/api/auth/check", {
+    const authCheckUrl =
+      normalizeAuthEnvValue(process.env.PORTAL_AUTH_CHECK_URL) ||
+      "https://portal.wiregene.com/api/auth/check";
+    const response = await fetch(authCheckUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
