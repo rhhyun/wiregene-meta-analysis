@@ -10,6 +10,7 @@ type MetaAiSettingsSummary = {
   modelName: string;
   apiKeyMasked: string | null;
   apiKeySource: "saved" | "environment" | "missing";
+  storageBackend: "local-json" | "google-drive";
   storagePath: string;
   updatedAt: string | null;
   updatedBy: string | null;
@@ -115,9 +116,13 @@ export function MetaAiSettingsPanel() {
         </div>
       ) : (
         <div className="mt-5 grid gap-4">
-          <div className="grid gap-3 lg:grid-cols-3">
+          <div className="grid gap-3 lg:grid-cols-4">
             <StatusBox label="API key" value={settings?.apiKeyMasked ?? "not configured"} />
             <StatusBox label="Source" value={sourceLabels[settings?.apiKeySource ?? "missing"]} />
+            <StatusBox
+              label="Storage"
+              value={settings ? `${settings.storageBackend}: ${settings.storagePath}` : "not loaded"}
+            />
             <StatusBox label="Updated" value={settings?.updatedAt ? new Date(settings.updatedAt).toLocaleString("ko-KR") : "not saved"} />
           </div>
 

@@ -2,6 +2,11 @@ import crypto from "crypto";
 import { promises as fs } from "fs";
 import path from "path";
 import { config } from "./config";
+import { getGoogleDriveAuthMode } from "./google-drive-config";
+import {
+  readTextFileFromGoogleDrive,
+  writeTextFileToGoogleDrive,
+} from "./google-drive-storage";
 
 export type MetaAiSettingsSummary = {
   providerType: "OPENAI";
@@ -9,6 +14,7 @@ export type MetaAiSettingsSummary = {
   modelName: string;
   apiKeyMasked: string | null;
   apiKeySource: "saved" | "environment" | "missing";
+  storageBackend: "local-json" | "google-drive";
   storagePath: string;
   updatedAt: string | null;
   updatedBy: string | null;
@@ -41,6 +47,7 @@ type MetaAiSettingsUpdate = {
 type MetaAiSettingsStorageErrorDetails = {
   operation: "read" | "write" | "backup-corrupt-json";
   path: string;
+  backend?: MetaAiSettingsSummary["storageBackend"];
   code?: string;
   message: string;
   help: string;
@@ -60,6 +67,7 @@ export class MetaAiSettingsStorageError extends Error {
 const defaultModelName = "gpt-5-nano";
 const encryptionPrefix = "aesgcm:v1:";
 const defaultStoragePath = ".data/meta/meta-ai-settings.json";
+const defaultDriveFileName = "meta-ai-settings.json";
 
 export async function getMetaAiSettingsSummary(): Promise<MetaAiSettingsSummary> {
   const settings = await readStoredMetaAiSettings();
@@ -117,7 +125,60 @@ function metaAiSettingsStoragePath() {
   return path.resolve(/* turbopackIgnore: true */ process.cwd(), configured || defaultStoragePath);
 }
 
+function metaAiSettingsStorageBackend(): MetaAiSettingsSummary["storageBackend"] {
+  const configured = process.env.META_AI_SETTINGS_STORAGE_BACKEND?.trim().toLowerCase();
+  if (configured === "google-drive" || configured === "local-json") return configured;
+  if (isServerlessRuntime() && getGoogleDriveAuthMode()) return "google-drive";
+  return "local-json";
+}
+
+function isGoogleDriveMetaAiStorage() {
+  return metaAiSettingsStorageBackend() === "google-drive";
+}
+
+function metaAiSettingsDriveFileName() {
+  const explicit = process.env.META_AI_SETTINGS_DRIVE_FILENAME?.trim();
+  if (explicit) return explicit;
+
+  const configuredPath = process.env.META_AI_SETTINGS_STORAGE_PATH?.trim();
+  const baseName = path.basename(configuredPath || defaultStoragePath);
+  return baseName || defaultDriveFileName;
+}
+
+function metaAiSettingsDriveFileId() {
+  return process.env.META_AI_SETTINGS_DRIVE_FILE_ID?.trim() ?? "";
+}
+
+function metaAiSettingsStorageLocation() {
+  return isGoogleDriveMetaAiStorage()
+    ? `google-drive:${metaAiSettingsDriveFileName()}`
+    : metaAiSettingsStoragePath();
+}
+
 async function readStoredMetaAiSettings(): Promise<StoredMetaAiSettings> {
+  if (isGoogleDriveMetaAiStorage()) {
+    const fileName = metaAiSettingsDriveFileName();
+    const targetPath = `google-drive:${fileName}`;
+    ensureGoogleDriveMetaAiStorageConfigured("read", fileName);
+
+    let raw: string | null;
+    try {
+      raw = await readTextFileFromGoogleDrive(fileName, metaAiSettingsDriveFileId());
+    } catch (error) {
+      throw storageError(error, "read", targetPath);
+    }
+
+    if (!raw) return emptySettings();
+
+    try {
+      return normalizeStoredSettings(JSON.parse(raw));
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) throw storageError(error, "read", targetPath);
+      await moveCorruptGoogleDriveSettingsAside(fileName, raw, error);
+      return emptySettings();
+    }
+  }
+
   const targetPath = metaAiSettingsStoragePath();
   let raw: string;
 
@@ -138,15 +199,29 @@ async function readStoredMetaAiSettings(): Promise<StoredMetaAiSettings> {
 }
 
 async function writeStoredMetaAiSettings(settings: StoredMetaAiSettings) {
+  if (isGoogleDriveMetaAiStorage()) {
+    const fileName = metaAiSettingsDriveFileName();
+    const targetPath = `google-drive:${fileName}`;
+    ensureGoogleDriveMetaAiStorageConfigured("write", fileName);
+
+    try {
+      await writeTextFileToGoogleDrive(fileName, JSON.stringify(settings, null, 2), metaAiSettingsDriveFileId());
+      return;
+    } catch (error) {
+      throw storageError(error, "write", targetPath);
+    }
+  }
+
   const targetPath = metaAiSettingsStoragePath();
   if (isServerlessReadOnlyPath(targetPath)) {
     throw new MetaAiSettingsStorageError("meta AI settings storage write failed.", {
       operation: "write",
       path: targetPath,
+      backend: "local-json",
       code: "SERVERLESS_LOCAL_STORAGE",
       message: "The deployment filesystem is read-only, so Meta AI settings cannot be saved as a local JSON file.",
       help:
-        "Run Meta on Synology/local Docker for in-app key storage, or set OPENAI_API_KEY as a deployment environment variable. For Synology, update and restart with scripts/synology-start-meta.sh.",
+        "For Vercel, set META_AI_SETTINGS_STORAGE_BACKEND=google-drive with Google Drive credentials, or set OPENAI_API_KEY as a deployment environment variable. For Synology/local Docker, update and restart with scripts/synology-start-meta.sh.",
     });
   }
 
@@ -171,6 +246,22 @@ async function moveCorruptSettingsAside(targetPath: string, parseError: SyntaxEr
   }
 }
 
+async function moveCorruptGoogleDriveSettingsAside(fileName: string, raw: string, parseError: SyntaxError) {
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const backupName = `${fileName}.corrupt-${stamp}`;
+  try {
+    await writeTextFileToGoogleDrive(backupName, raw);
+  } catch (error) {
+    throw storageError(
+      error,
+      "backup-corrupt-json",
+      `google-drive:${fileName}`,
+      `google-drive:${backupName}`,
+      parseError.message,
+    );
+  }
+}
+
 function toSummary(settings: StoredMetaAiSettings): MetaAiSettingsSummary {
   const savedKey = decryptSecret(settings.apiKeyEncrypted);
   const envKey = config.openaiApiKey.trim();
@@ -187,7 +278,8 @@ function toSummary(settings: StoredMetaAiSettings): MetaAiSettingsSummary {
     modelName: normalizeModelName(settings.modelName || config.openaiModel),
     apiKeyMasked,
     apiKeySource,
-    storagePath: metaAiSettingsStoragePath(),
+    storageBackend: metaAiSettingsStorageBackend(),
+    storagePath: metaAiSettingsStorageLocation(),
     updatedAt: settings.updatedAt,
     updatedBy: settings.updatedBy,
   };
@@ -273,12 +365,33 @@ function encryptionSeed() {
 }
 
 function isServerlessReadOnlyPath(targetPath: string) {
+  if (!isServerlessRuntime()) return false;
+  if (targetPath === "/var/task" || targetPath.startsWith("/var/task/")) return true;
   return Boolean(
     process.env.VERCEL ||
-      process.env.AWS_LAMBDA_FUNCTION_NAME ||
-      targetPath === "/var/task" ||
-      targetPath.startsWith("/var/task/"),
+      process.env.AWS_LAMBDA_FUNCTION_NAME,
   );
+}
+
+function isServerlessRuntime() {
+  return Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+}
+
+function ensureGoogleDriveMetaAiStorageConfigured(
+  operation: MetaAiSettingsStorageErrorDetails["operation"],
+  fileName: string,
+) {
+  if (getGoogleDriveAuthMode()) return;
+  throw new MetaAiSettingsStorageError(`meta AI settings storage ${operation} failed.`, {
+    operation,
+    path: `google-drive:${fileName}`,
+    backend: "google-drive",
+    code: "GOOGLE_DRIVE_NOT_CONFIGURED",
+    message:
+      "Meta AI settings storage is set to google-drive, but Google Drive credentials are incomplete.",
+    help:
+      "Set GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET, and GOOGLE_DRIVE_REFRESH_TOKEN for OAuth storage, or set GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON with GOOGLE_DRIVE_FOLDER_ID for service-account storage. As a fallback, set OPENAI_API_KEY directly in the deployment environment.",
+  });
 }
 
 function storageError(
@@ -291,14 +404,20 @@ function storageError(
   if (error instanceof MetaAiSettingsStorageError) return error;
   const nodeError = error as NodeJS.ErrnoException;
   const message = error instanceof Error ? error.message : String(error);
+  const backend: MetaAiSettingsSummary["storageBackend"] = targetPath.startsWith("google-drive:")
+    ? "google-drive"
+    : "local-json";
   const help =
-    operation === "write"
-      ? "Check that the runtime user can write to this path. On Synology, the expected writable host folder is /volume1/docker/meta/data via the /app/.data/meta Docker volume."
-      : "Check the Meta AI settings JSON file path and permissions.";
+    backend === "google-drive"
+      ? "Check Google Drive credentials and folder/file write permission. For Vercel, keep META_AI_SETTINGS_STORAGE_BACKEND=google-drive or set OPENAI_API_KEY directly."
+      : operation === "write"
+        ? "Check that the runtime user can write to this path. On Synology, the expected writable host folder is /volume1/docker/meta/data via the /app/.data/meta Docker volume."
+        : "Check the Meta AI settings JSON file path and permissions.";
 
   return new MetaAiSettingsStorageError(`meta AI settings storage ${operation} failed.`, {
     operation,
     path: targetPath,
+    backend,
     code: nodeError.code,
     message: cause ? `${message}; cause: ${cause}` : message,
     help,

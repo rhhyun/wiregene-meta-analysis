@@ -66,3 +66,11 @@ and save the OpenAI key/model there. The saved key is encrypted in
 keys remain readable after Basic Auth password changes.
 This settings file is written by the Meta AI settings storage directly and does
 not inherit `REPORT_STORAGE_BACKEND` or `GRANT_STORAGE_BACKEND`.
+
+On Vercel/serverless deployments, the local filesystem under `/var/task` is
+read-only. To save the key from the in-app settings panel there, configure
+`META_AI_SETTINGS_STORAGE_BACKEND=google-drive` together with Google Drive
+OAuth variables (`GOOGLE_DRIVE_CLIENT_ID`, `GOOGLE_DRIVE_CLIENT_SECRET`,
+`GOOGLE_DRIVE_REFRESH_TOKEN`) or a service account plus `GOOGLE_DRIVE_FOLDER_ID`.
+If you do not want in-app key storage on Vercel, set `OPENAI_API_KEY` directly as
+a deployment environment variable instead.

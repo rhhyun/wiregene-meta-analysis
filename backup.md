@@ -849,6 +849,73 @@ git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin
 
 Never write the real OpenAI API key into `backup.md` or Git-tracked files.
 
+## 2026-06-13 Meta AI settings Vercel Google Drive storage fix
+
+User-reported error:
+
+```text
+meta AI settings storage write failed.
+operation: write
+path: /var/task/.data/meta/meta-ai-settings.json
+code: SERVERLESS_LOCAL_STORAGE
+message: The deployment filesystem is read-only, so Meta AI settings cannot be saved as a local JSON file.
+```
+
+Root cause:
+
+- `/var/task` means the running deployment is serverless/read-only, not the writable Synology Docker volume.
+- The previous Meta AI settings storage supported local JSON only, so in-app key saving could not work on Vercel/serverless deployments.
+- Real OpenAI keys must never be committed to Git or written into `backup.md`.
+
+Implemented:
+
+- `src/lib/meta-ai-settings.ts`: added dedicated `META_AI_SETTINGS_STORAGE_BACKEND` with `local-json` and `google-drive`.
+- On Vercel/serverless, if Google Drive credentials are already configured, Meta AI settings automatically use `google-drive`.
+- Explicit `META_AI_SETTINGS_STORAGE_BACKEND=google-drive` stores the encrypted Meta AI settings JSON through the existing Google Drive helper.
+- Added `META_AI_SETTINGS_DRIVE_FILENAME` and `META_AI_SETTINGS_DRIVE_FILE_ID` support.
+- Added precise errors:
+  - `SERVERLESS_LOCAL_STORAGE` now tells the user to use Google Drive storage or deployment `OPENAI_API_KEY`.
+  - `GOOGLE_DRIVE_NOT_CONFIGURED` tells the user which Google Drive credentials are missing.
+- `src/components/MetaAiSettingsPanel.tsx`: displays the active storage backend/path.
+- `synology/docker/meta/.env.example`: added Meta AI Drive storage and Google Drive credential placeholders.
+- `scripts/synology-start-meta.sh`: can seed the new Meta AI/Google Drive env values from DSM scheduler environment.
+- `SERVICE.md` and `synology/docker/meta/README.md`: documented the Vercel read-only behavior and storage options.
+- `package.json`, `package-lock.json`: package version bumped to `0.1.14`.
+- `src/lib/version.ts`: UI version bumped to `Ver 1.49`.
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit: pass.
+Local Meta AI settings save with REPORT_STORAGE_BACKEND=google-drive: pass; backend remained local-json and saved key was masked.
+Forced Vercel local-json save: returned SERVERLESS_LOCAL_STORAGE with Vercel/Google Drive guidance.
+Forced google-drive without Drive credentials: returned GOOGLE_DRIVE_NOT_CONFIGURED with credential guidance.
+bash -n scripts/synology-start-meta.sh: pass.
+npm.cmd run lint: pass.
+npm.cmd run build: pass.
+```
+
+Vercel/serverless setup options:
+
+```text
+Option A, in-app key storage:
+META_AI_SETTINGS_STORAGE_BACKEND=google-drive
+META_AI_SETTINGS_SECRET=<stable-secret>
+GOOGLE_DRIVE_CLIENT_ID=<oauth-client-id>
+GOOGLE_DRIVE_CLIENT_SECRET=<oauth-client-secret>
+GOOGLE_DRIVE_REFRESH_TOKEN=<oauth-refresh-token>
+
+Option B, no in-app key storage:
+OPENAI_API_KEY=<deployment-secret>
+OPENAI_MODEL=gpt-5-nano
+```
+
+Regular Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 ## 2026-06-12 In-app AI evaluation settings menu
 
 User request:
