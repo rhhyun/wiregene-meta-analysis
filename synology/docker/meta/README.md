@@ -50,6 +50,12 @@ If `OPENAI_API_KEY` is empty, the full-text assistant still runs but uses
 fallback rules only, marks the result as `aiUsed=false`, and records a low
 quality-review score requiring human verification.
 
+Meta administrators can also save the OpenAI key/model from the in-app
+**AI 평가 설정** menu. The saved key is encrypted in
+`META_AI_SETTINGS_STORAGE_PATH` and takes priority over `OPENAI_API_KEY`.
+Set `META_AI_SETTINGS_SECRET` to a stable secret so saved keys remain readable
+after Basic Auth password changes.
+
 If port `3001` is already used, the script prints the running container that
 owns the port and stops before changing anything. If that old container should
 be replaced by Meta, rerun:

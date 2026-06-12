@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import { z } from "zod";
-import { config } from "./config";
+import { resolveMetaOpenAIConfig } from "./meta-ai-settings";
 import { extractPdfTextWithPdfParse } from "./pdf-text";
 import { extractWordTextWithWordExtractor } from "./word-text";
 
@@ -340,7 +340,8 @@ export async function analyzeMetaFullTextUpload(input: AnalyzeMetaFullTextInput)
     extractionWarnings,
   });
 
-  if (!config.openaiApiKey) return fallback;
+  const openaiConfig = await resolveMetaOpenAIConfig();
+  if (!openaiConfig.enabled || !openaiConfig.apiKey) return fallback;
 
   const ai = await analyzeWithOpenAI({
     fileName: input.fileName,
@@ -349,6 +350,8 @@ export async function analyzeMetaFullTextUpload(input: AnalyzeMetaFullTextInput)
     text: analysisText,
     extractionColumns: input.extractionColumns,
     fallback,
+    openaiApiKey: openaiConfig.apiKey,
+    openaiModel: openaiConfig.modelName,
   });
 
   if (!ai) return fallback;
@@ -373,9 +376,9 @@ export async function analyzeMetaFullTextUpload(input: AnalyzeMetaFullTextInput)
     extraction: normalizeExtraction(ai.extraction, fallback.extraction, input.extractionColumns),
     evidence: normalizeEvidence([...(ai.evidence ?? []), ...fallback.evidence]).slice(0, 10),
     nextActions: normalizeList([...(ai.nextActions ?? []), ...fallback.nextActions]).slice(0, 8),
-    reviewEvaluation: normalizeReviewEvaluation(ai.reviewEvaluation, fallback.reviewEvaluation, config.openaiModel),
+    reviewEvaluation: normalizeReviewEvaluation(ai.reviewEvaluation, fallback.reviewEvaluation, openaiConfig.modelName),
     aiUsed: true,
-    model: config.openaiModel,
+    model: openaiConfig.modelName,
   });
   return {
     ...normalized,
@@ -541,6 +544,8 @@ async function analyzeWithOpenAI({
   text,
   extractionColumns,
   fallback,
+  openaiApiKey,
+  openaiModel,
 }: {
   fileName: string;
   fileType: MetaFullTextFileType;
@@ -548,11 +553,13 @@ async function analyzeWithOpenAI({
   text: string;
   extractionColumns: string[];
   fallback: MetaFullTextAnalysis;
+  openaiApiKey: string;
+  openaiModel: string;
 }): Promise<AiMetaFullTextAnalysis | null> {
-  const openai = new OpenAI({ apiKey: config.openaiApiKey });
+  const openai = new OpenAI({ apiKey: openaiApiKey });
   try {
     const response = await openai.responses.create({
-      model: config.openaiModel,
+      model: openaiModel,
       text: {
         format: metaFullTextResponseFormat,
       },
@@ -702,7 +709,7 @@ Return this JSON schema:
       "reviewer_actionability": {"score": 0, "status": "pass|partial|fail|unclear", "comment": "Korean comment"},
       "risk_visibility": {"score": 0, "status": "pass|partial|fail|unclear", "comment": "Korean comment"}
     },
-    "modelName": "${config.openaiModel}"
+    "modelName": "${openaiModel}"
   }
 }
 

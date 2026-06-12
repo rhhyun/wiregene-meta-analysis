@@ -39,7 +39,7 @@ export function MetaAnalysisApp({
       </header>
 
       <div className="mx-auto max-w-7xl px-5 py-8">
-        <MetaStudyWorkspace initialSearchQuery={initialSearchQuery} />
+        <MetaStudyWorkspace initialSearchQuery={initialSearchQuery} currentUser={currentUser} />
       </div>
     </main>
   );

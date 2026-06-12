@@ -807,6 +807,62 @@ git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin
 
 Never write the real OpenAI API key into `backup.md` or Git-tracked files.
 
+## 2026-06-12 In-app AI evaluation settings menu
+
+User request:
+
+```text
+필요하면 hyunlab-wiregene-platform처럼 AI 평가 메뉴를 만들고 api key를 넣도록 합니다
+```
+
+Implemented:
+
+- `src/lib/meta-ai-settings.ts`: added encrypted Meta AI settings storage.
+  - Storage env: `META_AI_SETTINGS_STORAGE_PATH`
+  - Default path: `.data/meta/meta-ai-settings.json`
+  - Encryption seed env: `META_AI_SETTINGS_SECRET` preferred; falls back to existing server secrets such as `WIREGENE_SECRET_KEY`, `PORTAL_AUTH_CHECK_SECRET`, or Basic Auth secrets.
+  - Stored OpenAI key is encrypted with AES-256-GCM and only masked values are returned to the UI.
+- `src/app/api/meta-analysis/ai-settings/route.ts`: added admin-only GET/PATCH API for Meta AI settings.
+- `src/components/MetaAiSettingsPanel.tsx`: added the in-app **AI 평가 설정** panel for enabled/model/API key save/delete.
+- `src/components/MetaStudyWorkspace.tsx`: admin users now see an **AI 평가 설정** menu item in the Meta sidebar.
+- `src/lib/meta-full-text-analysis.ts`: full-text analysis now resolves OpenAI config from saved Meta AI settings first, then falls back to environment `OPENAI_API_KEY`.
+- `synology/docker/meta/.env.example`: added `META_AI_SETTINGS_STORAGE_PATH` and `META_AI_SETTINGS_SECRET`.
+- `scripts/synology-start-meta.sh`: scheduler env seeding now includes `META_AI_SETTINGS_STORAGE_PATH` and `META_AI_SETTINGS_SECRET`.
+- Docs updated in `SERVICE.md`, `docs/synology-meta-portal-split.md`, and `synology/docker/meta/README.md`.
+- `package.json`, `package-lock.json`: package version bumped to `0.1.11`.
+- `src/lib/version.ts`: UI version bumped to `Ver 1.46`.
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit: pass.
+AI settings API temp-key test: PATCH 200, GET 200, source saved, masked key returned, raw test key not leaked.
+npm.cmd run lint: pass.
+npm.cmd run build: pass.
+Git Bash syntax check for scripts/synology-start-meta.sh: pass.
+Browser verification on http://127.0.0.1:3017 with temporary admin auth: Ver 1.46, admin badge, AI 평가 설정 button, OpenAI full-text 평가 설정 panel, API key field, model field, save button all rendered.
+```
+
+Synology first setup with a stable AI settings encryption secret:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && META_AI_SETTINGS_SECRET='YOUR_STABLE_RANDOM_SECRET' /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+Optional one-line setup with OpenAI key as scheduler env:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && META_AI_SETTINGS_SECRET='YOUR_STABLE_RANDOM_SECRET' OPENAI_API_KEY='YOUR_OPENAI_API_KEY' OPENAI_MODEL='gpt-5-nano' /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+Regular Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+Never write the real OpenAI API key or real `META_AI_SETTINGS_SECRET` into `backup.md` or Git-tracked files.
+
 ## 2026-06-12 Hyunlab-style OpenAI quality review for full-text meta-analysis
 
 User request:

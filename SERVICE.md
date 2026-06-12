@@ -58,3 +58,9 @@ git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && OPEN
 Without `OPENAI_API_KEY`, the full-text assistant uses conservative fallback
 rules, marks the result `aiUsed=false`, and assigns a low quality-review score
 requiring human verification.
+
+Meta administrators can also open **AI 평가 설정** inside `meta.wiregene.com`
+and save the OpenAI key/model there. The saved key is encrypted in
+`META_AI_SETTINGS_STORAGE_PATH` and is used before the environment
+`OPENAI_API_KEY`. Set `META_AI_SETTINGS_SECRET` to a stable secret so encrypted
+keys remain readable after Basic Auth password changes.

@@ -70,6 +70,12 @@ If `OPENAI_API_KEY` is not set, the full-text assistant still extracts text but
 uses fallback rules only and records a low quality-review score requiring human
 verification.
 
+Meta administrators can alternatively use the in-app **AI 평가 설정** menu to
+save the OpenAI key/model. The key is encrypted in
+`META_AI_SETTINGS_STORAGE_PATH` and takes priority over `OPENAI_API_KEY`.
+Set `META_AI_SETTINGS_SECRET` in `/volume1/docker/meta/.env` to keep the
+encrypted key readable even if Basic Auth credentials are rotated.
+
 Default host port:
 
 ```text

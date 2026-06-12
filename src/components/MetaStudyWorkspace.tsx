@@ -11,6 +11,7 @@ import {
   FileSpreadsheet,
   FileText,
   FlaskConical,
+  KeyRound,
   ListChecks,
   Plus,
   Search,
@@ -21,7 +22,9 @@ import {
 import { useEffect, useMemo, useState } from "react";
 
 import { MetaAnalysisPanel } from "@/components/MetaAnalysisPanel";
+import { MetaAiSettingsPanel } from "@/components/MetaAiSettingsPanel";
 import { MetaFullTextAssistant } from "@/components/MetaFullTextAssistant";
+import type { CurrentWiregeneUser } from "@/lib/auth-session";
 import { buildPubMedSearchUrl } from "@/lib/meta-analysis-pubmed";
 import {
   metaStudyProjects,
@@ -113,9 +116,16 @@ const methodSentences = [
   "Feature-based exploratory clustering was performed to examine whether the prespecified groups showed internally coherent biomechanical profiles.",
 ];
 
-export function MetaStudyWorkspace({ initialSearchQuery }: { initialSearchQuery?: string }) {
+export function MetaStudyWorkspace({
+  initialSearchQuery,
+  currentUser,
+}: {
+  initialSearchQuery?: string;
+  currentUser?: CurrentWiregeneUser | null;
+}) {
   const [selectedProjectId, setSelectedProjectId] = useState(metaStudyProjects[0]?.id ?? "new-topic");
   const [stage, setStage] = useState<MetaStudyStage>("overview");
+  const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
 
   const selectedProject = useMemo(
     () => metaStudyProjects.find((project) => project.id === selectedProjectId),
@@ -123,11 +133,13 @@ export function MetaStudyWorkspace({ initialSearchQuery }: { initialSearchQuery?
   );
 
   function openNewTopic() {
+    setAiSettingsOpen(false);
     setSelectedProjectId("new-topic");
     setStage("protocol");
   }
 
   function openProject(project: MetaStudyProject) {
+    setAiSettingsOpen(false);
     setSelectedProjectId(project.id);
     setStage("overview");
   }
@@ -185,6 +197,26 @@ export function MetaStudyWorkspace({ initialSearchQuery }: { initialSearchQuery?
           ))}
         </div>
 
+        {currentUser?.isAdmin ? (
+          <button
+            type="button"
+            onClick={() => setAiSettingsOpen(true)}
+            className={`mt-4 flex w-full items-center gap-3 rounded-md border p-3 text-left transition ${
+              aiSettingsOpen
+                ? "border-emerald-300 bg-emerald-50"
+                : "border-zinc-200 bg-white hover:border-emerald-300 hover:bg-emerald-50"
+            }`}
+          >
+            <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-emerald-700 text-white">
+              <KeyRound className="h-4 w-4" aria-hidden />
+            </span>
+            <span>
+              <span className="block text-sm font-semibold text-zinc-950">AI 평가 설정</span>
+              <span className="mt-1 block text-xs leading-5 text-zinc-500">OpenAI key / model</span>
+            </span>
+          </button>
+        ) : null}
+
         <div className="mt-5 rounded-md border border-zinc-200 bg-zinc-50 p-3">
           <p className="text-xs font-semibold uppercase text-zinc-500">Operating rule</p>
           <p className="mt-2 text-xs leading-5 text-zinc-600">
@@ -194,7 +226,9 @@ export function MetaStudyWorkspace({ initialSearchQuery }: { initialSearchQuery?
       </aside>
 
       <section className="min-w-0">
-        {selectedProject ? (
+        {aiSettingsOpen ? (
+          <MetaAiSettingsPanel />
+        ) : selectedProject ? (
           <ProjectWorkspace project={selectedProject} stage={stage} setStage={setStage} initialSearchQuery={initialSearchQuery} />
         ) : (
           <NewTopicWorkspace />
