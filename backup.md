@@ -805,6 +805,45 @@ Regular Synology deploy/run command after GitHub push:
 git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
 ```
 
+## 2026-06-13 Google Drive OAuth invalid_grant guidance fix
+
+User-reported error:
+
+```text
+meta AI settings storage read failed.
+path: google-drive:meta-ai-settings.json
+message: Google OAuth refresh failed: invalid_grant.
+```
+
+Meaning:
+
+- The Vercel `GOOGLE_DRIVE_REFRESH_TOKEN` is invalid, revoked, copied incorrectly, expired, or was generated with a different `GOOGLE_DRIVE_CLIENT_ID` / `GOOGLE_DRIVE_CLIENT_SECRET` pair.
+- The fix is to regenerate `GOOGLE_DRIVE_REFRESH_TOKEN` locally using the exact same client id and client secret currently stored in Vercel Production Environment Variables.
+- Do not paste Google or OpenAI secrets into Git or `backup.md`.
+
+Code/docs change:
+
+- `src/lib/google-drive-oauth.ts`: changed the invalid_grant message from GitHub-Actions-only wording to deployment-environment wording that explicitly includes Vercel Environment Variables.
+- `package.json`, `package-lock.json`: package version bumped to `0.1.15`.
+- `src/lib/version.ts`: UI version bumped to `Ver 1.50`.
+
+User-side repair steps:
+
+```powershell
+cd C:\Users\rhhyu\Documents\GitHub\wiregene-meta-analysis
+$env:GOOGLE_DRIVE_CLIENT_ID="<copy from Vercel Production GOOGLE_DRIVE_CLIENT_ID>"
+$env:GOOGLE_DRIVE_CLIENT_SECRET="<copy from Vercel Production GOOGLE_DRIVE_CLIENT_SECRET>"
+npm.cmd run google-drive:oauth
+```
+
+Then copy only the newly printed refresh token into Vercel:
+
+```text
+GOOGLE_DRIVE_REFRESH_TOKEN=<new refresh token>
+```
+
+Redeploy Vercel Production after updating the environment variable.
+
 ## 2026-06-13 Meta AI settings storage write fix
 
 User report:

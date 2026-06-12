@@ -42,7 +42,7 @@ function formatGoogleOauthRefreshError(
     return [
       "Google OAuth refresh failed: invalid_grant.",
       "The refresh token is invalid, revoked, expired, copied incorrectly, or was generated with a different GOOGLE_DRIVE_CLIENT_ID / GOOGLE_DRIVE_CLIENT_SECRET pair.",
-      "Regenerate GOOGLE_DRIVE_REFRESH_TOKEN locally with npm run google-drive:oauth using the same client id and secret that are stored in GitHub Actions.",
+      "Regenerate GOOGLE_DRIVE_REFRESH_TOKEN locally with npm run google-drive:oauth using the same client id and secret that are stored in the deployment environment, such as Vercel Environment Variables or GitHub Actions secrets.",
     ].join(" ");
   }
 
