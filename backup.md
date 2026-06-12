@@ -276,6 +276,63 @@ Synology deploy/run command after GitHub push:
 git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
 ```
 
+## 2026-06-12 DOMMatrix native canvas fallback fix
+
+User-reported error after the previous DOMMatrix patch:
+
+```text
+PDF text extraction could not initialize DOMMatrix from @napi-rs/canvas.
+```
+
+Root cause:
+
+- The previous fix still depended on the native `@napi-rs/canvas` package being installed and loadable in the runtime container.
+- On Synology or another Linux runtime, that native module can be missing, stale, incompatible, or fail to load even when it exists in `package-lock.json`.
+- The app then threw its own error before loading `pdf-parse`, so PDF full-text analysis still failed.
+
+Changes:
+
+- `src/lib/pdf-text.ts`: removed the hard failure when `@napi-rs/canvas` is unavailable.
+- `src/lib/pdf-text.ts`: added pure JS fallback classes for `DOMMatrix`, `ImageData`, and `Path2D` before `pdf-parse` is required.
+- `src/lib/pdf-text.ts`: added `WIREGENE_PDF_FORCE_JS_POLYFILLS=true` test switch to force the same path that Synology needs when native canvas is unavailable.
+- `package.json`, `package-lock.json`: package version bumped to `0.1.6`.
+- `src/lib/version.ts`: UI version bumped to `Ver 1.41`.
+
+Verification:
+
+```powershell
+$env:WIREGENE_PDF_FORCE_JS_POLYFILLS='true'
+npx.cmd tsx -e "import { extractPdfTextWithPdfParse } from './src/lib/pdf-text'; import fs from 'node:fs'; void (async () => { const b = fs.readFileSync('C:/Users/rhhyu/AppData/Local/Temp/wiregene-meta-plan-260611.pdf'); const r = await extractPdfTextWithPdfParse(b); console.log(JSON.stringify({len:r.text.length,totalPages:r.totalPages,preview:r.text.slice(0,40),domMatrix: typeof globalThis.DOMMatrix})); })();"
+# {"len":13156,"totalPages":14,...,"domMatrix":"function"}
+
+npm.cmd run lint
+# pass
+
+npm.cmd run build
+# pass
+```
+
+Actual API verification with native canvas bypassed:
+
+```text
+WIREGENE_APP_MODE=meta
+OPENAI_API_KEY=
+WIREGENE_PDF_FORCE_JS_POLYFILLS=true
+POST http://localhost:3019/api/meta-analysis/full-text/analyze
+sample PDF: wiregene-meta-plan-260611.pdf
+HTTP 200
+extractedTextLength: 13156
+truncated: false
+```
+
+Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+If the running Synology container still shows the old error after this commit, it is running old code and must be restarted/recreated from the updated repository.
+
 If Synology still reports a canvas/DOMMatrix-related error after pulling this commit, verify the native canvas dependency inside the running container:
 
 ```sh
