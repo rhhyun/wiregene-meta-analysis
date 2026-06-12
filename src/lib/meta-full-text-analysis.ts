@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import { z } from "zod";
-import { resolveMetaOpenAIConfig } from "./meta-ai-settings";
+import { metaAiSettingsErrorDetails, resolveMetaOpenAIConfig } from "./meta-ai-settings";
 import { extractPdfTextWithPdfParse } from "./pdf-text";
 import { extractWordTextWithWordExtractor } from "./word-text";
 
@@ -49,6 +49,8 @@ export type MetaFullTextAnalysis = {
   analyzedAt: string;
   aiUsed: boolean;
   model: string | null;
+  aiConfigSource: "saved" | "environment" | "missing" | null;
+  aiWarning: string | null;
   referenceRecord: string | null;
   titleGuess: string | null;
   eligibility: {
@@ -340,8 +342,21 @@ export async function analyzeMetaFullTextUpload(input: AnalyzeMetaFullTextInput)
     extractionWarnings,
   });
 
-  const openaiConfig = await resolveMetaOpenAIConfig();
-  if (!openaiConfig.enabled || !openaiConfig.apiKey) return fallback;
+  const openaiConfig = await resolveOpenAIConfigForFullText();
+  if (!openaiConfig.config) {
+    return withAiWarning(fallback, openaiConfig.warning, null);
+  }
+
+  if (!openaiConfig.config.enabled || !openaiConfig.config.apiKey) {
+    return withAiWarning(
+      fallback,
+      openaiConfig.warning ??
+        (openaiConfig.config.source === "missing"
+          ? "OpenAI key was not available to the analysis server. Save the key in AI settings and confirm the settings page shows Source = saved encrypted key, or set OPENAI_API_KEY in the deployment environment and redeploy."
+          : "OpenAI full-text evaluation is disabled in AI settings."),
+      openaiConfig.config.source,
+    );
+  }
 
   const ai = await analyzeWithOpenAI({
     fileName: input.fileName,
@@ -350,35 +365,48 @@ export async function analyzeMetaFullTextUpload(input: AnalyzeMetaFullTextInput)
     text: analysisText,
     extractionColumns: input.extractionColumns,
     fallback,
-    openaiApiKey: openaiConfig.apiKey,
-    openaiModel: openaiConfig.modelName,
+    openaiApiKey: openaiConfig.config.apiKey,
+    openaiModel: openaiConfig.config.modelName,
   });
 
-  if (!ai) return fallback;
+  if (!ai.analysis) {
+    return withAiWarning(
+      fallback,
+      ai.warning ??
+        "OpenAI full-text analysis did not return a valid structured result, so fallback rules were used. Check the OpenAI key/model and retry.",
+      openaiConfig.config.source,
+    );
+  }
 
-  const aiInstruments = normalizeList(ai.study?.instruments);
+  const aiInstruments = normalizeList(ai.analysis.study?.instruments);
   const normalized = normalizeAnalysis({
     ...fallback,
-    ...ai,
+    ...ai.analysis,
     eligibility: {
       ...fallback.eligibility,
-      ...ai.eligibility,
+      ...ai.analysis.eligibility,
       reviewerChecks: {
         ...fallback.eligibility.reviewerChecks,
-        ...ai.eligibility?.reviewerChecks,
+        ...ai.analysis.eligibility?.reviewerChecks,
       },
     },
     study: {
       ...fallback.study,
-      ...ai.study,
+      ...ai.analysis.study,
       instruments: (aiInstruments.length > 0 ? aiInstruments : fallback.study.instruments).slice(0, 16),
     },
-    extraction: normalizeExtraction(ai.extraction, fallback.extraction, input.extractionColumns),
-    evidence: normalizeEvidence([...(ai.evidence ?? []), ...fallback.evidence]).slice(0, 10),
-    nextActions: normalizeList([...(ai.nextActions ?? []), ...fallback.nextActions]).slice(0, 8),
-    reviewEvaluation: normalizeReviewEvaluation(ai.reviewEvaluation, fallback.reviewEvaluation, openaiConfig.modelName),
+    extraction: normalizeExtraction(ai.analysis.extraction, fallback.extraction, input.extractionColumns),
+    evidence: normalizeEvidence([...(ai.analysis.evidence ?? []), ...fallback.evidence]).slice(0, 10),
+    nextActions: normalizeList([...(ai.analysis.nextActions ?? []), ...fallback.nextActions]).slice(0, 8),
+    reviewEvaluation: normalizeReviewEvaluation(
+      ai.analysis.reviewEvaluation,
+      fallback.reviewEvaluation,
+      openaiConfig.config.modelName,
+    ),
     aiUsed: true,
-    model: openaiConfig.modelName,
+    model: openaiConfig.config.modelName,
+    aiConfigSource: openaiConfig.config.source,
+    aiWarning: null,
   });
   return {
     ...normalized,
@@ -387,6 +415,60 @@ export async function analyzeMetaFullTextUpload(input: AnalyzeMetaFullTextInput)
       validationIssues: normalizeList([...normalized.extraction.validationIssues, ...extractionWarnings]),
     },
   };
+}
+
+async function resolveOpenAIConfigForFullText() {
+  try {
+    return {
+      config: await resolveMetaOpenAIConfig(),
+      warning: null,
+    };
+  } catch (error) {
+    return {
+      config: null,
+      warning: `OpenAI settings could not be read, so fallback rules were used. Details: ${formatAiSettingsError(error)}`,
+    };
+  }
+}
+
+function withAiWarning(
+  analysis: MetaFullTextAnalysis,
+  warning: string | null,
+  source: MetaFullTextAnalysis["aiConfigSource"],
+) {
+  return normalizeAnalysis({
+    ...analysis,
+    aiUsed: false,
+    model: null,
+    aiConfigSource: source,
+    aiWarning: warning,
+    extraction: {
+      ...analysis.extraction,
+      validationIssues: normalizeList([
+        ...analysis.extraction.validationIssues,
+        warning ? `AI warning: ${warning}` : "",
+      ]),
+    },
+    nextActions: normalizeList([
+      warning ? "Fix the AI settings warning, then rerun full-text analysis before final include/exclude or extraction." : "",
+      ...analysis.nextActions,
+    ]).slice(0, 8),
+  });
+}
+
+function formatAiSettingsError(error: unknown) {
+  const details = metaAiSettingsErrorDetails(error) as Record<string, unknown>;
+  const parts = [
+    details.operation ? `operation=${details.operation}` : "",
+    details.path ? `path=${details.path}` : "",
+    details.backend ? `backend=${details.backend}` : "",
+    details.code ? `code=${details.code}` : "",
+    details.message ? `message=${details.message}` : "",
+    details.help ? `help=${details.help}` : "",
+  ].filter(Boolean);
+
+  if (parts.length > 0) return parts.join("; ");
+  return error instanceof Error ? error.message : String(error);
 }
 
 function detectFileType(fileName: string, mimeType = ""): MetaFullTextFileType {
@@ -462,6 +544,8 @@ function fallbackAnalyzeFullText({
     analyzedAt: new Date().toISOString(),
     aiUsed: false,
     model: null,
+    aiConfigSource: null,
+    aiWarning: null,
     referenceRecord,
     titleGuess: guessTitle(analysisText, referenceRecord),
     eligibility: {
@@ -555,7 +639,7 @@ async function analyzeWithOpenAI({
   fallback: MetaFullTextAnalysis;
   openaiApiKey: string;
   openaiModel: string;
-}): Promise<AiMetaFullTextAnalysis | null> {
+}): Promise<{ analysis: AiMetaFullTextAnalysis | null; warning: string | null }> {
   const openai = new OpenAI({ apiKey: openaiApiKey });
   try {
     const response = await openai.responses.create({
@@ -743,13 +827,25 @@ ${text}`,
     const validated = aiMetaFullTextAnalysisSchema.safeParse(parsed);
     if (!validated.success) {
       console.error("Meta full-text OpenAI analysis schema validation failed.", validated.error.flatten());
-      return null;
+      return {
+        analysis: null,
+        warning:
+          "OpenAI returned a response, but it did not match the required meta-analysis extraction schema. Fallback rules were used; retry after redeploying the latest version or changing the model.",
+      };
     }
-    return validated.data as AiMetaFullTextAnalysis;
+    return { analysis: validated.data as AiMetaFullTextAnalysis, warning: null };
   } catch (error) {
     console.error("Meta full-text OpenAI analysis failed; using fallback.", error);
-    return null;
+    return {
+      analysis: null,
+      warning: `OpenAI request failed, so fallback rules were used. Details: ${formatOpenAIError(error)}`,
+    };
   }
+}
+
+function formatOpenAIError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.replace(/\s+/g, " ").trim().slice(0, 800);
 }
 
 function normalizeAnalysis(analysis: MetaFullTextAnalysis): MetaFullTextAnalysis {

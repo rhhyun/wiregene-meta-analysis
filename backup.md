@@ -844,6 +844,52 @@ GOOGLE_DRIVE_REFRESH_TOKEN=<new refresh token>
 
 Redeploy Vercel Production after updating the environment variable.
 
+## 2026-06-13 Full-text fallback warning specificity fix
+
+User issue:
+
+```text
+PDF 업로드 후 분석을 시작했는데 왜 "OPENAI_API_KEY가 없거나 AI 응답 검증에 실패해 fallback rules로만 초안을 생성했습니다..."가 나오나요? 당연히 OpenAI key는 입력했습니다.
+```
+
+Root cause:
+
+- The UI used one generic fallback notice for several different cases:
+  - no key available to the server,
+  - in-app saved key could not be read from Meta AI settings storage,
+  - OpenAI request failed,
+  - OpenAI response schema validation failed.
+- Entering an OpenAI key in the settings form is not enough; the full-text analysis API must be able to read the saved encrypted key at analysis time.
+- If Google Drive OAuth for Meta AI settings storage is broken, the saved key cannot be read even if the user typed it earlier.
+
+Implemented:
+
+- `src/lib/meta-full-text-analysis.ts`: added `aiConfigSource` and `aiWarning` to every full-text analysis result.
+- Full-text analysis now catches Meta AI settings read failures and returns fallback with a specific warning instead of hiding the cause.
+- OpenAI request failures and schema-validation failures now return specific warnings.
+- Missing/disabled key state now says that the analysis server could not access a saved key or `OPENAI_API_KEY`.
+- `src/components/MetaFullTextAssistant.tsx`: fallback notice now displays `analysis.aiWarning`.
+- Added an amber warning panel to the result when fallback is caused by AI settings/OpenAI issues.
+- Verification CSV now includes `ai_config_source` and `ai_warning`.
+- `package.json`, `package-lock.json`: package version bumped to `0.1.16`.
+- `src/lib/version.ts`: UI version bumped to `Ver 1.51`.
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit: pass.
+Missing-key direct full-text test: aiUsed=false, aiConfigSource=missing, aiWarning explains that the analysis server could not access a key.
+Google Drive settings-read failure direct full-text test: aiUsed=false, aiWarning includes google-drive settings read failure details.
+npm.cmd run lint: pass.
+npm.cmd run build: pass.
+```
+
+User-facing interpretation:
+
+- If fallback still appears after this build, read the amber `aiWarning`.
+- If it says Google Drive OAuth/settings could not be read, fix `GOOGLE_DRIVE_CLIENT_ID`, `GOOGLE_DRIVE_CLIENT_SECRET`, and `GOOGLE_DRIVE_REFRESH_TOKEN` in Vercel, redeploy, then rerun.
+- If it says no key is available, open AI settings and confirm Source shows `saved encrypted key`, or set `OPENAI_API_KEY` in Vercel Production and redeploy.
+
 ## 2026-06-13 Meta AI settings storage write fix
 
 User report:

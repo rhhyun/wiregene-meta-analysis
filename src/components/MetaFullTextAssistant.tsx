@@ -132,6 +132,8 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
         "ai_review_summary",
         "ai_review_improvement",
         "ai_review_criteria_json",
+        "ai_config_source",
+        "ai_warning",
         "reviewer_1_decision",
         "reviewer_2_decision",
         "fixed_exclusion_reason",
@@ -150,6 +152,8 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
           ai_review_summary: analysis.reviewEvaluation.summary,
           ai_review_improvement: analysis.reviewEvaluation.improvement,
           ai_review_criteria_json: JSON.stringify(analysis.reviewEvaluation.criteria),
+          ai_config_source: analysis.aiConfigSource ?? "",
+          ai_warning: analysis.aiWarning ?? "",
           reviewer_1_decision: reviewerOneDecision,
           reviewer_2_decision: reviewerTwoDecision,
           fixed_exclusion_reason: fixedExclusionReason,
@@ -221,7 +225,8 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
       setNotice(
         payload.analysis.aiUsed
           ? `OpenAI ${payload.analysis.model}로 full-text article 분석 초안을 생성했습니다. 연구자가 반드시 원문 근거와 숫자를 검증해야 합니다.`
-          : "OPENAI_API_KEY가 없거나 AI 응답 검증에 실패해 fallback rules로만 초안을 생성했습니다. 정확한 판정에는 OpenAI API key 설정이 필요합니다.",
+          : payload.analysis.aiWarning ||
+              "OpenAI analysis was not used, so fallback rules generated only a low-confidence draft. Check AI settings and rerun before final review.",
       );
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "full-text 분석에 실패했습니다.");
@@ -350,6 +355,15 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
               </div>
             </div>
           </section>
+
+          {!analysis.aiUsed && analysis.aiWarning ? (
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm font-semibold leading-6 text-amber-950" role="alert">
+              <div className="flex gap-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                <span>{analysis.aiWarning}</span>
+              </div>
+            </div>
+          ) : null}
 
           <div className="grid gap-3 lg:grid-cols-3">
             <InfoBox label="추출 텍스트" value={`${analysis.extractedTextLength.toLocaleString()} chars`} />
