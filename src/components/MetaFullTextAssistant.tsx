@@ -204,7 +204,11 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
         }),
       );
       setAnalysis(payload.analysis);
-      setNotice("full-text article 분석 초안을 생성했습니다. 연구자가 반드시 원문 근거와 숫자를 검증해야 합니다.");
+      setNotice(
+        payload.analysis.aiUsed
+          ? `OpenAI ${payload.analysis.model}로 full-text article 분석 초안을 생성했습니다. 연구자가 반드시 원문 근거와 숫자를 검증해야 합니다.`
+          : "OPENAI_API_KEY가 없거나 AI 응답 검증에 실패해 fallback rules로만 초안을 생성했습니다. 정확한 판정에는 OpenAI API key 설정이 필요합니다.",
+      );
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "full-text 분석에 실패했습니다.");
     } finally {

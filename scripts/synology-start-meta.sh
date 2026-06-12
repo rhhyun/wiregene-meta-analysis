@@ -56,7 +56,7 @@ process_env_value() {
 }
 
 seed_runtime_env_from_process() {
-  for key in APP_BASIC_AUTH_USER APP_BASIC_AUTH_PASSWORD APP_BASIC_AUTH_USERS WIREGENE_ADMIN_EMAILS APP_ADMIN_USERS APP_ADMIN_USER; do
+  for key in APP_BASIC_AUTH_USER APP_BASIC_AUTH_PASSWORD APP_BASIC_AUTH_USERS WIREGENE_ADMIN_EMAILS APP_ADMIN_USERS APP_ADMIN_USER OPENAI_API_KEY OPENAI_MODEL; do
     value=$(process_env_value "$key")
     [ -n "$value" ] || continue
     current=$(env_value "$key")
@@ -150,6 +150,11 @@ warn_runtime_env() {
 
   if [ -z "$admin_emails" ] && [ -z "$admin_users" ] && [ -z "$admin_user" ]; then
     log "WARNING: No admin key found in $RUNTIME_DIR/.env. Set WIREGENE_ADMIN_EMAILS or APP_ADMIN_USERS if an admin badge/permission list is required."
+  fi
+
+  openai_api_key=$(env_value OPENAI_API_KEY)
+  if [ -z "$openai_api_key" ]; then
+    log "WARNING: OPENAI_API_KEY is empty in $RUNTIME_DIR/.env. Full-text article judgment will use fallback rules instead of OpenAI AI extraction."
   fi
 
   warn_unexpected_value HOST_PORT "3001"

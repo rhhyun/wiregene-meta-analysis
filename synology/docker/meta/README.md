@@ -37,6 +37,16 @@ Or seed a new Basic Auth pair without editing the file manually:
 APP_BASIC_AUTH_USER='YOUR_LOGIN_ID' APP_BASIC_AUTH_PASSWORD='YOUR_PASSWORD' WIREGENE_ADMIN_EMAILS='YOUR_ADMIN_EMAIL' /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
 ```
 
+For accurate full-text article screening/extraction, set an OpenAI API key in
+`/volume1/docker/meta/.env` or seed it once through the scheduler environment:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && OPENAI_API_KEY='YOUR_OPENAI_API_KEY' OPENAI_MODEL='gpt-5-nano' /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+If `OPENAI_API_KEY` is empty, the full-text assistant still runs but uses
+fallback rules only and marks the result as `aiUsed=false`.
+
 If port `3001` is already used, the script prints the running container that
 owns the port and stops before changing anything. If that old container should
 be replaced by Meta, rerun:

@@ -58,6 +58,15 @@ or seed new values through the scheduler environment:
 APP_BASIC_AUTH_USER='YOUR_LOGIN_ID' APP_BASIC_AUTH_PASSWORD='YOUR_PASSWORD' WIREGENE_ADMIN_EMAILS='YOUR_ADMIN_EMAIL' /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
 ```
 
+For accurate AI-assisted full-text screening/extraction, seed OpenAI once:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && OPENAI_API_KEY='YOUR_OPENAI_API_KEY' OPENAI_MODEL='gpt-5-nano' /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+If `OPENAI_API_KEY` is not set, the full-text assistant still extracts text but
+uses fallback rules only.
+
 Default host port:
 
 ```text

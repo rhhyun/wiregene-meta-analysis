@@ -774,3 +774,35 @@ Synology deploy/run command after GitHub push:
 ```sh
 git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
 ```
+## 2026-06-12 OpenAI key requirement for full-text accuracy
+
+User question:
+
+```text
+full-text 판정시 openai key를 사용하는게 정확도가 올라가지 않을까요?
+```
+
+Answer and implementation:
+
+- Yes. The full-text article workflow is much more useful when `OPENAI_API_KEY` is configured.
+- Current code path: `src/lib/meta-full-text-analysis.ts` uses OpenAI when `OPENAI_API_KEY` exists; otherwise it returns conservative fallback output with `aiUsed=false`.
+- `src/components/MetaFullTextAssistant.tsx`: result notice now explicitly says whether OpenAI was used or whether fallback rules were used because the key is missing or AI validation failed.
+- `scripts/synology-start-meta.sh`: `OPENAI_API_KEY` and `OPENAI_MODEL` are now seeded from the DSM scheduler environment into `/volume1/docker/meta/.env` when those values are provided and the runtime env values are empty.
+- `scripts/synology-start-meta.sh`: logs a warning when `OPENAI_API_KEY` is empty because full-text judgment will use fallback rules.
+- Synology docs updated with the OpenAI seeding command.
+- `package.json`, `package-lock.json`: package version bumped to `0.1.9`.
+- `src/lib/version.ts`: UI version bumped to `Ver 1.44`.
+
+Synology OpenAI setup command:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && OPENAI_API_KEY='YOUR_OPENAI_API_KEY' OPENAI_MODEL='gpt-5-nano' /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+Regular Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+Never write the real OpenAI API key into `backup.md` or Git-tracked files.
