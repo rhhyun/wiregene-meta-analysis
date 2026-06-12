@@ -294,6 +294,8 @@ PDF 용량제한이나 페이지제한이 있으면 안됩니다
 
 Changes:
 
+- `package.json`, `package-lock.json`: package version bumped to `0.1.5`.
+- `src/lib/version.ts`: UI version bumped to `Ver 1.40`.
 - `src/app/api/meta-analysis/full-text/analyze/route.ts`: removed the app-side 60MB full-text upload limit and the `Content-Length` pre-check.
 - `src/app/api/grants/rfp-analysis/route.ts`: removed the app-side 30MB upload/download checks for PDF/RFP documents.
 - `src/lib/pdf-text.ts`: changed PDF text extraction from page-limited `parser.getText({ first: ... })` to full-document `parser.getText()`.
