@@ -76,6 +76,74 @@ Synology 작업 스케줄러 명령:
 /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
 ```
 
+## 2026-06-12 Excel workbook 표준 workflow 반영
+
+사용자 지시:
+
+```text
+현재 Excel 파일 구조를 모든 메타분석의 표준으로 삼는다.
+Summary의 숫자는 이전 PDF 파일 숫자를 기준으로 유지한다.
+실제 full-text PDF 확인 중 included data에서 탈락하는 경우가 많으므로 중간 수정이 가능해야 한다.
+Core_Comparative_Obs 18개 full-text PDF를 먼저 확인한다.
+Core_InstrumentSpecific 36개 full-text PDF를 다음으로 확인한다.
+Manual_FullText_Check 18개 full-text PDF는 더 주의깊게 include/exclude 판정한다.
+나머지 Excel sheet 리스트는 full-text PDF 업로드가 필요 없다.
+```
+
+변경 내용:
+
+- `package.json`, `package-lock.json`: 버전을 `0.1.4`로 올렸다.
+- `src/lib/version.ts`: UI 표시 버전을 `Ver 1.39`로 올렸다.
+- `src/lib/meta-projects.ts`: Excel workbook sheet 구조를 `workbookSheets` 데이터로 추가했다.
+- PDF Summary/Search 숫자는 이전 PDF/스크린샷 기준으로 유지한다. 예: records identified 1,652, deduplicated 259, abstract text 253, previous PDF full-text planning queue 82.
+- 실제 active full-text upload 대상은 Excel sheet row count 기준으로 분리했다.
+  - `Core_Comparative_Obs`: 18개, priority 1, 먼저 업로드/검토
+  - `Core_InstrumentSpecific`: 36개, priority 2, instrument-specific denominator 검토
+  - `Manual_FullText_Check`: 18개, priority 3, cautious review
+  - active upload total: 72개
+- `Exposure_Support_Biomech`, `Excluded_RCT_Treatment`, `Excluded_Other`, `Screening_All_259_Strict`, `Extraction_Template_ObsOnly`, `Decision_Rules`는 no-upload sheet로 표시했다.
+- `src/components/MetaStudyWorkspace.tsx`: Screening 탭에 `Excel workbook standard workflow` board를 추가했다.
+- board에서 active sheet별 `current`, `included`, `excluded`, `pending`, notes를 직접 수정할 수 있게 했다.
+- board 변경값은 같은 브라우저에서 `localStorage`에 유지되며, `board CSV 복사`로 다른 PC/Excel에 넘길 수 있다.
+- Search/Overview metric은 `PDF FT plan` 82와 `Active Excel PDFs` 72를 분리해 표시한다.
+- `src/components/MetaFullTextAssistant.tsx`: PDF 분석 assistant에 `Excel source sheet` 선택 필드를 추가했다.
+- 선택 가능한 source sheet는 업로드가 필요한 3개 sheet만 표시한다.
+- verification CSV에 `source_sheet`를 추가했다.
+- `Manual_FullText_Check`를 선택하면 AI 판정을 낮은 신뢰도의 초안으로 보고 더 엄격히 확인하라는 caution을 표시한다.
+
+검증 결과:
+
+```powershell
+npm.cmd run lint      # 통과
+npm.cmd run build     # 통과
+```
+
+브라우저 검증:
+
+```text
+WIREGENE_APP_MODE=meta / http://127.0.0.1:3015
+Wiregene Meta 표시 확인
+Ver 1.39 표시 확인
+Screening 탭: Excel workbook standard workflow 표시 확인
+ACTIVE UPLOAD PDFS 72 표시 확인
+Core_Comparative_Obs, Core_InstrumentSpecific, Manual_FullText_Check 표시 확인
+No-upload sheets 표시 확인
+Excel source sheet select options 3개 확인
+Manual_FullText_Check 선택 시 caution 표시 확인
+콘솔 error log 없음
+```
+
+주의점:
+
+- 현재 board 수정값은 브라우저 `localStorage`와 CSV 복사 기반이다. 여러 PC/사용자 간 영구 공유가 필요하면 다음 단계에서 DB 또는 Google Drive/Excel file write-back 저장소를 붙여야 한다.
+- actual include count는 full-text PDF extraction과 reviewer conflict resolution 후 확정한다.
+
+Synology 작업 스케줄러 명령:
+
+```sh
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 ## 2026-06-12 full-text PDF AI screening/extraction workflow 추가
 
 사용자 문제 제기:

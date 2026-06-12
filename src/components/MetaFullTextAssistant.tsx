@@ -17,6 +17,11 @@ import type { MetaFullTextAnalysis } from "@/lib/meta-full-text-analysis";
 type MetaFullTextAssistantProps = {
   extractionColumns: string[];
   focus: "screening" | "extraction";
+  worksheetOptions?: {
+    sheetName: string;
+    label: string;
+    reviewMode: "standard" | "cautious" | "not_required";
+  }[];
 };
 
 type ReviewerDecision = "pending" | "include_quantitative" | "include_narrative_support" | "exclude" | "conflict";
@@ -85,9 +90,10 @@ const fixedExclusionReasons = [
   "duplicate/overlap cohort",
 ];
 
-export function MetaFullTextAssistant({ extractionColumns, focus }: MetaFullTextAssistantProps) {
+export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptions = [] }: MetaFullTextAssistantProps) {
   const analyzingRef = useRef(false);
   const [file, setFile] = useState<File | null>(null);
+  const [worksheetName, setWorksheetName] = useState(worksheetOptions[0]?.sheetName ?? "");
   const [referenceRecord, setReferenceRecord] = useState("");
   const [analysis, setAnalysis] = useState<MetaFullTextAnalysis | null>(null);
   const [reviewerOneDecision, setReviewerOneDecision] = useState<ReviewerDecision>("pending");
@@ -104,11 +110,17 @@ export function MetaFullTextAssistant({ extractionColumns, focus }: MetaFullText
     return csvRows(analysis.extraction.columns, analysis.extraction.rows);
   }, [analysis]);
 
+  const selectedWorksheet = useMemo(
+    () => worksheetOptions.find((worksheet) => worksheet.sheetName === worksheetName) ?? worksheetOptions[0] ?? null,
+    [worksheetName, worksheetOptions],
+  );
+
   const verificationCsv = useMemo(() => {
     if (!analysis) return "";
     return csvRows(
       [
         "file_name",
+        "source_sheet",
         "ai_decision",
         "ai_confidence",
         "reviewer_1_decision",
@@ -121,6 +133,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus }: MetaFullText
       [
         {
           file_name: analysis.fileName,
+          source_sheet: selectedWorksheet?.sheetName ?? "",
           ai_decision: analysis.eligibility.decision,
           ai_confidence: String(analysis.eligibility.confidence),
           reviewer_1_decision: reviewerOneDecision,
@@ -132,7 +145,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus }: MetaFullText
         },
       ],
     );
-  }, [analysis, conflictStatus, fixedExclusionReason, reviewerNotes, reviewerOneDecision, reviewerTwoDecision]);
+  }, [analysis, conflictStatus, fixedExclusionReason, reviewerNotes, reviewerOneDecision, reviewerTwoDecision, selectedWorksheet]);
 
   function resetVerificationState() {
     setReviewerOneDecision("pending");
@@ -171,7 +184,17 @@ export function MetaFullTextAssistant({ extractionColumns, focus }: MetaFullText
     try {
       const formData = new FormData();
       formData.set("file", file);
-      formData.set("referenceRecord", referenceRecord);
+      formData.set(
+        "referenceRecord",
+        [
+          selectedWorksheet
+            ? `Excel source sheet: ${selectedWorksheet.sheetName} (${selectedWorksheet.label}); review mode: ${selectedWorksheet.reviewMode}`
+            : "",
+          referenceRecord,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      );
       formData.set("extractionColumns", extractionColumns.join(","));
 
       const payload = await readAnalysisPayload(
@@ -242,16 +265,39 @@ export function MetaFullTextAssistant({ extractionColumns, focus }: MetaFullText
           </div>
         </label>
 
-        <label className="grid gap-2 text-sm font-semibold text-zinc-700">
-          엑셀 screening row 또는 논문 정보
-          <textarea
-            value={referenceRecord}
-            onChange={(event) => setReferenceRecord(event.target.value)}
-            rows={6}
-            placeholder="Screening_ID, first author, year, title, DOI, PMID, abstract 등을 엑셀에서 한 행 복사해 붙여 넣으세요."
-            className="rounded-md border border-emerald-300 bg-white px-3 py-2 text-sm font-normal leading-6 text-zinc-800 outline-none focus:border-emerald-500"
-          />
-        </label>
+        <div className="grid gap-3">
+          {worksheetOptions.length > 0 ? (
+            <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+              Excel source sheet
+              <select
+                value={worksheetName}
+                onChange={(event) => setWorksheetName(event.target.value)}
+                className="h-10 rounded-md border border-emerald-300 bg-white px-3 text-sm font-semibold text-zinc-900 outline-none focus:border-emerald-500"
+              >
+                {worksheetOptions.map((worksheet) => (
+                  <option key={worksheet.sheetName} value={worksheet.sheetName}>
+                    {worksheet.sheetName} · {worksheet.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          {selectedWorksheet?.reviewMode === "cautious" ? (
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-900">
+              Manual_FullText_Check는 AI 판정을 낮은 신뢰도의 초안으로 보고, 원문 table/figure/supplement와 exclusion reason을 더 엄격히 확인합니다.
+            </div>
+          ) : null}
+          <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+            엑셀 screening row 또는 논문 정보
+            <textarea
+              value={referenceRecord}
+              onChange={(event) => setReferenceRecord(event.target.value)}
+              rows={6}
+              placeholder="Screening_ID, first author, year, title, DOI, PMID, abstract 등을 엑셀에서 한 행 복사해 붙여 넣으세요."
+              className="rounded-md border border-emerald-300 bg-white px-3 py-2 text-sm font-normal leading-6 text-zinc-800 outline-none focus:border-emerald-500"
+            />
+          </label>
+        </div>
       </div>
 
       {error ? (

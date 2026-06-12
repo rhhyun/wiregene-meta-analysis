@@ -43,6 +43,18 @@ export type MetaScreeningQueue = {
   decisionRule: string;
 };
 
+export type MetaWorkbookSheet = {
+  sheetName: string;
+  label: string;
+  count: number;
+  source: string;
+  uploadRequired: boolean;
+  priority: string;
+  reviewMode: "standard" | "cautious" | "not_required";
+  action: string;
+  decisionRule: string;
+};
+
 export type MetaExtractionSection = {
   section: string;
   fields: string[];
@@ -70,6 +82,7 @@ export type MetaStudyProject = {
   searchRuns: MetaSearchRun[];
   prismaRows: MetaPrismaRow[];
   screeningQueue: MetaScreeningQueue[];
+  workbookSheets: MetaWorkbookSheet[];
   exposureGroups: {
     group: string;
     instruments: string;
@@ -333,7 +346,7 @@ export const orchestralPainPrismaRows: MetaPrismaRow[] = [
     step: "Full-text assessment queue",
     count: 82,
     status: "working",
-    note: "Core 19 + instrument-specific 40 + manual full-text check 23",
+    note: "Previous 260611 plan PDF planning count; active Excel upload queue is handled by workbook sheet counts",
   },
   {
     step: "Biomechanical/asymmetry support only",
@@ -358,23 +371,23 @@ export const orchestralPainPrismaRows: MetaPrismaRow[] = [
 export const orchestralPainScreeningQueue: MetaScreeningQueue[] = [
   {
     category: "Core comparative observational",
-    count: 19,
+    count: 18,
     priority: "1",
-    action: "Open full text first",
+    action: "Upload these full-text PDFs first",
     decisionRule: "Include_Q1_CoreComparative only if instrument-group sample size and region-specific pain n/total are extractable",
   },
   {
     category: "Instrument-specific observational",
-    count: 40,
+    count: 36,
     priority: "2",
-    action: "Check denominators and body-region tables",
+    action: "Upload after core comparative PDFs",
     decisionRule: "Use as single-arm prevalence evidence if specific instrument denominator and region-specific outcome are present",
   },
   {
     category: "Manual full-text check",
-    count: 23,
+    count: 18,
     priority: "3",
-    action: "Resolve uncertain abstracts",
+    action: "Upload last and review cautiously",
     decisionRule: "Classify as quantitative synthesis, narrative/support only, or exclude with fixed reason",
   },
   {
@@ -383,6 +396,119 @@ export const orchestralPainScreeningQueue: MetaScreeningQueue[] = [
     priority: "Support",
     action: "Extract posture/EMG/kinematic evidence",
     decisionRule: "Do not enter quantitative prevalence MA unless pain numerator/denominator is available",
+  },
+];
+
+export const orchestralPainWorkbookSheets: MetaWorkbookSheet[] = [
+  {
+    sheetName: "Summary",
+    label: "PDF summary counts",
+    count: 259,
+    source: "Previous 260611 plan PDF and uploaded search screenshots",
+    uploadRequired: false,
+    priority: "Locked",
+    reviewMode: "not_required",
+    action: "Keep PRISMA/search counts editable only as protocol summary; do not upload PDFs from this sheet.",
+    decisionRule: "Use previous PDF numbers for identified/deduplicated/abstract/full-text planning counts.",
+  },
+  {
+    sheetName: "Core_Comparative_Obs",
+    label: "Core comparative observational",
+    count: 18,
+    source: "Excel sheet row count from 270611 workbook",
+    uploadRequired: true,
+    priority: "1",
+    reviewMode: "standard",
+    action: "Upload these 18 full-text PDFs first.",
+    decisionRule: "Include only when actual usable denominator-based region/laterality PRMD or pain data are extractable.",
+  },
+  {
+    sheetName: "Core_InstrumentSpecific",
+    label: "Instrument-specific observational",
+    count: 36,
+    source: "Excel sheet row count from 270611 workbook",
+    uploadRequired: true,
+    priority: "2",
+    reviewMode: "standard",
+    action: "Upload after core comparative PDFs and verify instrument-specific denominators.",
+    decisionRule: "Include as single-arm prevalence evidence when specific instrument/group denominator and outcome data are usable.",
+  },
+  {
+    sheetName: "Manual_FullText_Check",
+    label: "Manual full-text check",
+    count: 18,
+    source: "Excel sheet row count from 270611 workbook",
+    uploadRequired: true,
+    priority: "3",
+    reviewMode: "cautious",
+    action: "Upload last and require careful include/exclude judgment.",
+    decisionRule: "Treat AI output as uncertain unless full text clearly satisfies population, design, outcome, and extractability criteria.",
+  },
+  {
+    sheetName: "Exposure_Support_Biomech",
+    label: "Biomechanical/asymmetry support",
+    count: 76,
+    source: "Excel Summary / support sheet",
+    uploadRequired: false,
+    priority: "Support",
+    reviewMode: "not_required",
+    action: "No full-text upload required for current extraction workflow.",
+    decisionRule: "Use only for classification/background evidence unless denominator-based pain outcome is later identified.",
+  },
+  {
+    sheetName: "Excluded_RCT_Treatment",
+    label: "Treatment/RCT/intervention excluded",
+    count: 5,
+    source: "Excel Summary / exclusion sheet",
+    uploadRequired: false,
+    priority: "Excluded",
+    reviewMode: "not_required",
+    action: "Do not upload unless protocol changes to treatment-effect review.",
+    decisionRule: "Keep excluded from observational prevalence/asymmetry synthesis.",
+  },
+  {
+    sheetName: "Excluded_Other",
+    label: "Other exclusions",
+    count: 96,
+    source: "Excel Summary / exclusion sheet",
+    uploadRequired: false,
+    priority: "Excluded",
+    reviewMode: "not_required",
+    action: "No full-text upload required.",
+    decisionRule: "Keep fixed exclusion reason for PRISMA reporting.",
+  },
+  {
+    sheetName: "Screening_All_259_Strict",
+    label: "Strict screening master",
+    count: 259,
+    source: "Excel master screening sheet",
+    uploadRequired: false,
+    priority: "Master",
+    reviewMode: "not_required",
+    action: "Use as audit master and row source for copied reference records.",
+    decisionRule: "Do not upload PDFs from this sheet unless the row belongs to the three active full-text sheets.",
+  },
+  {
+    sheetName: "Extraction_Template_ObsOnly",
+    label: "Standard extraction template",
+    count: 61,
+    source: "Excel extraction template header count",
+    uploadRequired: false,
+    priority: "Template",
+    reviewMode: "not_required",
+    action: "Use as the default schema for this and future meta-analyses.",
+    decisionRule: "All AI extraction rows must match these columns unless the protocol extends the template.",
+  },
+  {
+    sheetName: "Decision_Rules",
+    label: "Decision rules",
+    count: 1,
+    source: "Excel decision rules sheet",
+    uploadRequired: false,
+    priority: "Rules",
+    reviewMode: "not_required",
+    action: "Use for reviewer consistency.",
+    decisionRule: "Apply before accepting any AI include/exclude or extracted value.",
   },
 ];
 
@@ -447,6 +573,7 @@ export const orchestralPainProject: MetaStudyProject = {
   searchRuns: uploadedSearchRuns,
   prismaRows: orchestralPainPrismaRows,
   screeningQueue: orchestralPainScreeningQueue,
+  workbookSheets: orchestralPainWorkbookSheets,
   exposureGroups: [
     {
       group: "Group 1: High postural asymmetry",

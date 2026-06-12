@@ -18,7 +18,7 @@ import {
   Workflow,
   type LucideIcon,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { MetaAnalysisPanel } from "@/components/MetaAnalysisPanel";
 import { MetaFullTextAssistant } from "@/components/MetaFullTextAssistant";
@@ -29,6 +29,7 @@ import {
   projectFinalPubMedQuery,
   type MetaStudyProject,
   type MetaStudyStage,
+  type MetaWorkbookSheet,
 } from "@/lib/meta-projects";
 
 const stageIcons: Record<MetaStudyStage, LucideIcon> = {
@@ -93,6 +94,8 @@ const fullTextExclusionReasons = [
   "non-English full text",
   "RCT/intervention/treatment-effect study",
 ];
+
+const workbookBoardStorageKey = "wiregene-meta-workbook-fulltext-board-v1";
 
 const analysisReadinessRows = [
   ["Overall PRMD prevalence", "현재 61-column template에는 없음; 필요 시 overall_PRMD_n/total 추가", "Template extension candidate"],
@@ -365,11 +368,12 @@ function SearchStage({
         title="업로드 자료 기반 DB별 검색식과 PRISMA 식별 수"
         detail="PDF에는 정확한 검색식이 없고, 2026-06-07 스크린샷에만 DB별 검색식과 결과 수가 있습니다. 이 표를 protocol supplement와 PRISMA identification source로 고정합니다."
       />
-      <div className="grid gap-3 lg:grid-cols-4">
+      <div className="grid gap-3 lg:grid-cols-5">
         <Metric label="Records identified" value={totalSearchResults(project).toLocaleString()} />
         <Metric label="Deduplicated master" value={prismaCount(project, "Records after deduplication")} />
         <Metric label="Abstract text" value={prismaCount(project, "Records with abstract text available")} />
-        <Metric label="Full-text queue" value={prismaCount(project, "Full-text assessment queue")} />
+        <Metric label="PDF FT plan" value={prismaCount(project, "Full-text assessment queue")} />
+        <Metric label="Active Excel PDFs" value={activeFullTextUploadCount(project).toLocaleString()} />
       </div>
       <section className="rounded-md border border-zinc-200">
         <div className="flex flex-col gap-3 border-b border-zinc-200 bg-zinc-50 p-4 lg:flex-row lg:items-center lg:justify-between">
@@ -514,18 +518,21 @@ function SearchStage({
 }
 
 function ScreeningStage({ project }: { project: MetaStudyProject }) {
+  const activeUploadCount = activeFullTextUploadCount(project);
+
   return (
     <div className="grid gap-5">
       <StageHeader
         eyebrow="Screening"
-        title="259편 screening master에서 82편 full-text queue를 먼저 처리합니다"
-        detail="PDF 기준 strict abstract screening은 완료되어 있고, 지금 연구자가 해야 할 일은 Core 19 + Instrument-specific 40 + Manual 23의 denominator와 부위별 n/total 확인입니다."
+        title={`Excel 표준 workbook 기준으로 ${activeUploadCount}개 full-text PDF만 처리합니다`}
+        detail="Summary/Search 숫자는 이전 PDF 값을 기준으로 유지하고, 실제 업로드 대상은 Core_Comparative_Obs 18개, Core_InstrumentSpecific 36개, Manual_FullText_Check 18개입니다."
       />
+      <WorkbookFullTextBoard project={project} />
       <section className="rounded-md border border-zinc-200">
         <div className="flex flex-col gap-3 border-b border-zinc-200 bg-zinc-50 p-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-sm font-semibold text-zinc-950">Full-text triage queue</p>
-            <p className="mt-1 text-xs leading-5 text-zinc-500">Core count는 PDF 표 18, 본문 계산 19로 불일치합니다. 앱은 본문 계산의 82편 queue를 따르되 note로 검증합니다.</p>
+            <p className="mt-1 text-xs leading-5 text-zinc-500">이 표는 업로드가 필요한 3개 sheet만 active queue로 취급합니다. 나머지 Excel sheet는 audit/support/exclusion 용도입니다.</p>
           </div>
           <button
             type="button"
@@ -574,8 +581,269 @@ function ScreeningStage({ project }: { project: MetaStudyProject }) {
           <CheckCard key={title} title={title} detail={detail} />
         ))}
       </div>
-      <MetaFullTextAssistant extractionColumns={project.extractionColumns} focus="screening" />
+      <MetaFullTextAssistant
+        extractionColumns={project.extractionColumns}
+        focus="screening"
+        worksheetOptions={fullTextWorksheetOptions(project)}
+      />
     </div>
+  );
+}
+
+type WorkbookBoardState = Record<
+  string,
+  {
+    currentCount: string;
+    included: string;
+    excluded: string;
+    notes: string;
+  }
+>;
+
+function WorkbookFullTextBoard({ project }: { project: MetaStudyProject }) {
+  const [board, setBoard] = useState<WorkbookBoardState>(() => loadWorkbookBoardState(project));
+  const activeSheets = project.workbookSheets.filter((sheet) => sheet.uploadRequired);
+  const inactiveSheets = project.workbookSheets.filter((sheet) => !sheet.uploadRequired);
+
+  useEffect(() => {
+    window.localStorage.setItem(`${workbookBoardStorageKey}:${project.id}`, JSON.stringify(board));
+  }, [board, project.id]);
+
+  const rows = activeSheets.map((sheet) => {
+    const state = board[sheet.sheetName] ?? initialWorkbookSheetState(sheet);
+    const currentCount = numericText(state.currentCount);
+    const included = numericText(state.included);
+    const excluded = numericText(state.excluded);
+    const pending = Math.max(currentCount - included - excluded, 0);
+    const overflow = included + excluded > currentCount;
+    return { sheet, state, currentCount, included, excluded, pending, overflow };
+  });
+
+  const totals = rows.reduce(
+    (accumulator, row) => ({
+      current: accumulator.current + row.currentCount,
+      included: accumulator.included + row.included,
+      excluded: accumulator.excluded + row.excluded,
+      pending: accumulator.pending + row.pending,
+      overflow: accumulator.overflow || row.overflow,
+    }),
+    { current: 0, included: 0, excluded: 0, pending: 0, overflow: false },
+  );
+
+  function updateSheet(sheetName: string, field: keyof WorkbookBoardState[string], value: string) {
+    setBoard((current) => ({
+      ...current,
+      [sheetName]: {
+        ...(current[sheetName] ?? initialWorkbookSheetState(project.workbookSheets.find((sheet) => sheet.sheetName === sheetName))),
+        [field]: field === "notes" ? value : value.replace(/[^\d]/g, ""),
+      },
+    }));
+  }
+
+  function resetBoard() {
+    setBoard(initialWorkbookBoardState(project.workbookSheets));
+  }
+
+  function workbookBoardCsv() {
+    return csvRows([
+      [
+        "sheet_name",
+        "label",
+        "starting_count",
+        "current_count",
+        "included",
+        "excluded",
+        "pending",
+        "upload_required",
+        "priority",
+        "review_mode",
+        "notes",
+        "action",
+        "decision_rule",
+      ],
+      ...project.workbookSheets.map((sheet) => {
+        const state = board[sheet.sheetName] ?? initialWorkbookSheetState(sheet);
+        const currentCount = numericText(state.currentCount);
+        const included = numericText(state.included);
+        const excluded = numericText(state.excluded);
+        const pending = sheet.uploadRequired ? Math.max(currentCount - included - excluded, 0) : 0;
+        return [
+          sheet.sheetName,
+          sheet.label,
+          String(sheet.count),
+          state.currentCount,
+          state.included,
+          state.excluded,
+          String(pending),
+          sheet.uploadRequired ? "yes" : "no",
+          sheet.priority,
+          sheet.reviewMode,
+          state.notes,
+          sheet.action,
+          sheet.decisionRule,
+        ];
+      }),
+    ]);
+  }
+
+  return (
+    <section className="rounded-md border border-emerald-200 bg-emerald-50 p-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-emerald-900">Excel workbook standard workflow</p>
+          <h3 className="mt-1 text-lg font-semibold text-zinc-950">업로드 대상은 3개 sheet, 나머지는 audit/support로 고정</h3>
+          <p className="mt-2 max-w-4xl text-sm leading-6 text-zinc-700">
+            Summary의 초기 검색/PRISMA 숫자는 이전 PDF 값을 기준으로 유지합니다. 실제 full-text PDF 확인 중 탈락이 생기면 아래 current/included/excluded 값을 직접 수정하고 CSV로 남깁니다.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => void navigator.clipboard?.writeText(workbookBoardCsv())}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-3 text-sm font-semibold text-white transition hover:bg-emerald-800"
+          >
+            <FileSpreadsheet className="h-4 w-4" aria-hidden />
+            board CSV 복사
+          </button>
+          <button
+            type="button"
+            onClick={resetBoard}
+            className="inline-flex h-10 items-center justify-center rounded-md border border-emerald-300 bg-white px-3 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100"
+          >
+            초기값
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-4">
+        <Metric label="Active upload PDFs" value={totals.current.toLocaleString()} />
+        <Metric label="Included draft" value={totals.included.toLocaleString()} />
+        <Metric label="Excluded after full text" value={totals.excluded.toLocaleString()} />
+        <Metric label="Pending review" value={totals.pending.toLocaleString()} />
+      </div>
+
+      {totals.overflow ? (
+        <div className="mt-3 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-900">
+          included + excluded 값이 current count보다 큰 sheet가 있습니다. 입력값을 확인하세요.
+        </div>
+      ) : null}
+
+      <div className="mt-4 overflow-x-auto rounded-md border border-emerald-200 bg-white">
+        <table className="w-full min-w-[980px] border-collapse text-left text-sm">
+          <thead className="bg-emerald-50 text-xs uppercase text-emerald-900">
+            <tr>
+              <th className="border-b border-emerald-200 px-3 py-3">Sheet</th>
+              <th className="border-b border-emerald-200 px-3 py-3">Order</th>
+              <th className="border-b border-emerald-200 px-3 py-3">Current</th>
+              <th className="border-b border-emerald-200 px-3 py-3">Included</th>
+              <th className="border-b border-emerald-200 px-3 py-3">Excluded</th>
+              <th className="border-b border-emerald-200 px-3 py-3">Pending</th>
+              <th className="border-b border-emerald-200 px-3 py-3">Mode</th>
+              <th className="border-b border-emerald-200 px-3 py-3">Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(({ sheet, state, pending, overflow }) => (
+              <tr key={sheet.sheetName} className={overflow ? "bg-rose-50" : undefined}>
+                <td className="border-b border-zinc-100 px-3 py-3">
+                  <p className="font-semibold text-zinc-950">{sheet.sheetName}</p>
+                  <p className="mt-1 text-xs leading-5 text-zinc-500">{sheet.action}</p>
+                </td>
+                <td className="border-b border-zinc-100 px-3 py-3">
+                  <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">
+                    {sheet.priority}
+                  </span>
+                </td>
+                <td className="border-b border-zinc-100 px-3 py-3">
+                  <EditableCount value={state.currentCount} onChange={(value) => updateSheet(sheet.sheetName, "currentCount", value)} />
+                </td>
+                <td className="border-b border-zinc-100 px-3 py-3">
+                  <EditableCount value={state.included} onChange={(value) => updateSheet(sheet.sheetName, "included", value)} />
+                </td>
+                <td className="border-b border-zinc-100 px-3 py-3">
+                  <EditableCount value={state.excluded} onChange={(value) => updateSheet(sheet.sheetName, "excluded", value)} />
+                </td>
+                <td className="border-b border-zinc-100 px-3 py-3 font-semibold text-zinc-950">{pending.toLocaleString()}</td>
+                <td className="border-b border-zinc-100 px-3 py-3 text-sm leading-6 text-zinc-600">
+                  {sheet.reviewMode === "cautious" ? "주의깊은 판정" : "표준 판정"}
+                </td>
+                <td className="border-b border-zinc-100 px-3 py-3">
+                  <input
+                    value={state.notes}
+                    onChange={(event) => updateSheet(sheet.sheetName, "notes", event.target.value)}
+                    className="h-9 w-full rounded-md border border-zinc-300 px-2 text-sm outline-none focus:border-emerald-500"
+                    placeholder="full-text 검토 메모"
+                  />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-4 rounded-md border border-zinc-200 bg-white p-4">
+        <p className="text-sm font-semibold text-zinc-950">No-upload sheets</p>
+        <div className="mt-3 grid gap-2 lg:grid-cols-2">
+          {inactiveSheets.map((sheet) => (
+            <div key={sheet.sheetName} className="rounded-md border border-zinc-200 bg-zinc-50 p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-zinc-950">{sheet.sheetName}</p>
+                  <p className="mt-1 text-xs leading-5 text-zinc-500">{sheet.action}</p>
+                </div>
+                <span className="rounded-full bg-white px-2 py-1 text-xs font-semibold text-zinc-600 ring-1 ring-zinc-200">
+                  n={sheet.count}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function initialWorkbookBoardState(sheets: MetaWorkbookSheet[]) {
+  return Object.fromEntries(sheets.map((sheet) => [sheet.sheetName, initialWorkbookSheetState(sheet)]));
+}
+
+function loadWorkbookBoardState(project: MetaStudyProject) {
+  const initial = initialWorkbookBoardState(project.workbookSheets);
+  if (typeof window === "undefined") return initial;
+  const storageKey = `${workbookBoardStorageKey}:${project.id}`;
+  const saved = window.localStorage.getItem(storageKey);
+  if (!saved) return initial;
+  try {
+    return { ...initial, ...(JSON.parse(saved) as WorkbookBoardState) };
+  } catch {
+    window.localStorage.removeItem(storageKey);
+    return initial;
+  }
+}
+
+function initialWorkbookSheetState(sheet?: MetaWorkbookSheet) {
+  return {
+    currentCount: String(sheet?.count ?? 0),
+    included: "",
+    excluded: "",
+    notes: "",
+  };
+}
+
+function numericText(value: string) {
+  const parsed = Number(value || 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function EditableCount({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  return (
+    <input
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      inputMode="numeric"
+      className="h-9 w-20 rounded-md border border-zinc-300 px-2 text-sm font-semibold outline-none focus:border-emerald-500"
+      placeholder="0"
+    />
   );
 }
 
@@ -643,7 +911,11 @@ function ExtractionStage({ project }: { project: MetaStudyProject }) {
           <ValidationList title="Warnings" items={validation.warnings} tone="warning" />
         </section>
       ) : null}
-      <MetaFullTextAssistant extractionColumns={project.extractionColumns} focus="extraction" />
+      <MetaFullTextAssistant
+        extractionColumns={project.extractionColumns}
+        focus="extraction"
+        worksheetOptions={fullTextWorksheetOptions(project)}
+      />
     </div>
   );
 }
@@ -737,6 +1009,12 @@ function totalSearchResults(project: MetaStudyProject) {
   return project.searchRuns.reduce((total, run) => total + run.resultCount, 0);
 }
 
+function activeFullTextUploadCount(project: MetaStudyProject) {
+  return project.workbookSheets
+    .filter((sheet) => sheet.uploadRequired)
+    .reduce((total, sheet) => total + sheet.count, 0);
+}
+
 function prismaCount(project: MetaStudyProject, step: string) {
   const row = project.prismaRows.find((candidate) => candidate.step === step);
   return row?.count === null || row?.count === undefined ? "TBD" : row.count.toLocaleString();
@@ -780,6 +1058,16 @@ function prismaCsv(project: MetaStudyProject) {
       row.note,
     ]),
   ]);
+}
+
+function fullTextWorksheetOptions(project: MetaStudyProject) {
+  return project.workbookSheets
+    .filter((sheet) => sheet.uploadRequired)
+    .map((sheet) => ({
+      sheetName: sheet.sheetName,
+      label: sheet.label,
+      reviewMode: sheet.reviewMode,
+    }));
 }
 
 function csvRows(rows: string[][]) {
