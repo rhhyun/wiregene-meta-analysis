@@ -1028,6 +1028,51 @@ git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin
 
 Never write the real OpenAI API key into `backup.md` or Git-tracked files.
 
+## 2026-06-13 Included-paper Excel dataset verification
+
+User request:
+
+```text
+Screening 메뉴에서 included로 된 논문의 data들은 엑셀로 정리해야 하므로, 논문 분석에 필요한 모든 parameter와 publication bias, RoB 근거 자료까지 자동 저장하고 검증/수동입력 페이지가 필요합니다. 검증되면 엑셀 데이터로 자동 저장되어야 합니다.
+```
+
+Implemented:
+
+- Added RoB/publication-bias fields to the project extraction schema:
+  - `risk_of_bias_tool`, `rob_selection_recruitment`, `rob_measurement_outcome`, `rob_confounding_adjustment`, `rob_missing_data`, `rob_selective_reporting`, `rob_overall_judgement`, `rob_supporting_quote`, `rob_page_table`
+  - `response_rate`, `funding_source`, `conflict_of_interest`
+  - `publication_bias_outcome_group`, `publication_bias_effect_size`, `publication_bias_standard_error`, `publication_bias_small_study_notes`, `publication_bias_eligible_for_funnel`
+  - `manual_required_fields`, `manual_verification_notes`, `data_extractor`, `data_verifier`, `data_verified`
+- Updated OpenAI full-text instructions so RoB fields and publication-bias inputs are extracted only when supported by article evidence, and missing items are listed for manual review.
+- Added `MetaFullTextExtractionReview` storage inside each full-text history record so corrected Excel rows, verified state, verifier, notes, and verification time persist.
+- Added `src/lib/meta-extraction-dataset.ts` to build an Excel-ready dataset from human-included full-text records only.
+- Added `GET/PATCH /api/meta-analysis/extraction-dataset`.
+  - GET returns included records, Excel-ready columns, CSV, and counts.
+  - PATCH saves corrected/verified Excel rows back to the full-text history record.
+- Added `src/components/MetaExtractionDatasetPanel.tsx` in the Screening stage.
+  - Shows included records only.
+  - Displays saved counts: included records, Excel rows, verified rows, manual fields.
+  - Shows all extraction sections plus audit fields, RoB fields, publication-bias fields, missing fields, and validation issues.
+  - Supports `Save draft`, `Save verified Excel data`, row CSV copy, and full Excel CSV copy.
+- `package.json`, `package-lock.json`: package version bumped to `0.1.20`.
+- `src/lib/version.ts`: UI version bumped to `Ver 1.55`.
+
+Verification:
+
+```text
+Temporary dataset storage test: included=1, rows=1, verified=1, columns include risk_of_bias_tool, CSV contains RoB value.
+npx.cmd tsc --noEmit: pass.
+npm.cmd run lint: pass.
+npm.cmd run build: pass.
+Browser verification on local meta mode: Ver 1.55 visible; Screening shows Included-paper Excel dataset verification panel; included test record appears; risk_of_bias_tool and publication_bias_eligible_for_funnel fields visible; Save verified Excel data displays 저장완료 and verified count updates.
+```
+
+Regular Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 ## 2026-06-13 Meta full-text reviewer names and save confirmation
 
 User request:

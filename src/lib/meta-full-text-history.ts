@@ -19,6 +19,15 @@ export type MetaFullTextVerification = {
   updatedAt: string | null;
 };
 
+export type MetaFullTextExtractionReview = {
+  rows: Record<string, string>[];
+  verified: boolean;
+  verificationNotes: string;
+  verifiedBy: string;
+  updatedAt: string | null;
+  verifiedAt: string | null;
+};
+
 export type MetaFullTextHistoryRecord = {
   id: string;
   fileName: string;
@@ -29,6 +38,7 @@ export type MetaFullTextHistoryRecord = {
   savedAt: string;
   analysis: MetaFullTextAnalysis;
   verification: MetaFullTextVerification;
+  extractionReview: MetaFullTextExtractionReview;
 };
 
 export type MetaFullTextHistorySummary = {
@@ -124,6 +134,7 @@ export async function saveMetaFullTextHistory(input: {
     savedAt: new Date().toISOString(),
     analysis: input.analysis,
     verification: emptyVerification(data.reviewerSettings),
+    extractionReview: emptyExtractionReview(),
   };
 
   data.records = [record, ...data.records.filter((item) => item.id !== record.id)].slice(0, maxStoredRecords);
@@ -155,6 +166,11 @@ export async function getMetaFullTextHistoryRecord(id: string) {
   return data.records.find((record) => record.id === id) ?? null;
 }
 
+export async function getMetaFullTextHistoryRecords() {
+  const data = await readHistoryData();
+  return data.records.slice().sort((a, b) => b.savedAt.localeCompare(a.savedAt));
+}
+
 export async function updateMetaFullTextVerification(id: string, verification: Partial<MetaFullTextVerification>) {
   const data = await readHistoryData();
   const index = data.records.findIndex((record) => record.id === id);
@@ -171,6 +187,29 @@ export async function updateMetaFullTextVerification(id: string, verification: P
   data.reviewerSettings = {
     ...mergeReviewerSettings(data.reviewerSettings, data.records[index].verification),
     updatedAt: new Date().toISOString(),
+  };
+  await writeHistoryData(data);
+  return data.records[index];
+}
+
+export async function updateMetaFullTextExtractionReview(id: string, review: Partial<MetaFullTextExtractionReview>) {
+  const data = await readHistoryData();
+  const index = data.records.findIndex((record) => record.id === id);
+  if (index < 0) return null;
+
+  data.records[index] = {
+    ...data.records[index],
+    extractionReview: normalizeExtractionReview({
+      ...data.records[index].extractionReview,
+      ...review,
+      updatedAt: new Date().toISOString(),
+      verifiedAt:
+        review.verified === true
+          ? new Date().toISOString()
+          : review.verified === false
+            ? null
+            : data.records[index].extractionReview.verifiedAt,
+    }),
   };
   await writeHistoryData(data);
   return data.records[index];
@@ -257,6 +296,17 @@ function emptyVerification(settings: MetaFullTextReviewerSettings = emptyReviewe
   };
 }
 
+function emptyExtractionReview(): MetaFullTextExtractionReview {
+  return {
+    rows: [],
+    verified: false,
+    verificationNotes: "",
+    verifiedBy: "",
+    updatedAt: null,
+    verifiedAt: null,
+  };
+}
+
 function normalizeVerification(value: Partial<MetaFullTextVerification>): MetaFullTextVerification {
   const fallback = emptyVerification();
   return {
@@ -269,6 +319,28 @@ function normalizeVerification(value: Partial<MetaFullTextVerification>): MetaFu
     reviewerNotes: cleanString(value.reviewerNotes),
     updatedAt: cleanOptional(value.updatedAt),
   };
+}
+
+function normalizeExtractionReview(value: Partial<MetaFullTextExtractionReview> | null | undefined): MetaFullTextExtractionReview {
+  const fallback = emptyExtractionReview();
+  const rows = Array.isArray(value?.rows)
+    ? value.rows.map((row) => normalizeRow(row)).filter((row) => Object.keys(row).length > 0)
+    : fallback.rows;
+  return {
+    rows,
+    verified: Boolean(value?.verified),
+    verificationNotes: cleanString(value?.verificationNotes),
+    verifiedBy: cleanString(value?.verifiedBy),
+    updatedAt: cleanOptional(value?.updatedAt),
+    verifiedAt: cleanOptional(value?.verifiedAt),
+  };
+}
+
+function normalizeRow(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object") return {};
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([key, cell]) => [key, cleanString(cell)]),
+  );
 }
 
 function mergeReviewerSettings(
@@ -324,6 +396,7 @@ function normalizeRecord(value: unknown): MetaFullTextHistoryRecord | null {
     savedAt: cleanString(record.savedAt) || analysis.analyzedAt || new Date().toISOString(),
     analysis,
     verification: normalizeVerification(record.verification ?? {}),
+    extractionReview: normalizeExtractionReview(record.extractionReview),
   };
 }
 

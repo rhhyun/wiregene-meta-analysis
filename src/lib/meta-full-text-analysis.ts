@@ -764,6 +764,9 @@ Important rules:
 - Never infer left/right laterality from instrument playing side. Fill left/right cells only when the article explicitly reports left/right outcomes.
 - If an article is treatment/intervention/RCT/effect-focused, do not mark it quantitative unless independent baseline observational prevalence with explicit denominator/numerator is clearly extractable.
 - If a numeric cell lacks source evidence, leave the cell empty or mark it needs review instead of fabricating a value.
+- For risk-of-bias fields, extract only article-supported facts needed for observational-study RoB judgment: sampling/recruitment, measurement/outcome definition, confounding/adjustment, missing data, selective reporting, response rate, funding, and conflict-of-interest statements.
+- For publication-bias fields, collect only study-level inputs that later funnel/small-study-effect checks need: outcome group, effect size/prevalence input, standard error or data needed to compute it, and whether the row is eligible for funnel/small-study assessment. Do not claim publication bias from a single article.
+- Use rob_supporting_quote and rob_page_table for short evidence excerpts or page/table/supplement hints. If the full text lacks evidence, leave the field empty and list it in manual_required_fields.
 - Keep evidence excerpts short.
 - Also evaluate the quality of your own screening/extraction using the reviewEvaluation criteria below.
 - Return only one JSON object.

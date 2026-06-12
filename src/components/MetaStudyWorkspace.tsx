@@ -23,6 +23,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { MetaAnalysisPanel } from "@/components/MetaAnalysisPanel";
 import { MetaAiSettingsPanel } from "@/components/MetaAiSettingsPanel";
+import { MetaExtractionDatasetPanel } from "@/components/MetaExtractionDatasetPanel";
 import { MetaFullTextAssistant } from "@/components/MetaFullTextAssistant";
 import type { CurrentWiregeneUser } from "@/lib/auth-session";
 import { buildPubMedSearchUrl } from "@/lib/meta-analysis-pubmed";
@@ -620,6 +621,7 @@ function ScreeningStage({ project }: { project: MetaStudyProject }) {
         focus="screening"
         worksheetOptions={fullTextWorksheetOptions(project)}
       />
+      <MetaExtractionDatasetPanel extractionSections={project.extractionSections} />
     </div>
   );
 }
