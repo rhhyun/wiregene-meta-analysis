@@ -256,71 +256,172 @@ const metaReviewEvaluationCriteria = {
     "Uncertainty, OCR/table limitations, non-English risk, treatment/intervention design, overlap cohorts, and missing denominators are explicitly visible.",
 };
 
-const metaFullTextResponseFormat = {
-  type: "json_schema",
-  name: "meta_full_text_analysis",
-  description: "Full-text screening, extraction, and quality review for a meta-analysis article.",
-  schema: {
+const stringSchema = { type: "string" } as const;
+const nullableStringSchema = { type: ["string", "null"] } as const;
+const booleanOrNullSchema = { type: ["boolean", "null"] } as const;
+const stringArraySchema = { type: "array", items: stringSchema } as const;
+
+const reviewerChecksResponseSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "originalObservationalData",
+    "instrumentOrGroupSpecificData",
+    "regionSpecificPainOutcome",
+    "extractableNumeratorDenominator",
+    "treatmentOrInterventionStudy",
+    "nonEnglishFullText",
+  ],
+  properties: {
+    originalObservationalData: booleanOrNullSchema,
+    instrumentOrGroupSpecificData: booleanOrNullSchema,
+    regionSpecificPainOutcome: booleanOrNullSchema,
+    extractableNumeratorDenominator: booleanOrNullSchema,
+    treatmentOrInterventionStudy: booleanOrNullSchema,
+    nonEnglishFullText: booleanOrNullSchema,
+  },
+} as const;
+
+const fieldEvidenceResponseSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["rowIndex", "field", "value", "evidence", "sourceHint", "needsReview"],
+  properties: {
+    rowIndex: { type: "number" },
+    field: stringSchema,
+    value: stringSchema,
+    evidence: stringSchema,
+    sourceHint: nullableStringSchema,
+    needsReview: { type: "boolean" },
+  },
+} as const;
+
+const textEvidenceResponseSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["label", "excerpt"],
+  properties: {
+    label: stringSchema,
+    excerpt: stringSchema,
+  },
+} as const;
+
+const reviewCriterionResponseSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["score", "status", "comment"],
+  properties: {
+    score: { type: "number" },
+    status: stringSchema,
+    comment: stringSchema,
+  },
+} as const;
+
+function metaReviewCriteriaResponseSchema() {
+  const keys = Object.keys(metaReviewEvaluationCriteria);
+  return {
     type: "object",
-    additionalProperties: true,
-    required: ["eligibility", "study", "extraction", "evidence", "nextActions", "reviewEvaluation"],
-    properties: {
-      titleGuess: { type: ["string", "null"] },
-      eligibility: {
-        type: "object",
-        additionalProperties: true,
-        properties: {
-          decision: {
-            type: "string",
-            enum: ["include_quantitative", "include_narrative_support", "exclude", "uncertain"],
+    additionalProperties: false,
+    required: keys,
+    properties: Object.fromEntries(keys.map((key) => [key, reviewCriterionResponseSchema])),
+  } as const;
+}
+
+export function createMetaFullTextResponseFormat(extractionColumns: string[]) {
+  const rowColumns = extractionColumns.length > 0 ? extractionColumns : defaultCriticalFields;
+  const rowProperties = Object.fromEntries(rowColumns.map((column) => [column, stringSchema]));
+
+  return {
+    type: "json_schema",
+    name: "meta_full_text_analysis",
+    description: "Full-text screening, extraction, and quality review for a meta-analysis article.",
+    strict: true,
+    schema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["titleGuess", "eligibility", "study", "extraction", "evidence", "nextActions", "reviewEvaluation"],
+      properties: {
+        titleGuess: nullableStringSchema,
+        eligibility: {
+          type: "object",
+          additionalProperties: false,
+          required: ["decision", "confidence", "summary", "reasons", "exclusionReasons", "reviewerChecks"],
+          properties: {
+            decision: {
+              type: "string",
+              enum: ["include_quantitative", "include_narrative_support", "exclude", "uncertain"],
+            },
+            confidence: { type: "number" },
+            summary: stringSchema,
+            reasons: stringArraySchema,
+            exclusionReasons: stringArraySchema,
+            reviewerChecks: reviewerChecksResponseSchema,
           },
-          confidence: { type: "number", minimum: 0, maximum: 100 },
-          summary: { type: "string" },
-          reasons: { type: "array", items: { type: "string" } },
-          exclusionReasons: { type: "array", items: { type: "string" } },
-          reviewerChecks: { type: "object", additionalProperties: true },
         },
-      },
-      study: { type: "object", additionalProperties: true },
-      extraction: {
-        type: "object",
-        additionalProperties: true,
-        properties: {
-          rows: { type: "array", items: { type: "object", additionalProperties: true } },
-          fieldEvidence: { type: "array", items: { type: "object", additionalProperties: true } },
-          missingCriticalFields: { type: "array", items: { type: "string" } },
-          validationIssues: { type: "array", items: { type: "string" } },
+        study: {
+          type: "object",
+          additionalProperties: false,
+          required: [
+            "design",
+            "country",
+            "population",
+            "sampleSizeTotal",
+            "instruments",
+            "mappedAsymmetryGroup",
+            "recallWindow",
+            "painDefinition",
+            "prmdDefinition",
+          ],
+          properties: {
+            design: nullableStringSchema,
+            country: nullableStringSchema,
+            population: nullableStringSchema,
+            sampleSizeTotal: nullableStringSchema,
+            instruments: stringArraySchema,
+            mappedAsymmetryGroup: nullableStringSchema,
+            recallWindow: nullableStringSchema,
+            painDefinition: nullableStringSchema,
+            prmdDefinition: nullableStringSchema,
+          },
         },
-      },
-      evidence: { type: "array", items: { type: "object", additionalProperties: true } },
-      nextActions: { type: "array", items: { type: "string" } },
-      reviewEvaluation: {
-        type: "object",
-        additionalProperties: true,
-        required: ["score", "grade", "summary", "improvement", "criteria"],
-        properties: {
-          score: { type: "number", minimum: 0, maximum: 100 },
-          grade: { type: "string" },
-          summary: { type: "string" },
-          improvement: { type: "string" },
-          modelName: { type: ["string", "null"] },
-          criteria: {
-            type: "object",
-            additionalProperties: {
-              type: "object",
-              additionalProperties: true,
-              properties: {
-                score: { type: "number", minimum: 0, maximum: 100 },
-                status: { type: "string" },
-                comment: { type: "string" },
+        extraction: {
+          type: "object",
+          additionalProperties: false,
+          required: ["rows", "fieldEvidence", "missingCriticalFields", "validationIssues"],
+          properties: {
+            rows: {
+              type: "array",
+              items: {
+                type: "object",
+                additionalProperties: false,
+                required: rowColumns,
+                properties: rowProperties,
               },
             },
+            fieldEvidence: { type: "array", items: fieldEvidenceResponseSchema },
+            missingCriticalFields: stringArraySchema,
+            validationIssues: stringArraySchema,
+          },
+        },
+        evidence: { type: "array", items: textEvidenceResponseSchema },
+        nextActions: stringArraySchema,
+        reviewEvaluation: {
+          type: "object",
+          additionalProperties: false,
+          required: ["score", "grade", "summary", "improvement", "criteria", "modelName"],
+          properties: {
+            score: { type: "number" },
+            grade: stringSchema,
+            summary: stringSchema,
+            improvement: stringSchema,
+            criteria: metaReviewCriteriaResponseSchema(),
+            modelName: nullableStringSchema,
           },
         },
       },
     },
-  },
-} as const;
+  } as const;
+}
 
 export async function analyzeMetaFullTextUpload(input: AnalyzeMetaFullTextInput) {
   const fileType = detectFileType(input.fileName, input.mimeType);
@@ -645,7 +746,7 @@ async function analyzeWithOpenAI({
     const response = await openai.responses.create({
       model: openaiModel,
       text: {
-        format: metaFullTextResponseFormat,
+        format: createMetaFullTextResponseFormat(extractionColumns),
       },
       input: `You are a meticulous systematic-review and meta-analysis extraction assistant.
 

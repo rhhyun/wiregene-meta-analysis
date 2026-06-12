@@ -890,6 +890,42 @@ User-facing interpretation:
 - If it says Google Drive OAuth/settings could not be read, fix `GOOGLE_DRIVE_CLIENT_ID`, `GOOGLE_DRIVE_CLIENT_SECRET`, and `GOOGLE_DRIVE_REFRESH_TOKEN` in Vercel, redeploy, then rerun.
 - If it says no key is available, open AI settings and confirm Source shows `saved encrypted key`, or set `OPENAI_API_KEY` in Vercel Production and redeploy.
 
+## 2026-06-13 OpenAI Structured Outputs schema fix
+
+User-reported error:
+
+```text
+OpenAI request failed, so fallback rules were used.
+Details: 400 Invalid schema for response_format 'meta_full_text_analysis':
+In context=(), 'additionalProperties' is required to be supplied and to be false.
+```
+
+Root cause:
+
+- OpenAI Structured Outputs requires every object in the supplied JSON schema to set `additionalProperties: false`.
+- Strict structured schemas also require every key in `properties` to be listed in `required`; optional values should be represented with nullable types.
+- The previous `meta_full_text_analysis` schema used `additionalProperties: true` for root and nested objects, so OpenAI rejected the request before analysis started.
+
+Implemented:
+
+- `src/lib/meta-full-text-analysis.ts`: replaced the static loose schema with `createMetaFullTextResponseFormat(extractionColumns)`.
+- The response format now uses `strict: true`, `additionalProperties: false` on every object, and complete `required` arrays.
+- Extraction row schema is generated from the active Excel extraction columns, so OpenAI returns only the expected columns.
+- Removed `minimum`/`maximum` numeric schema keywords and kept runtime clamping in code.
+- `package.json`, `package-lock.json`: package version bumped to `0.1.17`.
+- `src/lib/version.ts`: UI version bumped to `Ver 1.52`.
+
+Verification:
+
+```text
+Structured schema recursive local check: pass; strict=true and no object missing additionalProperties:false or required properties.
+npx.cmd tsc --noEmit: pass.
+```
+
+Official reference checked:
+
+- OpenAI Structured Outputs documentation says `additionalProperties: false` must always be set in objects, and all fields should be required with nullable types used for optional values.
+
 ## 2026-06-13 Meta AI settings storage write fix
 
 User report:
