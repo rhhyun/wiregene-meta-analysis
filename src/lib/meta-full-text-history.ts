@@ -9,6 +9,8 @@ import {
 import type { MetaFullTextAnalysis } from "./meta-full-text-analysis";
 
 export type MetaFullTextVerification = {
+  reviewerOneName: string;
+  reviewerTwoName: string;
   reviewerOneDecision: string;
   reviewerTwoDecision: string;
   fixedExclusionReason: string;
@@ -48,10 +50,25 @@ export type MetaFullTextHistorySummary = {
   extractionRowCount: number;
   missingCriticalFieldCount: number;
   validationIssueCount: number;
+  verificationComplete: boolean;
+  reviewerOneName: string;
+  reviewerTwoName: string;
+};
+
+export type MetaFullTextReviewerSettings = {
+  reviewerOneName: string;
+  reviewerTwoName: string;
+  updatedAt: string | null;
+};
+
+export type MetaFullTextHistoryStats = {
+  totalCount: number;
+  verificationCompletedCount: number;
 };
 
 type MetaFullTextHistoryData = {
   records: MetaFullTextHistoryRecord[];
+  reviewerSettings: MetaFullTextReviewerSettings;
 };
 
 type MetaFullTextHistoryStorageErrorDetails = {
@@ -83,8 +100,20 @@ export async function saveMetaFullTextHistory(input: {
   sourceLabel?: string | null;
   reviewMode?: string | null;
   referenceRecord?: string | null;
+  reviewerOneName?: string | null;
+  reviewerTwoName?: string | null;
 }) {
   const data = await readHistoryData();
+  const reviewerSettings = mergeReviewerSettings(data.reviewerSettings, {
+    reviewerOneName: input.reviewerOneName,
+    reviewerTwoName: input.reviewerTwoName,
+  });
+  if (reviewerSettings.reviewerOneName || reviewerSettings.reviewerTwoName) {
+    data.reviewerSettings = {
+      ...reviewerSettings,
+      updatedAt: new Date().toISOString(),
+    };
+  }
   const record: MetaFullTextHistoryRecord = {
     id: `mfta_${new Date().toISOString().replace(/[-:.TZ]/g, "")}_${crypto.randomUUID().slice(0, 8)}`,
     fileName: input.analysis.fileName,
@@ -94,7 +123,7 @@ export async function saveMetaFullTextHistory(input: {
     referenceRecord: cleanOptional(input.referenceRecord),
     savedAt: new Date().toISOString(),
     analysis: input.analysis,
-    verification: emptyVerification(),
+    verification: emptyVerification(data.reviewerSettings),
   };
 
   data.records = [record, ...data.records.filter((item) => item.id !== record.id)].slice(0, maxStoredRecords);
@@ -111,6 +140,16 @@ export async function listMetaFullTextHistory(limit = 50) {
     .map(toSummary);
 }
 
+export async function getMetaFullTextHistoryOverview(limit = 50) {
+  const data = await readHistoryData();
+  const sorted = data.records.slice().sort((a, b) => b.savedAt.localeCompare(a.savedAt));
+  return {
+    records: sorted.slice(0, Math.max(1, Math.min(limit, maxStoredRecords))).map(toSummary),
+    reviewerSettings: data.reviewerSettings,
+    stats: historyStats(data.records),
+  };
+}
+
 export async function getMetaFullTextHistoryRecord(id: string) {
   const data = await readHistoryData();
   return data.records.find((record) => record.id === id) ?? null;
@@ -123,14 +162,46 @@ export async function updateMetaFullTextVerification(id: string, verification: P
 
   data.records[index] = {
     ...data.records[index],
-    verification: {
+    verification: normalizeVerification({
       ...data.records[index].verification,
-      ...normalizeVerification(verification),
+      ...verification,
       updatedAt: new Date().toISOString(),
-    },
+    }),
+  };
+  data.reviewerSettings = {
+    ...mergeReviewerSettings(data.reviewerSettings, data.records[index].verification),
+    updatedAt: new Date().toISOString(),
   };
   await writeHistoryData(data);
   return data.records[index];
+}
+
+export async function updateMetaFullTextReviewerSettings(settings: Partial<MetaFullTextReviewerSettings>) {
+  const data = await readHistoryData();
+  data.reviewerSettings = {
+    ...mergeReviewerSettings(data.reviewerSettings, settings),
+    updatedAt: new Date().toISOString(),
+  };
+  data.records = data.records.map((record) => {
+    const reviewerOneName = record.verification.reviewerOneName || data.reviewerSettings.reviewerOneName;
+    const reviewerTwoName = record.verification.reviewerTwoName || data.reviewerSettings.reviewerTwoName;
+    if (
+      reviewerOneName === record.verification.reviewerOneName &&
+      reviewerTwoName === record.verification.reviewerTwoName
+    ) {
+      return record;
+    }
+    return {
+      ...record,
+      verification: normalizeVerification({
+        ...record.verification,
+        reviewerOneName,
+        reviewerTwoName,
+      }),
+    };
+  });
+  await writeHistoryData(data);
+  return data.reviewerSettings;
 }
 
 export function metaFullTextHistoryStorageErrorDetails(error: unknown) {
@@ -159,11 +230,24 @@ function toSummary(record: MetaFullTextHistoryRecord): MetaFullTextHistorySummar
     extractionRowCount: record.analysis.extraction.rows.length,
     missingCriticalFieldCount: record.analysis.extraction.missingCriticalFields.length,
     validationIssueCount: record.analysis.extraction.validationIssues.length,
+    verificationComplete: isVerificationComplete(record.verification),
+    reviewerOneName: record.verification.reviewerOneName,
+    reviewerTwoName: record.verification.reviewerTwoName,
   };
 }
 
-function emptyVerification(): MetaFullTextVerification {
+function emptyReviewerSettings(): MetaFullTextReviewerSettings {
   return {
+    reviewerOneName: "",
+    reviewerTwoName: "",
+    updatedAt: null,
+  };
+}
+
+function emptyVerification(settings: MetaFullTextReviewerSettings = emptyReviewerSettings()): MetaFullTextVerification {
+  return {
+    reviewerOneName: settings.reviewerOneName,
+    reviewerTwoName: settings.reviewerTwoName,
     reviewerOneDecision: "pending",
     reviewerTwoDecision: "pending",
     fixedExclusionReason: "해당 없음",
@@ -176,12 +260,51 @@ function emptyVerification(): MetaFullTextVerification {
 function normalizeVerification(value: Partial<MetaFullTextVerification>): MetaFullTextVerification {
   const fallback = emptyVerification();
   return {
+    reviewerOneName: cleanString(value.reviewerOneName) || fallback.reviewerOneName,
+    reviewerTwoName: cleanString(value.reviewerTwoName) || fallback.reviewerTwoName,
     reviewerOneDecision: cleanString(value.reviewerOneDecision) || fallback.reviewerOneDecision,
     reviewerTwoDecision: cleanString(value.reviewerTwoDecision) || fallback.reviewerTwoDecision,
     fixedExclusionReason: cleanString(value.fixedExclusionReason) || fallback.fixedExclusionReason,
     conflictStatus: cleanString(value.conflictStatus) || fallback.conflictStatus,
     reviewerNotes: cleanString(value.reviewerNotes),
     updatedAt: cleanOptional(value.updatedAt),
+  };
+}
+
+function mergeReviewerSettings(
+  current: MetaFullTextReviewerSettings = emptyReviewerSettings(),
+  next: {
+    reviewerOneName?: string | null;
+    reviewerTwoName?: string | null;
+    updatedAt?: string | null;
+  } = {},
+): MetaFullTextReviewerSettings {
+  return {
+    reviewerOneName: cleanString(next.reviewerOneName) || current.reviewerOneName || "",
+    reviewerTwoName: cleanString(next.reviewerTwoName) || current.reviewerTwoName || "",
+    updatedAt: cleanOptional(next.updatedAt) ?? current.updatedAt ?? null,
+  };
+}
+
+function normalizeReviewerSettings(value: unknown): MetaFullTextReviewerSettings {
+  if (!value || typeof value !== "object") return emptyReviewerSettings();
+  return mergeReviewerSettings(emptyReviewerSettings(), value as Partial<MetaFullTextReviewerSettings>);
+}
+
+function isVerificationComplete(verification: MetaFullTextVerification) {
+  return (
+    Boolean(verification.reviewerOneName.trim()) &&
+    Boolean(verification.reviewerTwoName.trim()) &&
+    verification.reviewerOneDecision !== "pending" &&
+    verification.reviewerTwoDecision !== "pending" &&
+    ["agreement", "resolved"].includes(verification.conflictStatus)
+  );
+}
+
+function historyStats(records: MetaFullTextHistoryRecord[]): MetaFullTextHistoryStats {
+  return {
+    totalCount: records.length,
+    verificationCompletedCount: records.filter((record) => isVerificationComplete(record.verification)).length,
   };
 }
 
@@ -211,6 +334,7 @@ function normalizeData(value: unknown): MetaFullTextHistoryData {
       : [];
   return {
     records: records.map(normalizeRecord).filter(Boolean).slice(0, maxStoredRecords) as MetaFullTextHistoryRecord[],
+    reviewerSettings: normalizeReviewerSettings((value as Partial<MetaFullTextHistoryData> | null)?.reviewerSettings),
   };
 }
 
@@ -224,14 +348,14 @@ async function readHistoryData(): Promise<MetaFullTextHistoryData> {
     throw storageError(error, "read", targetPath);
   }
 
-  if (!raw) return { records: [] };
+  if (!raw) return { records: [], reviewerSettings: emptyReviewerSettings() };
 
   try {
     return normalizeData(JSON.parse(raw));
   } catch (error) {
     if (!(error instanceof SyntaxError)) throw storageError(error, "read", targetPath);
     await backupCorruptHistory(raw, error);
-    return { records: [] };
+    return { records: [], reviewerSettings: emptyReviewerSettings() };
   }
 }
 

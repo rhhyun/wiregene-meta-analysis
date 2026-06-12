@@ -13,7 +13,7 @@ import {
   SearchCheck,
   UploadCloud,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiErrorMessage } from "@/components/grant-error-message";
 import type { MetaFullTextAnalysis } from "@/lib/meta-full-text-analysis";
 
@@ -48,15 +48,31 @@ type MetaFullTextHistorySummary = {
   extractionRowCount: number;
   missingCriticalFieldCount: number;
   validationIssueCount: number;
+  verificationComplete: boolean;
+  reviewerOneName: string;
+  reviewerTwoName: string;
 };
 
 type MetaFullTextVerification = {
+  reviewerOneName: string;
+  reviewerTwoName: string;
   reviewerOneDecision: string;
   reviewerTwoDecision: string;
   fixedExclusionReason: string;
   conflictStatus: string;
   reviewerNotes: string;
   updatedAt: string | null;
+};
+
+type MetaFullTextReviewerSettings = {
+  reviewerOneName: string;
+  reviewerTwoName: string;
+  updatedAt: string | null;
+};
+
+type MetaFullTextHistoryStats = {
+  totalCount: number;
+  verificationCompletedCount: number;
 };
 
 type MetaFullTextHistoryRecord = {
@@ -88,7 +104,11 @@ async function readHistoryListPayload(response: Response) {
   if (!response.ok) {
     throw new Error(apiErrorMessage(payload, "Saved full-text analyses could not be loaded."));
   }
-  return payload as { records: MetaFullTextHistorySummary[] };
+  return payload as {
+    records: MetaFullTextHistorySummary[];
+    reviewerSettings: MetaFullTextReviewerSettings;
+    stats: MetaFullTextHistoryStats;
+  };
 }
 
 async function readHistoryRecordPayload(response: Response) {
@@ -97,6 +117,18 @@ async function readHistoryRecordPayload(response: Response) {
     throw new Error(apiErrorMessage(payload, "Saved full-text analysis could not be loaded."));
   }
   return payload as { record: MetaFullTextHistoryRecord };
+}
+
+async function readReviewerSettingsPayload(response: Response) {
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(apiErrorMessage(payload, "Reviewer names could not be saved."));
+  }
+  return payload as {
+    records: MetaFullTextHistorySummary[];
+    reviewerSettings: MetaFullTextReviewerSettings;
+    stats: MetaFullTextHistoryStats;
+  };
 }
 
 function savedErrorMessage(details: unknown) {
@@ -179,9 +211,15 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
   const [referenceRecord, setReferenceRecord] = useState("");
   const [analysis, setAnalysis] = useState<MetaFullTextAnalysis | null>(null);
   const [historyItems, setHistoryItems] = useState<MetaFullTextHistorySummary[]>([]);
-  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(true);
   const [historyError, setHistoryError] = useState("");
+  const [historyStats, setHistoryStats] = useState<MetaFullTextHistoryStats>({
+    totalCount: 0,
+    verificationCompletedCount: 0,
+  });
   const [currentHistoryId, setCurrentHistoryId] = useState<string | null>(null);
+  const [reviewerOneName, setReviewerOneName] = useState("");
+  const [reviewerTwoName, setReviewerTwoName] = useState("");
   const [reviewerOneDecision, setReviewerOneDecision] = useState<ReviewerDecision>("pending");
   const [reviewerTwoDecision, setReviewerTwoDecision] = useState<ReviewerDecision>("pending");
   const [fixedExclusionReason, setFixedExclusionReason] = useState(fixedExclusionReasons[0]);
@@ -191,10 +229,11 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
   const [notice, setNotice] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isSavingVerification, setIsSavingVerification] = useState(false);
+  const [isSavingReviewerSettings, setIsSavingReviewerSettings] = useState(false);
+  const [reviewerNamesSaved, setReviewerNamesSaved] = useState(false);
 
-  useEffect(() => {
-    void loadHistory();
-  }, []);
+  const reviewerNamesReady = Boolean(reviewerOneName.trim()) && Boolean(reviewerTwoName.trim());
+  const reviewerSettingsReady = reviewerNamesReady && reviewerNamesSaved;
 
   const extractionCsv = useMemo(() => {
     if (!analysis) return "";
@@ -221,6 +260,8 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
         "ai_review_criteria_json",
         "ai_config_source",
         "ai_warning",
+        "reviewer_1_name",
+        "reviewer_2_name",
         "reviewer_1_decision",
         "reviewer_2_decision",
         "fixed_exclusion_reason",
@@ -241,6 +282,8 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
           ai_review_criteria_json: JSON.stringify(analysis.reviewEvaluation.criteria),
           ai_config_source: analysis.aiConfigSource ?? "",
           ai_warning: analysis.aiWarning ?? "",
+          reviewer_1_name: reviewerOneName,
+          reviewer_2_name: reviewerTwoName,
           reviewer_1_decision: reviewerOneDecision,
           reviewer_2_decision: reviewerTwoDecision,
           fixed_exclusion_reason: fixedExclusionReason,
@@ -250,7 +293,17 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
         },
       ],
     );
-  }, [analysis, conflictStatus, fixedExclusionReason, reviewerNotes, reviewerOneDecision, reviewerTwoDecision, selectedWorksheet]);
+  }, [
+    analysis,
+    conflictStatus,
+    fixedExclusionReason,
+    reviewerNotes,
+    reviewerOneDecision,
+    reviewerOneName,
+    reviewerTwoDecision,
+    reviewerTwoName,
+    selectedWorksheet,
+  ]);
 
   function resetVerificationState() {
     setReviewerOneDecision("pending");
@@ -261,6 +314,8 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
   }
 
   function applyVerification(verification?: Partial<MetaFullTextVerification> | null) {
+    if (verification?.reviewerOneName) setReviewerOneName(verification.reviewerOneName);
+    if (verification?.reviewerTwoName) setReviewerTwoName(verification.reviewerTwoName);
     setReviewerOneDecision((verification?.reviewerOneDecision as ReviewerDecision) || "pending");
     setReviewerTwoDecision((verification?.reviewerTwoDecision as ReviewerDecision) || "pending");
     setFixedExclusionReason(verification?.fixedExclusionReason || fixedExclusionReasons[0]);
@@ -272,20 +327,61 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
     setHistoryItems((current) => [item, ...current.filter((record) => record.id !== item.id)].slice(0, 50));
   }
 
-  async function loadHistory() {
+  const applyHistoryOverview = useCallback((payload: {
+    records: MetaFullTextHistorySummary[];
+    reviewerSettings?: MetaFullTextReviewerSettings;
+    stats?: MetaFullTextHistoryStats;
+  }) => {
+    setHistoryItems(payload.records);
+    if (payload.stats) setHistoryStats(payload.stats);
+    if (payload.reviewerSettings) {
+      setReviewerOneName(payload.reviewerSettings.reviewerOneName);
+      setReviewerTwoName(payload.reviewerSettings.reviewerTwoName);
+      setReviewerNamesSaved(
+        Boolean(payload.reviewerSettings.reviewerOneName.trim()) &&
+          Boolean(payload.reviewerSettings.reviewerTwoName.trim()),
+      );
+    }
+  }, []);
+
+  const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
     setHistoryError("");
     try {
       const payload = await readHistoryListPayload(
         await fetch("/api/meta-analysis/full-text/history?limit=50", { cache: "no-store" }),
       );
-      setHistoryItems(payload.records);
+      applyHistoryOverview(payload);
     } catch (caught) {
       setHistoryError(caught instanceof Error ? caught.message : "Saved full-text analyses could not be loaded.");
     } finally {
       setHistoryLoading(false);
     }
-  }
+  }, [applyHistoryOverview]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadInitialHistory() {
+      try {
+        const payload = await readHistoryListPayload(
+          await fetch("/api/meta-analysis/full-text/history?limit=50", { cache: "no-store" }),
+        );
+        if (!cancelled) applyHistoryOverview(payload);
+      } catch (caught) {
+        if (!cancelled) {
+          setHistoryError(caught instanceof Error ? caught.message : "Saved full-text analyses could not be loaded.");
+        }
+      } finally {
+        if (!cancelled) setHistoryLoading(false);
+      }
+    }
+
+    void loadInitialHistory();
+    return () => {
+      cancelled = true;
+    };
+  }, [applyHistoryOverview]);
 
   async function loadSavedAnalysis(id: string) {
     setError("");
@@ -306,6 +402,33 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
     }
   }
 
+  async function saveReviewerSettings() {
+    setIsSavingReviewerSettings(true);
+    setError("");
+    setNotice("");
+    try {
+      const payload = await readReviewerSettingsPayload(
+        await fetch("/api/meta-analysis/full-text/history", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            reviewerOneName,
+            reviewerTwoName,
+          }),
+        }),
+      );
+      applyHistoryOverview(payload);
+      setReviewerNamesSaved(true);
+      setNotice(
+        `저장완료: Reviewer names saved. Saved files: ${payload.stats.totalCount}; verification completed: ${payload.stats.verificationCompletedCount}.`,
+      );
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Reviewer names could not be saved.");
+    } finally {
+      setIsSavingReviewerSettings(false);
+    }
+  }
+
   async function saveVerification() {
     if (!currentHistoryId) {
       setError("This analysis is not linked to a saved history record yet.");
@@ -323,6 +446,8 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
           body: JSON.stringify({
             reviewerOneDecision,
             reviewerTwoDecision,
+            reviewerOneName,
+            reviewerTwoName,
             fixedExclusionReason,
             conflictStatus,
             reviewerNotes,
@@ -330,8 +455,13 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
         }),
       );
       applyVerification(payload.record.verification);
-      setNotice("Reviewer verification was saved.");
-      void loadHistory();
+      const overview = await readHistoryListPayload(
+        await fetch("/api/meta-analysis/full-text/history?limit=50", { cache: "no-store" }),
+      );
+      applyHistoryOverview(overview);
+      setNotice(
+        `저장완료: Verification saved. Saved files: ${overview.stats.totalCount}; verification completed: ${overview.stats.verificationCompletedCount}.`,
+      );
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Reviewer verification could not be saved.");
     } finally {
@@ -353,7 +483,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
     try {
       await navigator.clipboard.writeText(value);
       setError("");
-      setNotice(`${label} 복사했습니다.`);
+      setNotice(`${label} copied to clipboard. This is not saved.`);
     } catch {
       setNotice("");
       setError("클립보드 복사에 실패했습니다. 브라우저 권한을 확인하거나 CSV를 다시 생성해 주세요.");
@@ -362,6 +492,10 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
 
   async function analyzeFullText() {
     if (analyzingRef.current || !file) return;
+    if (!reviewerSettingsReady) {
+      setError("Save reviewer 1 and reviewer 2 names before full-text analysis.");
+      return;
+    }
     analyzingRef.current = true;
     setError("");
     setNotice("");
@@ -384,6 +518,8 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
       formData.set("sourceSheet", selectedWorksheet?.sheetName ?? "");
       formData.set("sourceLabel", selectedWorksheet?.label ?? "");
       formData.set("reviewMode", selectedWorksheet?.reviewMode ?? "");
+      formData.set("reviewerOneName", reviewerOneName);
+      formData.set("reviewerTwoName", reviewerTwoName);
 
       const payload = await readAnalysisPayload(
         await fetch("/api/meta-analysis/full-text/analyze", {
@@ -409,6 +545,8 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
       }
       if (payload.saveError) {
         setError(savedErrorMessage(payload.saveError));
+      } else {
+        void loadHistory();
       }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "full-text 분석에 실패했습니다.");
@@ -438,13 +576,64 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
         <button
           type="button"
           onClick={analyzeFullText}
-          disabled={isAnalyzing || !file}
+          disabled={isAnalyzing || !file || !reviewerSettingsReady}
           className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
         >
           {isAnalyzing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <SearchCheck className="h-4 w-4" aria-hidden />}
           {isAnalyzing ? "분석 중" : "full-text 분석"}
         </button>
       </div>
+
+      <section className="mt-4 rounded-md border border-emerald-200 bg-white p-3">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+          <div className="grid flex-1 gap-3 md:grid-cols-2">
+            <label className="grid gap-1 text-xs font-semibold uppercase text-zinc-500">
+              reviewer 1 name
+              <input
+                value={reviewerOneName}
+                onChange={(event) => {
+                  setReviewerOneName(event.target.value);
+                  setReviewerNamesSaved(false);
+                }}
+                placeholder="Reviewer 1"
+                className="h-10 rounded-md border border-zinc-300 bg-white px-3 text-sm font-semibold normal-case text-zinc-900 outline-none focus:border-emerald-500"
+              />
+            </label>
+            <label className="grid gap-1 text-xs font-semibold uppercase text-zinc-500">
+              reviewer 2 name
+              <input
+                value={reviewerTwoName}
+                onChange={(event) => {
+                  setReviewerTwoName(event.target.value);
+                  setReviewerNamesSaved(false);
+                }}
+                placeholder="Reviewer 2"
+                className="h-10 rounded-md border border-zinc-300 bg-white px-3 text-sm font-semibold normal-case text-zinc-900 outline-none focus:border-emerald-500"
+              />
+            </label>
+          </div>
+          <button
+            type="button"
+            onClick={() => void saveReviewerSettings()}
+            disabled={isSavingReviewerSettings || !reviewerOneName.trim() || !reviewerTwoName.trim()}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-3 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
+          >
+            {isSavingReviewerSettings ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Save className="h-4 w-4" aria-hidden />}
+            {reviewerNamesSaved ? "Reviewer names saved" : "Save reviewer names"}
+          </button>
+        </div>
+        <p className="mt-2 text-xs font-semibold leading-5 text-zinc-600">
+          Reviewer names: {reviewerNamesSaved ? "saved" : "not saved"}
+        </p>
+        <p className="mt-2 text-xs font-semibold leading-5 text-zinc-600">
+          Saved files: {historyStats.totalCount} · Verification completed: {historyStats.verificationCompletedCount}
+        </p>
+        {!reviewerSettingsReady ? (
+          <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs font-semibold leading-5 text-amber-950">
+            Save reviewer names before analysis so each researcher can identify their assigned verification role.
+          </p>
+        ) : null}
+      </section>
 
       <section className="mt-4 rounded-md border border-emerald-200 bg-white p-3">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -482,6 +671,10 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
                   <p className="truncate text-sm font-semibold text-zinc-950">{item.fileName}</p>
                   <p className="text-xs font-semibold text-zinc-500">{new Date(item.savedAt).toLocaleString("ko-KR")}</p>
                 </div>
+                <p className="text-xs font-semibold leading-5 text-zinc-700">
+                  {item.verificationComplete ? "verification complete" : "verification pending"} · reviewer 1:{" "}
+                  {item.reviewerOneName || "not set"} · reviewer 2: {item.reviewerTwoName || "not set"}
+                </p>
                 <p className="text-xs font-medium leading-5 text-zinc-600">
                   {item.sourceSheet ?? "no sheet"} · {decisionLabel(item.decision)} · confidence {item.confidence} ·{" "}
                   {item.aiUsed ? `AI ${item.model}` : "fallback"} · review {item.reviewScore}/{item.reviewGrade}
@@ -659,11 +852,11 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
               </div>
               <button
                 type="button"
-                onClick={() => void copyToClipboard(extractionCsv, "extraction CSV를")}
+                onClick={() => void copyToClipboard(extractionCsv, "Extraction CSV")}
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-sm font-semibold text-zinc-700 transition hover:border-emerald-300 hover:bg-emerald-50"
               >
                 <FileSpreadsheet className="h-4 w-4" aria-hidden />
-                extraction CSV 복사
+                <span>Copy extraction CSV (not saved)</span>
               </button>
             </div>
             <div className="mt-3 grid gap-2 lg:grid-cols-3">
@@ -693,16 +886,16 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
               </button>
               <button
                 type="button"
-                onClick={() => void copyToClipboard(verificationCsv, "verification CSV를")}
+                onClick={() => void copyToClipboard(verificationCsv, "Verification CSV")}
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-sm font-semibold text-zinc-700 transition hover:border-emerald-300 hover:bg-emerald-50"
               >
                 <ClipboardCheck className="h-4 w-4" aria-hidden />
-                verification CSV 복사
+                <span>Copy verification CSV (not saved)</span>
               </button>
             </div>
             <div className="mt-3 grid gap-3 lg:grid-cols-4">
               <label className="grid gap-1 text-xs font-semibold uppercase text-zinc-500">
-                reviewer 1
+                reviewer 1 {reviewerOneName ? `(${reviewerOneName})` : ""}
                 <select
                   value={reviewerOneDecision}
                   onChange={(event) => setReviewerOneDecision(event.target.value as ReviewerDecision)}
@@ -716,7 +909,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
                 </select>
               </label>
               <label className="grid gap-1 text-xs font-semibold uppercase text-zinc-500">
-                reviewer 2
+                reviewer 2 {reviewerTwoName ? `(${reviewerTwoName})` : ""}
                 <select
                   value={reviewerTwoDecision}
                   onChange={(event) => setReviewerTwoDecision(event.target.value as ReviewerDecision)}

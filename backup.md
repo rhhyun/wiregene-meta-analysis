@@ -1028,6 +1028,55 @@ git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin
 
 Never write the real OpenAI API key into `backup.md` or Git-tracked files.
 
+## 2026-06-13 Meta full-text reviewer names and save confirmation
+
+User request:
+
+```text
+Reviewer verification checks, Human verification worksheet의 CSV 복사 버튼이 저장인지 혼동됩니다. 저장이면 저장으로 표시하고 저장완료와 완료 파일 수가 보여야 합니다. Reviewer 1/2 이름도 분석 전에 저장되어야 합니다.
+```
+
+Implemented:
+
+- CSV buttons are explicitly copy-only:
+  - `Copy extraction CSV (not saved)`
+  - `Copy verification CSV (not saved)`
+  - Clipboard notice now says the CSV was copied and is not saved.
+- Added reviewer name setup above full-text upload:
+  - `reviewer 1 name`
+  - `reviewer 2 name`
+  - `Save reviewer names`
+  - `Reviewer names: saved/not saved`
+  - `Saved files: n · Verification completed: n`
+- Full-text analysis is disabled until both reviewer names are saved, not merely typed.
+- Saving reviewer names persists to full-text history storage and fills missing reviewer names in existing saved records without overwriting already recorded names.
+- Saved full-text history summaries now show verification pending/complete and reviewer 1/2 names.
+- Human verification save now stores reviewer names with the verification record and shows `저장완료` with total saved files and verification completed count.
+- History API now returns `{ records, reviewerSettings, stats }`.
+- Added `PATCH /api/meta-analysis/full-text/history` for reviewer name settings.
+- `package.json`, `package-lock.json`: package version bumped to `0.1.19`.
+- `src/lib/version.ts`: UI version bumped to `Ver 1.54`.
+
+Verification:
+
+```text
+Temporary local history storage test: saved=true, reviewer names saved, total=1, verification completed=1.
+npx.cmd tsc --noEmit: pass.
+npm.cmd run lint: pass.
+npm.cmd run build: pass.
+Browser verification on local meta mode: Ver 1.54 visible; reviewer name fields visible; saved names/status/count visible; saved history item shows reviewer names; loaded analysis shows Copy extraction CSV (not saved), Save verification, Copy verification CSV (not saved); UI save verification displays 저장완료 and updates Verification completed to 1.
+```
+
+Operational note:
+
+- Do not open local Basic Auth test URLs as `http://user:password@host`; browser relative `fetch()` can fail when the base URL contains credentials. Use normal Basic Auth or remove credentials from the URL after authentication.
+
+Regular Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 ## 2026-06-13 Meta AI settings Vercel Google Drive storage fix
 
 User-reported error:

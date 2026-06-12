@@ -2,7 +2,7 @@ import type { ResearchReport } from "./types";
 
 const INITIAL_BRIEFING_VERSION = "0.1";
 
-export const BRIEFING_VERSION = "1.53";
+export const BRIEFING_VERSION = "1.54";
 export const BRIEFING_VERSION_LABEL = formatVersionLabel(BRIEFING_VERSION);
 
 function formatVersionLabel(version: string) {

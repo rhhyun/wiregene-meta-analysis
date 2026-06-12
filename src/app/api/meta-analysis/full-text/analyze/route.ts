@@ -54,6 +54,8 @@ export async function POST(request: Request) {
   const sourceSheet = formString(formData, "sourceSheet");
   const sourceLabel = formString(formData, "sourceLabel");
   const reviewMode = formString(formData, "reviewMode");
+  const reviewerOneName = formString(formData, "reviewerOneName");
+  const reviewerTwoName = formString(formData, "reviewerTwoName");
   const requestedColumns = columnsSchema.parse(formString(formData, "extractionColumns"));
   const extractionColumns = allowedExtractionColumns(requestedColumns);
 
@@ -73,6 +75,8 @@ export async function POST(request: Request) {
         sourceLabel,
         reviewMode,
         referenceRecord: referenceRecord || null,
+        reviewerOneName,
+        reviewerTwoName,
       });
 
       return NextResponse.json({
@@ -96,6 +100,9 @@ export async function POST(request: Request) {
           extractionRowCount: savedRecord.analysis.extraction.rows.length,
           missingCriticalFieldCount: savedRecord.analysis.extraction.missingCriticalFields.length,
           validationIssueCount: savedRecord.analysis.extraction.validationIssues.length,
+          verificationComplete: false,
+          reviewerOneName: savedRecord.verification.reviewerOneName,
+          reviewerTwoName: savedRecord.verification.reviewerTwoName,
         },
       });
     } catch (saveError) {
