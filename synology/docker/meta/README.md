@@ -55,6 +55,8 @@ Meta administrators can also save the OpenAI key/model from the in-app
 `META_AI_SETTINGS_STORAGE_PATH` and takes priority over `OPENAI_API_KEY`.
 Set `META_AI_SETTINGS_SECRET` to a stable secret so saved keys remain readable
 after Basic Auth password changes.
+This file is saved by the Meta AI settings storage directly and does not depend
+on `REPORT_STORAGE_BACKEND` or `GRANT_STORAGE_BACKEND`.
 
 If port `3001` is already used, the script prints the running container that
 owns the port and stops before changing anything. If that old container should

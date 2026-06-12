@@ -64,3 +64,5 @@ and save the OpenAI key/model there. The saved key is encrypted in
 `META_AI_SETTINGS_STORAGE_PATH` and is used before the environment
 `OPENAI_API_KEY`. Set `META_AI_SETTINGS_SECRET` to a stable secret so encrypted
 keys remain readable after Basic Auth password changes.
+This settings file is written by the Meta AI settings storage directly and does
+not inherit `REPORT_STORAGE_BACKEND` or `GRANT_STORAGE_BACKEND`.

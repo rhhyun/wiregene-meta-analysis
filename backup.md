@@ -805,6 +805,48 @@ Regular Synology deploy/run command after GitHub push:
 git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
 ```
 
+## 2026-06-13 Meta AI settings storage write fix
+
+User report:
+
+```text
+openai key가 저장인 안됩니다 meta AI settings storage write failed.
+```
+
+Root cause:
+
+- Meta AI settings originally reused the generic grant/report JSON storage helper.
+- That helper can inherit `REPORT_STORAGE_BACKEND` or `GRANT_STORAGE_BACKEND`, so the AI key save path could be affected by unrelated storage settings.
+- The API only returned the short error string, so the UI did not show the actual path/backend/code.
+
+Fix:
+
+- `src/lib/meta-ai-settings.ts`: replaced generic grant/report storage with dedicated Meta AI settings local JSON storage.
+- The storage path is still `META_AI_SETTINGS_STORAGE_PATH`, default `.data/meta/meta-ai-settings.json`.
+- Meta AI settings no longer inherit `REPORT_STORAGE_BACKEND` or `GRANT_STORAGE_BACKEND`.
+- Storage write failures now return detailed diagnostics: operation, path, OS code, message, and help text.
+- `src/app/api/meta-analysis/ai-settings/route.ts`: error responses now include detailed storage diagnostics for the UI.
+- `SERVICE.md` and `synology/docker/meta/README.md`: documented that Meta AI settings storage is independent of report/grant storage.
+- `package.json`, `package-lock.json`: package version bumped to `0.1.13`.
+- `src/lib/version.ts`: UI version bumped to `Ver 1.48`.
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit: pass.
+AI settings save with REPORT_STORAGE_BACKEND=google-drive and local META_AI_SETTINGS_STORAGE_PATH: PATCH 200, GET 200, source saved, raw key not leaked.
+Serverless/read-only simulation: PATCH 400 with details.code SERVERLESS_LOCAL_STORAGE plus path/help.
+npm.cmd run lint: pass.
+npm.cmd run build: pass.
+git diff --check: pass.
+```
+
+Regular Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 Never write the real OpenAI API key into `backup.md` or Git-tracked files.
 
 ## 2026-06-12 In-app AI evaluation settings menu

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentWiregeneUser } from "@/lib/auth-session";
-import { getMetaAiSettingsSummary, updateMetaAiSettings } from "@/lib/meta-ai-settings";
+import { getMetaAiSettingsSummary, metaAiSettingsErrorDetails, updateMetaAiSettings } from "@/lib/meta-ai-settings";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -74,6 +74,7 @@ function settingsErrorResponse(error: unknown) {
   return NextResponse.json(
     {
       error: error instanceof Error ? error.message : "AI settings operation failed.",
+      details: metaAiSettingsErrorDetails(error),
     },
     { status: 400 },
   );

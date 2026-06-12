@@ -1,6 +1,7 @@
 import crypto from "crypto";
+import { promises as fs } from "fs";
+import path from "path";
 import { config } from "./config";
-import { createGrantJsonStorage } from "./grant-storage";
 
 export type MetaAiSettingsSummary = {
   providerType: "OPENAI";
@@ -37,24 +38,36 @@ type MetaAiSettingsUpdate = {
   updatedBy?: string | null;
 };
 
+type MetaAiSettingsStorageErrorDetails = {
+  operation: "read" | "write" | "backup-corrupt-json";
+  path: string;
+  code?: string;
+  message: string;
+  help: string;
+  backupPath?: string;
+};
+
+export class MetaAiSettingsStorageError extends Error {
+  readonly details: MetaAiSettingsStorageErrorDetails;
+
+  constructor(message: string, details: MetaAiSettingsStorageErrorDetails) {
+    super(message);
+    this.name = "MetaAiSettingsStorageError";
+    this.details = details;
+  }
+}
+
 const defaultModelName = "gpt-5-nano";
 const encryptionPrefix = "aesgcm:v1:";
-
-const metaAiSettingsStorage = createGrantJsonStorage<StoredMetaAiSettings>({
-  envName: "META_AI_SETTINGS_STORAGE_PATH",
-  defaultRelativePath: ".data/meta/meta-ai-settings.json",
-  label: "meta AI settings",
-  emptyData: () => emptySettings(),
-  normalize: normalizeStoredSettings,
-});
+const defaultStoragePath = ".data/meta/meta-ai-settings.json";
 
 export async function getMetaAiSettingsSummary(): Promise<MetaAiSettingsSummary> {
-  const settings = await metaAiSettingsStorage.read();
+  const settings = await readStoredMetaAiSettings();
   return toSummary(settings);
 }
 
 export async function updateMetaAiSettings(input: MetaAiSettingsUpdate): Promise<MetaAiSettingsSummary> {
-  const current = await metaAiSettingsStorage.read();
+  const current = await readStoredMetaAiSettings();
   const nextModel = normalizeModelName(input.modelName ?? current.modelName);
   let apiKeyEncrypted = current.apiKeyEncrypted;
   const nextApiKey = input.apiKey?.trim();
@@ -74,12 +87,12 @@ export async function updateMetaAiSettings(input: MetaAiSettingsUpdate): Promise
     updatedBy: input.updatedBy?.trim() || current.updatedBy || null,
   };
 
-  await metaAiSettingsStorage.write(next);
+  await writeStoredMetaAiSettings(next);
   return toSummary(next);
 }
 
 export async function resolveMetaOpenAIConfig(): Promise<MetaOpenAIConfig> {
-  const settings = await metaAiSettingsStorage.read();
+  const settings = await readStoredMetaAiSettings();
   const savedKey = decryptSecret(settings.apiKeyEncrypted);
   const envKey = config.openaiApiKey.trim();
   const apiKey = savedKey || envKey;
@@ -91,6 +104,71 @@ export async function resolveMetaOpenAIConfig(): Promise<MetaOpenAIConfig> {
     enabled: settings.enabled && Boolean(apiKey),
     source,
   };
+}
+
+export function metaAiSettingsErrorDetails(error: unknown) {
+  if (error instanceof MetaAiSettingsStorageError) return error.details;
+  if (error instanceof Error) return { message: error.message };
+  return { message: String(error) };
+}
+
+function metaAiSettingsStoragePath() {
+  const configured = process.env.META_AI_SETTINGS_STORAGE_PATH?.trim();
+  return path.resolve(/* turbopackIgnore: true */ process.cwd(), configured || defaultStoragePath);
+}
+
+async function readStoredMetaAiSettings(): Promise<StoredMetaAiSettings> {
+  const targetPath = metaAiSettingsStoragePath();
+  let raw: string;
+
+  try {
+    raw = await fs.readFile(targetPath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return emptySettings();
+    throw storageError(error, "read", targetPath);
+  }
+
+  try {
+    return normalizeStoredSettings(JSON.parse(raw));
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw storageError(error, "read", targetPath);
+    await moveCorruptSettingsAside(targetPath, error);
+    return emptySettings();
+  }
+}
+
+async function writeStoredMetaAiSettings(settings: StoredMetaAiSettings) {
+  const targetPath = metaAiSettingsStoragePath();
+  if (isServerlessReadOnlyPath(targetPath)) {
+    throw new MetaAiSettingsStorageError("meta AI settings storage write failed.", {
+      operation: "write",
+      path: targetPath,
+      code: "SERVERLESS_LOCAL_STORAGE",
+      message: "The deployment filesystem is read-only, so Meta AI settings cannot be saved as a local JSON file.",
+      help:
+        "Run Meta on Synology/local Docker for in-app key storage, or set OPENAI_API_KEY as a deployment environment variable. For Synology, update and restart with scripts/synology-start-meta.sh.",
+    });
+  }
+
+  const temporaryPath = `${targetPath}.${process.pid}.${Date.now()}.${crypto.randomUUID()}.tmp`;
+
+  try {
+    await fs.mkdir(path.dirname(targetPath), { recursive: true });
+    await fs.writeFile(temporaryPath, JSON.stringify(settings, null, 2), "utf8");
+    await fs.rename(temporaryPath, targetPath);
+  } catch (error) {
+    await fs.unlink(temporaryPath).catch(() => undefined);
+    throw storageError(error, "write", targetPath);
+  }
+}
+
+async function moveCorruptSettingsAside(targetPath: string, parseError: SyntaxError) {
+  const backupPath = `${targetPath}.corrupt-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+  try {
+    await fs.rename(targetPath, backupPath);
+  } catch (error) {
+    throw storageError(error, "backup-corrupt-json", targetPath, backupPath, parseError.message);
+  }
 }
 
 function toSummary(settings: StoredMetaAiSettings): MetaAiSettingsSummary {
@@ -109,7 +187,7 @@ function toSummary(settings: StoredMetaAiSettings): MetaAiSettingsSummary {
     modelName: normalizeModelName(settings.modelName || config.openaiModel),
     apiKeyMasked,
     apiKeySource,
-    storagePath: metaAiSettingsStorage.path(),
+    storagePath: metaAiSettingsStoragePath(),
     updatedAt: settings.updatedAt,
     updatedBy: settings.updatedBy,
   };
@@ -192,6 +270,40 @@ function encryptionSeed() {
     process.env.CRON_SECRET?.trim() ||
     ""
   );
+}
+
+function isServerlessReadOnlyPath(targetPath: string) {
+  return Boolean(
+    process.env.VERCEL ||
+      process.env.AWS_LAMBDA_FUNCTION_NAME ||
+      targetPath === "/var/task" ||
+      targetPath.startsWith("/var/task/"),
+  );
+}
+
+function storageError(
+  error: unknown,
+  operation: MetaAiSettingsStorageErrorDetails["operation"],
+  targetPath: string,
+  backupPath?: string,
+  cause?: string,
+) {
+  if (error instanceof MetaAiSettingsStorageError) return error;
+  const nodeError = error as NodeJS.ErrnoException;
+  const message = error instanceof Error ? error.message : String(error);
+  const help =
+    operation === "write"
+      ? "Check that the runtime user can write to this path. On Synology, the expected writable host folder is /volume1/docker/meta/data via the /app/.data/meta Docker volume."
+      : "Check the Meta AI settings JSON file path and permissions.";
+
+  return new MetaAiSettingsStorageError(`meta AI settings storage ${operation} failed.`, {
+    operation,
+    path: targetPath,
+    code: nodeError.code,
+    message: cause ? `${message}; cause: ${cause}` : message,
+    help,
+    backupPath,
+  });
 }
 
 function maskSecret(value: string | null | undefined) {
