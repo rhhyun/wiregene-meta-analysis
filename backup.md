@@ -76,6 +76,145 @@ Synology 작업 스케줄러 명령:
 /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
 ```
 
+## 2026-06-12 full-text PDF AI screening/extraction workflow 추가
+
+사용자 문제 제기:
+
+```text
+실제 검색 데이터는 Excel에 있고, 각 논문 full-text PDF도 확보했다.
+연구자가 반복적으로 해야 하는 핵심 작업은 1) 연구 목적에 맞는 논문인지 거르는 일, 2) 포함 논문 PDF에서 parameter 수치를 Excel에 입력하는 일이다.
+이 두 작업은 지루하고 human error가 커서, full-text PDF 업로드 후 AI가 초안을 만들고 연구자가 검증하는 플랫폼이 필요하다.
+필요하면 Gemini 또는 ChatGPT/OpenAI API를 최대한 활용해야 한다.
+```
+
+확인한 Excel 파일:
+
+```text
+G:\내 드라이브\1_Thesis\Review_Pain Violin\Data\260606 New data\270611_10th ObservationOnly_Strict_Screening_Postural_Asymmetry_PRMD_Hyun.xlsx
+```
+
+Excel workbook 구조:
+
+- Sheets: `Summary`, `Core_Comparative_Obs`, `Core_InstrumentSpecific`, `Manual_FullText_Check`, `Exposure_Support_Biomech`, `Excluded_RCT_Treatment`, `Excluded_Other`, `Screening_All_259_Strict`, `Extraction_Template_ObsOnly`, `Decision_Rules`
+- Summary 기준: master records 259, primary observation-only candidates 59, core comparative observational 19, instrument-specific observational 40, manual full-text check 23, biomechanical/asymmetry support 76, treatment/RCT/intervention excluded 5, other exclusions 96
+- 실제 tab row count는 Summary와 일부 불일치가 있었다. 예: `Core_Comparative_Obs`는 header 제외 18행, `Core_InstrumentSpecific`는 36행, `Manual_FullText_Check`는 18행으로 확인됨. 앱에서는 Excel template과 Summary 수치를 함께 보존하고, 최종 included count는 full-text 검증 후 확정한다.
+
+`Extraction_Template_ObsOnly`에서 확인한 61개 컬럼:
+
+```text
+study_id, first_author, year, country, design, sample_size_total, sample_size_analyzed, population_source, professional_status, mean_age, female_percent, instrument_group_reported, specific_instrument, mapped_asymmetry_group, mapping_confidence, playing_hours, years_experience, recall_window, pain_definition, prmd_definition, neck_n, neck_total, left_shoulder_n, left_shoulder_total, right_shoulder_n, right_shoulder_total, shoulder_unspecified_n, shoulder_unspecified_total, left_elbow_n, left_elbow_total, right_elbow_n, right_elbow_total, elbow_unspecified_n, elbow_unspecified_total, left_wrist_hand_n, left_wrist_hand_total, right_wrist_hand_n, right_wrist_hand_total, wrist_hand_unspecified_n, wrist_hand_unspecified_total, upper_back_n, upper_back_total, lower_back_n, lower_back_total, tmj_jaw_n, tmj_jaw_total, headache_n, headache_total, pain_intensity_mean, pain_intensity_sd, pain_interference_mean, pain_interference_sd, performance_limitation_n, performance_limitation_total, adjusted_or, adjustment_covariates, notes_on_extractability, source_pdf_available, coder, second_reviewer, conflict_status
+```
+
+변경 내용:
+
+- `package.json`, `package-lock.json`: 버전을 `0.1.3`으로 올렸다.
+- `src/lib/version.ts`: UI 표시 버전을 `Ver 1.38`로 올렸다.
+- `src/lib/meta-projects.ts`: extraction columns를 Excel의 `Extraction_Template_ObsOnly` 61개 컬럼으로 교체하고 section grouping을 새 템플릿에 맞췄다.
+- `src/lib/meta-full-text-analysis.ts`: PDF/TXT full-text 분석 라이브러리를 추가했다. OpenAI API key가 있으면 `responses.create`로 strict JSON screening/extraction 초안을 생성하고, key가 없으면 규칙 기반 fallback으로 eligibility/evidence/CSV row 초안을 만든다.
+- `src/app/api/meta-analysis/full-text/analyze/route.ts`: multipart upload API를 추가했다. 60MB 이하 PDF/TXT, optional reference screening row, optional extraction columns를 받는다.
+- `src/components/MetaFullTextAssistant.tsx`: full-text PDF 업로드 UI를 추가했다. 논문 PDF와 Excel row를 올리면 eligibility decision, reviewer checks, study signals, evidence snippets, missing fields, n/total validation issues, extraction CSV copy를 제공한다.
+- `src/components/MetaStudyWorkspace.tsx`: Screening 탭에는 eligibility assistant, Extraction 탭에는 extraction assistant를 배치했다.
+- `src/components/MetaStudyWorkspace.tsx`: validator와 analysis readiness 기준을 기존 `asymmetry_class`에서 Excel 실제 컬럼인 `mapped_asymmetry_group`으로 수정했다.
+
+AI workflow 의도:
+
+- AI 결과는 최종 판정이 아니라 reviewer verification 초안이다.
+- quantitative include는 original observational data, instrument/instrument-group data, region-specific pain outcome, extractable numerator/denominator가 확인될 때만 권장하도록 prompt를 제한했다.
+- RCT, intervention/treatment, case report, review, conference-only, wrong population/outcome, denominator 불명확 논문은 제외 또는 보류 후보로 표시한다.
+- Excel에 바로 붙여넣을 수 있도록 61개 컬럼 순서의 CSV를 생성한다.
+- `*_n > *_total` 같은 명백한 수치 오류와 critical field 누락을 자동 표시한다.
+
+검증 결과:
+
+```powershell
+npm.cmd run lint      # 통과
+npm.cmd run build     # 통과
+```
+
+API 검증:
+
+```text
+POST /api/meta-analysis/full-text/analyze
+테스트 파일: C:\Users\rhhyu\AppData\Local\Temp\wiregene-meta-plan-260611.pdf
+OPENAI_API_KEY 없이 fallback rules 경로 확인
+fileType: pdf
+extractedTextLength: 13,156
+aiUsed: false
+decision: exclude
+```
+
+브라우저 검증:
+
+```text
+WIREGENE_APP_MODE=meta / http://127.0.0.1:3013
+Wiregene Meta 표시 확인
+Ver 1.38 표시 확인
+Screening 탭: Full-text PDF AI eligibility assistant, PDF 업로드, AI 초안, 연구자 검증, full-text 분석 버튼 표시 확인
+Extraction 탭: Full-text PDF AI extraction assistant, Extraction CSV validator, mapped_asymmetry_group, adjusted_or, conflict_status 표시 확인
+```
+
+에이전트 검증:
+
+- 메타분석/통계 방법론 검증 에이전트와 기술 QA 검증 에이전트를 별도로 실행했다.
+- 메타분석/통계 방법론 검증 에이전트는 fallback 오분류 위험, cell-level provenance 부재, OCR/table extraction 한계, reviewer workflow 부족, validator 부족을 지적했다.
+- 기술 QA 검증 에이전트는 OpenAI 실패 시 `aiUsed=true`로 보일 위험, JSON schema validation 부재, PDF page/text truncation 표시 부족, CSV validator의 row-level blank 검증 부족, client column 검증 부족을 지적했다.
+
+에이전트 지적 반영:
+
+- fallback rules는 더 이상 include/exclude를 확정하지 않는다. OpenAI API key가 없거나 OpenAI/JSON validation이 실패하면 `decision=uncertain`, confidence 20, `aiUsed=false`로 표시한다.
+- OpenAI 응답은 `zod` schema validation을 통과해야만 AI 결과로 사용한다.
+- AI가 성공한 경우에도 fallback instrument와 AI instrument를 무조건 합치지 않고, AI가 실제 sample/group 근거로 추출한 instrument를 우선한다.
+- extraction 결과에 `fieldEvidence`를 추가했다. AI가 `neck_n`, `left_shoulder_n` 같은 정량 cell을 채우면 row index, field, value, short evidence, page/table/source hint를 함께 반환하도록 prompt와 normalizer를 확장했다.
+- Screening/Extraction assistant 결과 영역에 `Human verification worksheet`를 추가했다. reviewer 1, reviewer 2, fixed exclusion reason, conflict status, reviewer notes를 기록하고 verification CSV로 복사할 수 있다.
+- 결과 영역에 `Cell-level evidence` panel을 추가했다. cell별 근거가 없으면 정량값을 확정하지 말고 원문 table/figure/supplement를 확인하라는 메시지를 표시한다.
+- PDF 추출은 처음 120페이지와 70,000자 분석 cap을 명시하고, cap에 걸리면 validation issue로 표시한다.
+- full-text upload API는 `Content-Length`와 60MB 제한을 먼저 확인하고, extraction columns는 Excel template의 허용 컬럼으로 제한한다.
+- CSV validator는 header뿐 아니라 row별 필수값 누락, percent-only 값, 비정수 n/total, 음수, sample size보다 큰 denominator, `*_n`만 있고 `*_total`이 없는 경우를 잡는다.
+- 오래된 `asymmetry_class` 문구를 `mapped_asymmetry_group`으로 교체했다.
+
+남은 주의점:
+
+- 실제 논문 PDF들로 extraction accuracy를 검증해야 한다.
+- 스캔 PDF는 현재 텍스트 추출이 되지 않으면 OCR 후 업로드해야 한다.
+- 이번 구현은 OpenAI API 경로를 먼저 붙였다. Gemini는 아직 provider abstraction에 추가하지 않았으며, API key/패키지/비용 정책이 정해지면 동일 인터페이스로 확장한다.
+- 아직 영구 DB 저장/audit log는 없다. 현재는 reviewer가 CSV를 복사해 Excel에 붙여 검증하는 단계이며, 다음 단계에서 paper별 저장, reviewer conflict resolution, OCR/table extraction, provider abstraction을 붙여야 한다.
+
+추가 검증 결과:
+
+```powershell
+npm.cmd run lint      # 통과
+npm.cmd run build     # 통과
+```
+
+API 재검증:
+
+```text
+POST /api/meta-analysis/full-text/analyze
+OPENAI_API_KEY 없이 fallback rules 경로 확인
+aiUsed: false
+decision: uncertain
+confidence: 20
+rows: 1
+fieldEvidence: 0
+```
+
+브라우저 재검증:
+
+```text
+WIREGENE_APP_MODE=meta / http://127.0.0.1:3014
+Wiregene Meta 표시 확인
+Ver 1.38 표시 확인
+Screening 탭: Full-text PDF AI eligibility assistant 표시 확인
+Extraction 탭: Full-text PDF AI extraction assistant, mapped_asymmetry_group, adjusted_or, conflict_status 표시 확인
+콘솔 error log 없음
+```
+
+Synology 작업 스케줄러 명령:
+
+```sh
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 ## 2026-06-12 업로드 자료 재반영 및 Meta 워크플로 보강
 
 사용자 문제 제기:

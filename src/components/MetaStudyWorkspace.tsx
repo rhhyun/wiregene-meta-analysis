@@ -21,6 +21,7 @@ import {
 import { useMemo, useState } from "react";
 
 import { MetaAnalysisPanel } from "@/components/MetaAnalysisPanel";
+import { MetaFullTextAssistant } from "@/components/MetaFullTextAssistant";
 import { buildPubMedSearchUrl } from "@/lib/meta-analysis-pubmed";
 import {
   metaStudyProjects,
@@ -94,13 +95,13 @@ const fullTextExclusionReasons = [
 ];
 
 const analysisReadinessRows = [
-  ["Overall PRMD prevalence", "overall_PRMD_n + overall_PRMD_total", "Pending full-text extraction"],
-  ["Neck prevalence", "neck_n + neck_total by asymmetry_class", "Primary region outcome"],
+  ["Overall PRMD prevalence", "현재 61-column template에는 없음; 필요 시 overall_PRMD_n/total 추가", "Template extension candidate"],
+  ["Neck prevalence", "neck_n + neck_total by mapped_asymmetry_group", "Primary region outcome"],
   ["Left/right shoulder laterality", "left_shoulder_n/total and right_shoulder_n/total", "Novelty-critical"],
   ["Left/right wrist-hand laterality", "left_wrist_hand_n/total and right_wrist_hand_n/total", "Novelty-critical"],
   ["Upper/lower back prevalence", "upper_back_n/total and lower_back_n/total", "Moderate asymmetry hypothesis"],
   ["TMJ/jaw modifier", "tmj_jaw_n + tmj_jaw_total + orofacial modifier", "Brass/woodwind sensitivity"],
-  ["Meta-regression", ">=10 studies per covariate with asymmetry_class and recall_window", "Not ready until extraction count confirms"],
+  ["Meta-regression", ">=10 studies per covariate with mapped_asymmetry_group and recall_window", "Not ready until extraction count confirms"],
 ];
 
 const methodSentences = [
@@ -573,6 +574,7 @@ function ScreeningStage({ project }: { project: MetaStudyProject }) {
           <CheckCard key={title} title={title} detail={detail} />
         ))}
       </div>
+      <MetaFullTextAssistant extractionColumns={project.extractionColumns} focus="screening" />
     </div>
   );
 }
@@ -617,7 +619,7 @@ function ExtractionStage({ project }: { project: MetaStudyProject }) {
             value={csvText}
             onChange={(event) => setCsvText(event.target.value)}
             rows={9}
-            placeholder={`${project.extractionColumns.slice(0, 8).join(",")},...\nS001,Author,2024,Title,Journal,Korea,10.0000/example,123456,...`}
+            placeholder={`${project.extractionColumns.slice(0, 8).join(",")},...\nS001,Smith,2024,Korea,cross-sectional,120,118,orchestra sample,...`}
             className="rounded-md border border-emerald-300 bg-white px-3 py-2 text-sm font-normal leading-6 text-zinc-800 outline-none focus:border-emerald-500"
           />
         </label>
@@ -641,6 +643,7 @@ function ExtractionStage({ project }: { project: MetaStudyProject }) {
           <ValidationList title="Warnings" items={validation.warnings} tone="warning" />
         </section>
       ) : null}
+      <MetaFullTextAssistant extractionColumns={project.extractionColumns} focus="extraction" />
     </div>
   );
 }
@@ -830,7 +833,7 @@ function validateExtractionCsv(csvText: string, expectedColumns: string[]): Extr
     "first_author",
     "year",
     "specific_instrument",
-    "asymmetry_class",
+    "mapped_asymmetry_group",
     "pain_definition",
     "recall_window",
   ];
@@ -851,15 +854,45 @@ function validateExtractionCsv(csvText: string, expectedColumns: string[]): Extr
       errors.push(`row ${rowNumber}: header ${headers.length}개와 cell ${cells.length}개가 맞지 않습니다.`);
     }
 
+    const row = Object.fromEntries(headers.map((header, headerIndex) => [header, cells[headerIndex] ?? ""]));
+    required.forEach((column) => {
+      if (!headers.includes(column)) return;
+      if (!row[column]?.trim()) {
+        errors.push(`row ${rowNumber}: 필수값 ${column}이 비어 있습니다.`);
+      }
+    });
+
+    const sampleSize = toNumber(row.sample_size_analyzed || row.sample_size_total);
     headers.forEach((header, columnIndex) => {
+      if (!/(?:_n|_total)$/.test(header)) return;
+      const value = cells[columnIndex] ?? "";
+      if (!value.trim()) return;
+      if (value.includes("%")) {
+        errors.push(`row ${rowNumber}: ${header}에 percent만 있습니다. n/total 원자료를 확인하세요.`);
+        return;
+      }
+      const parsedValue = toNumber(value);
+      if (parsedValue === null) {
+        errors.push(`row ${rowNumber}: ${header} 값 "${value}"는 정수 n/total로 해석할 수 없습니다.`);
+        return;
+      }
+      if (parsedValue < 0) {
+        errors.push(`row ${rowNumber}: ${header} 값이 음수입니다.`);
+      }
+      if (header.endsWith("_total") && sampleSize !== null && parsedValue > sampleSize) {
+        warnings.push(`row ${rowNumber}: ${header}(${parsedValue})가 sample_size(${sampleSize})보다 큽니다.`);
+      }
       if (!header.endsWith("_n")) return;
       const totalHeader = `${header.slice(0, -2)}_total`;
       const totalIndex = headers.indexOf(totalHeader);
       if (totalIndex < 0) return;
 
-      const eventValue = toNumber(cells[columnIndex]);
+      const eventValue = parsedValue;
       const totalValue = toNumber(cells[totalIndex]);
-      if (eventValue === null || totalValue === null) return;
+      if (totalValue === null) {
+        errors.push(`row ${rowNumber}: ${header}는 있지만 ${totalHeader}가 비어 있거나 숫자가 아닙니다.`);
+        return;
+      }
       if (eventValue > totalValue) {
         errors.push(`row ${rowNumber}: ${header}(${eventValue})가 ${totalHeader}(${totalValue})보다 큽니다.`);
       }
@@ -911,8 +944,10 @@ function parseCsvLine(line: string) {
 }
 
 function toNumber(value: string | undefined) {
-  if (!value) return null;
-  const parsed = Number(value);
+  if (!value?.trim()) return null;
+  const normalized = value.trim().replace(/,/g, "");
+  if (!/^-?\d+(?:\.0+)?$/.test(normalized)) return null;
+  const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : null;
 }
 
