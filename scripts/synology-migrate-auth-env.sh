@@ -1,7 +1,15 @@
 #!/bin/sh
 set -eu
 
-APP_DIR="${APP_DIR:-/volume1/docker/research-briefing-platform}"
+if [ -n "${APP_DIR:-}" ]; then
+  APP_DIR="$APP_DIR"
+elif [ -d /volume1/docker/wiregene-meta-analysis ]; then
+  APP_DIR="/volume1/docker/wiregene-meta-analysis"
+else
+  APP_DIR="/volume1/docker/research-briefing-platform"
+fi
+
+LEGACY_APP_DIR="${LEGACY_APP_DIR:-/volume1/docker/research-briefing-platform}"
 META_ENV="${META_ENV:-/volume1/docker/meta/.env}"
 PORTAL_ENV="${PORTAL_ENV:-/volume1/docker/portal/.env}"
 META_EXAMPLE="$APP_DIR/synology/docker/meta/.env.example"
@@ -13,8 +21,12 @@ DEFAULT_SOURCE_FILES="
 $APP_DIR/.env.local
 $APP_DIR/.env
 $APP_DIR/.env.production
+$LEGACY_APP_DIR/.env.local
+$LEGACY_APP_DIR/.env
+$LEGACY_APP_DIR/.env.production
 /volume1/docker/search/.env
 /volume1/docker/research-briefing/.env
+/volume1/docker/portal/.env
 "
 DEFAULT_SOURCE_CONTAINERS="research-briefing-web wiregene-search"
 
@@ -204,11 +216,20 @@ main() {
   [ -d "$APP_DIR" ] || fail "APP_DIR not found: $APP_DIR"
 
   ensure_target_env "$META_ENV" "$META_EXAMPLE"
-  ensure_target_env "$PORTAL_ENV" "$PORTAL_EXAMPLE"
-  backup_target_env "$META_ENV"
-  backup_target_env "$PORTAL_ENV"
+  targets="$META_ENV"
+  if [ -f "$PORTAL_EXAMPLE" ]; then
+    ensure_target_env "$PORTAL_ENV" "$PORTAL_EXAMPLE"
+    targets="$targets $PORTAL_ENV"
+  else
+    log "Skipping portal auth migration because package example is not present: $PORTAL_EXAMPLE"
+  fi
 
-  for target in "$META_ENV" "$PORTAL_ENV"; do
+  backup_target_env "$META_ENV"
+  if printf "%s" "$targets" | grep -q "$PORTAL_ENV"; then
+    backup_target_env "$PORTAL_ENV"
+  fi
+
+  for target in $targets; do
     for key in $AUTH_KEYS; do
       copy_key_if_missing "$target" "$key"
     done
@@ -218,9 +239,7 @@ main() {
 
   log "Auth migration finished without printing secret values."
   log "If no admin key was found, set WIREGENE_ADMIN_EMAILS manually or rerun with AUTH_FALLBACK_ADMIN_FROM_USER=true."
-  log "Next: /bin/sh $APP_DIR/scripts/synology-bootstrap-service-repos.sh"
   log "Next: /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh"
-  log "Next: /bin/sh /volume1/docker/wiregene-portal/scripts/synology-start-portal.sh"
 }
 
 main "$@"

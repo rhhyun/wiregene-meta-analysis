@@ -17,6 +17,56 @@ fail() {
   exit 1
 }
 
+secure_runtime_env() {
+  chmod 600 "$RUNTIME_DIR/.env" 2>/dev/null || log "WARNING: Could not chmod 600 $RUNTIME_DIR/.env"
+}
+
+set_env_value() {
+  key="$1"
+  value="$2"
+  tmp="$RUNTIME_DIR/.env.tmp.$$"
+  found="false"
+
+  [ -f "$RUNTIME_DIR/.env" ] || fail "Runtime env file does not exist: $RUNTIME_DIR/.env"
+
+  while IFS= read -r line || [ -n "$line" ]; do
+    clean_line=$(printf "%s" "$line" | sed "s/\r$//")
+    case "$clean_line" in
+      "$key="* | "export $key="*)
+        printf "%s=%s\n" "$key" "$value" >> "$tmp"
+        found="true"
+        ;;
+      *)
+        printf "%s\n" "$clean_line" >> "$tmp"
+        ;;
+    esac
+  done < "$RUNTIME_DIR/.env"
+
+  if [ "$found" != "true" ]; then
+    printf "%s=%s\n" "$key" "$value" >> "$tmp"
+  fi
+
+  mv "$tmp" "$RUNTIME_DIR/.env"
+  secure_runtime_env
+}
+
+process_env_value() {
+  key="$1"
+  eval "printf '%s' \"\${$key:-}\""
+}
+
+seed_runtime_env_from_process() {
+  for key in APP_BASIC_AUTH_USER APP_BASIC_AUTH_PASSWORD APP_BASIC_AUTH_USERS WIREGENE_ADMIN_EMAILS APP_ADMIN_USERS APP_ADMIN_USER; do
+    value=$(process_env_value "$key")
+    [ -n "$value" ] || continue
+    current=$(env_value "$key")
+    if [ -z "$current" ]; then
+      set_env_value "$key" "$value"
+      log "Filled $key in $RUNTIME_DIR/.env from scheduler environment."
+    fi
+  done
+}
+
 compose() {
   if docker compose version >/dev/null 2>&1; then
     docker compose "$@"
@@ -38,8 +88,11 @@ prepare_runtime() {
 
   if [ ! -f "$RUNTIME_DIR/.env" ]; then
     cp "$RUNTIME_DIR/.env.example" "$RUNTIME_DIR/.env"
-    fail "Created $RUNTIME_DIR/.env from .env.example. Run $APP_DIR/scripts/synology-migrate-auth-env.sh to copy existing auth values without printing passwords, or fill auth values manually, then run this script again."
+    secure_runtime_env
+    log "Created $RUNTIME_DIR/.env from .env.example."
   fi
+
+  seed_runtime_env_from_process
 }
 
 env_value() {
@@ -65,7 +118,7 @@ warn_runtime_env() {
   admin_user=$(env_value APP_ADMIN_USER)
 
   if [ -z "$auth_users" ] && { [ -z "$auth_user" ] || [ -z "$auth_password" ]; }; then
-    fail "No complete Basic Auth credential found in $RUNTIME_DIR/.env. Run $APP_DIR/scripts/synology-migrate-auth-env.sh or set APP_BASIC_AUTH_USERS / APP_BASIC_AUTH_USER + APP_BASIC_AUTH_PASSWORD."
+    fail "No complete Basic Auth credential found in $RUNTIME_DIR/.env. Run $APP_DIR/scripts/synology-migrate-auth-env.sh, edit $RUNTIME_DIR/.env, or rerun with APP_BASIC_AUTH_USER and APP_BASIC_AUTH_PASSWORD in the scheduler command."
   fi
 
   if [ -z "$admin_emails" ] && [ -z "$admin_users" ] && [ -z "$admin_user" ]; then

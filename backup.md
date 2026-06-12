@@ -46,6 +46,47 @@ https://github.com/rhhyun/wiregene-meta-analysis.git
 - direct command `/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh`는 `/volume1/docker/wiregene-meta-analysis`가 이미 최신 Git checkout일 때만 유효하다.
 - `git command not found`가 나오면 Synology Git 패키지를 설치한 뒤 다시 실행한다.
 
+## 2026-06-12 Synology Basic Auth 누락 오류 처리
+
+사용자 오류 보고:
+
+```text
+Cloning into '/volume1/docker/wiregene-meta-analysis'...
+2026-06-12 19:31:42 Wiregene Meta DSM scheduler start requested.
+2026-06-12 19:31:42 ERROR: No complete Basic Auth credential found in /volume1/docker/meta/.env.
+```
+
+의미:
+
+- repo clone은 성공했다.
+- `/volume1/docker/meta/.env`가 생성되었지만 `APP_BASIC_AUTH_USERS` 또는 `APP_BASIC_AUTH_USER` + `APP_BASIC_AUTH_PASSWORD`가 비어 있어 서비스 시작이 중단되었다.
+- 이 중단은 인증 없이 public으로 열리지 않게 하는 안전장치다.
+
+변경 내용:
+
+- `scripts/synology-start-meta.sh`가 DSM scheduler command 앞에 붙인 `APP_BASIC_AUTH_USER`, `APP_BASIC_AUTH_PASSWORD`, `APP_BASIC_AUTH_USERS`, `WIREGENE_ADMIN_EMAILS`, `APP_ADMIN_USERS`, `APP_ADMIN_USER` 값을 `/volume1/docker/meta/.env`의 빈 값에 자동으로 채우도록 수정했다.
+- `scripts/synology-migrate-auth-env.sh`가 meta repo 단독 checkout에서도 동작하도록 수정했다. portal package example이 없으면 portal migration은 건너뛰고 meta env만 이관한다.
+- `synology/docker/meta/README.md`, `docs/synology-meta-portal-split.md`, `SERVICE.md`에 Basic Auth 누락 시 복구 명령을 추가했다.
+
+다음 실행 옵션:
+
+기존 Synology search/briefing 환경에서 auth 값을 안전하게 이관:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-migrate-auth-env.sh && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+새 Basic Auth 값을 직접 seed:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && APP_BASIC_AUTH_USER='YOUR_LOGIN_ID' APP_BASIC_AUTH_PASSWORD='YOUR_PASSWORD' WIREGENE_ADMIN_EMAILS='YOUR_ADMIN_EMAIL' /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+검증:
+
+- 로컬 Windows 환경에 `sh`/`bash`가 없어 shell syntax check는 실행하지 못했다.
+- 변경은 POSIX `sh` 문법만 사용했다.
+
 ## 2026-06-12 Meta 전환 작업
 
 사용자 요청:

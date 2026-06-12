@@ -45,6 +45,19 @@ The direct command below is valid only after the source checkout exists:
 On the first run, fill `/volume1/docker/meta/.env`, then run the same command
 again.
 
+If the first run stops with `No complete Basic Auth credential found`, either
+migrate existing auth values:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-migrate-auth-env.sh && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+or seed new values through the scheduler environment:
+
+```sh
+APP_BASIC_AUTH_USER='YOUR_LOGIN_ID' APP_BASIC_AUTH_PASSWORD='YOUR_PASSWORD' WIREGENE_ADMIN_EMAILS='YOUR_ADMIN_EMAIL' /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 Default host port:
 
 ```text
