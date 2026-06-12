@@ -9,6 +9,10 @@ type PdfCanvasModule = {
   Path2D?: unknown;
 };
 
+type PdfParseConstructor = typeof import("pdf-parse").PDFParse & {
+  setWorker?: (workerSrc?: string) => string;
+};
+
 type Matrix2D = [number, number, number, number, number, number];
 
 export async function extractPdfTextWithPdfParse(buffer: Buffer): Promise<PdfParseTextResult> {
@@ -17,6 +21,7 @@ export async function extractPdfTextWithPdfParse(buffer: Buffer): Promise<PdfPar
   installPdfParseNodePolyfills(require);
 
   const { PDFParse } = require("pdf-parse") as typeof import("pdf-parse");
+  configurePdfParseWorker(require, PDFParse as PdfParseConstructor);
   const parser = new PDFParse({ data: new Uint8Array(buffer) });
   try {
     const result = await parser.getText();
@@ -45,6 +50,28 @@ function installPdfParseNodePolyfills(require: NodeRequire) {
   target.DOMMatrix ??= canvas?.DOMMatrix ?? PdfDomMatrixFallback;
   target.ImageData ??= canvas?.ImageData ?? PdfImageDataFallback;
   target.Path2D ??= canvas?.Path2D ?? PdfPath2DFallback;
+}
+
+function configurePdfParseWorker(require: NodeRequire, PDFParse: PdfParseConstructor) {
+  if (process.env.WIREGENE_PDF_DISABLE_WORKER_CONFIG === "true") return;
+  if (typeof PDFParse.setWorker !== "function") return;
+
+  const workerUrl = resolvePdfParseWorkerUrl(require);
+  if (workerUrl) {
+    PDFParse.setWorker(workerUrl);
+  }
+}
+
+function resolvePdfParseWorkerUrl(require: NodeRequire) {
+  try {
+    const path = require("node:path") as typeof import("node:path");
+    const { pathToFileURL } = require("node:url") as typeof import("node:url");
+    const mainPath = require.resolve("pdf-parse");
+    const workerPath = path.join(path.dirname(mainPath), "pdf.worker.mjs");
+    return pathToFileURL(workerPath).toString();
+  } catch {
+    return null;
+  }
 }
 
 class PdfDomMatrixFallback {
