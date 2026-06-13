@@ -100,6 +100,8 @@ type BatchAnalysisResult = {
   message: string;
 };
 
+const fullTextHistoryListUrl = "/api/meta-analysis/full-text/history?limit=500";
+
 async function readAnalysisPayload(response: Response) {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -223,6 +225,14 @@ function batchStatusTone(status: BatchAnalysisStatus) {
   return "border-zinc-200 bg-zinc-50 text-zinc-600";
 }
 
+function stripGeneratedReferenceContext(value: string | null | undefined) {
+  return (value ?? "")
+    .split(/\r?\n/)
+    .filter((line) => !/^Excel source sheet: .+; review mode: .+$/.test(line.trim()))
+    .join("\n")
+    .trim();
+}
+
 const reviewerDecisionOptions: { value: ReviewerDecision; label: string }[] = [
   { value: "pending", label: "검증 전" },
   { value: "include_quantitative", label: "정량 포함" },
@@ -291,6 +301,15 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
   const batchSavedCount = batchResults.filter((item) => item.status === "saved").length;
   const batchFailedCount = batchResults.filter((item) => item.status === "failed").length;
   const batchFinishedCount = batchSavedCount + batchFailedCount;
+  const currentHistoryItem = useMemo(
+    () => historyItems.find((item) => item.id === currentHistoryId) ?? null,
+    [currentHistoryId, historyItems],
+  );
+  const analyzeButtonLabel = isAnalyzing
+    ? "Analyzing"
+    : files.length > 1
+      ? `Analyze queue (${files.length})`
+      : "Analyze full text";
 
   const extractionCsv = useMemo(() => {
     if (!analysis) return "";
@@ -406,7 +425,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
     setHistoryError("");
     try {
       const payload = await readHistoryListPayload(
-        await fetch("/api/meta-analysis/full-text/history?limit=50", { cache: "no-store" }),
+        await fetch(fullTextHistoryListUrl, { cache: "no-store" }),
       );
       applyHistoryOverview(payload);
     } catch (caught) {
@@ -422,7 +441,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
     async function loadInitialHistory() {
       try {
         const payload = await readHistoryListPayload(
-          await fetch("/api/meta-analysis/full-text/history?limit=50", { cache: "no-store" }),
+          await fetch(fullTextHistoryListUrl, { cache: "no-store" }),
         );
         if (!cancelled) applyHistoryOverview(payload);
       } catch (caught) {
@@ -450,7 +469,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
       const record = payload.record;
       setAnalysis(record.analysis);
       setCurrentHistoryId(record.id);
-      setReferenceRecord(record.referenceRecord ?? "");
+      setReferenceRecord(stripGeneratedReferenceContext(record.referenceRecord));
       if (record.sourceSheet) setWorksheetName(record.sourceSheet);
       applyVerification(record.verification);
       setNotice(`Loaded saved analysis: ${record.fileName}`);
@@ -513,7 +532,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
       );
       applyVerification(payload.record.verification);
       const overview = await readHistoryListPayload(
-        await fetch("/api/meta-analysis/full-text/history?limit=50", { cache: "no-store" }),
+        await fetch(fullTextHistoryListUrl, { cache: "no-store" }),
       );
       applyHistoryOverview(overview);
       setNotice(
@@ -561,6 +580,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
 
   function createAnalysisFormData(nextFile: File) {
     const formData = new FormData();
+    const cleanedReferenceRecord = stripGeneratedReferenceContext(referenceRecord);
     formData.set("file", nextFile);
     formData.set(
       "referenceRecord",
@@ -568,7 +588,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
         selectedWorksheet
           ? `Excel source sheet: ${selectedWorksheet.sheetName} (${selectedWorksheet.label}); review mode: ${selectedWorksheet.reviewMode}`
           : "",
-        referenceRecord,
+        cleanedReferenceRecord,
       ]
         .filter(Boolean)
         .join("\n"),
@@ -722,15 +742,6 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
           <h3 className="mt-1 text-lg font-semibold text-zinc-950">원문 업로드 → AI 초안 → 연구자 검증</h3>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-700">{detail}</p>
         </div>
-        <button
-          type="button"
-          onClick={analyzeFullText}
-          disabled={isAnalyzing || files.length === 0 || !reviewerSettingsReady}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
-        >
-          {isAnalyzing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <SearchCheck className="h-4 w-4" aria-hidden />}
-          {isAnalyzing ? "Analyzing" : files.length > 1 ? `Analyze queue (${files.length})` : "Analyze full text"}
-        </button>
       </div>
 
       <section className="mt-4 rounded-md border border-emerald-200 bg-white p-3">
@@ -807,29 +818,43 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
         ) : null}
         <div className="mt-3 grid gap-2">
           {historyItems.length > 0 ? (
-            historyItems.slice(0, 8).map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => void loadSavedAnalysis(item.id)}
-                className={`grid gap-1 rounded-md border p-3 text-left transition hover:border-emerald-300 hover:bg-emerald-50 ${
-                  currentHistoryId === item.id ? "border-emerald-400 bg-emerald-50" : "border-zinc-200 bg-white"
-                }`}
-              >
-                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="truncate text-sm font-semibold text-zinc-950">{item.fileName}</p>
-                  <p className="text-xs font-semibold text-zinc-500">{new Date(item.savedAt).toLocaleString("ko-KR")}</p>
+            <>
+              <label className="grid gap-1 text-xs font-semibold uppercase text-zinc-500">
+                Saved article list ({historyItems.length.toLocaleString("ko-KR")}/{historyStats.totalCount.toLocaleString("ko-KR")})
+                <select
+                  value={currentHistoryId ?? ""}
+                  onChange={(event) => {
+                    if (event.target.value) void loadSavedAnalysis(event.target.value);
+                  }}
+                  className="h-11 rounded-md border border-zinc-300 bg-white px-3 text-sm font-semibold normal-case text-zinc-900 outline-none focus:border-emerald-500"
+                >
+                  <option value="">Select a saved full-text article...</option>
+                  {historyItems.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.fileName} | {item.sourceSheet ?? "no sheet"} | {decisionLabel(item.decision)} |{" "}
+                      {item.verificationComplete ? "verified" : "pending"} | {new Date(item.savedAt).toLocaleString("ko-KR")}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {currentHistoryItem ? (
+                <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3">
+                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="truncate text-sm font-semibold text-zinc-950">{currentHistoryItem.fileName}</p>
+                    <p className="text-xs font-semibold text-zinc-500">{new Date(currentHistoryItem.savedAt).toLocaleString("ko-KR")}</p>
+                  </div>
+                  <p className="mt-1 text-xs font-semibold leading-5 text-zinc-700">
+                    {currentHistoryItem.verificationComplete ? "verification complete" : "verification pending"} · reviewer 1:{" "}
+                    {currentHistoryItem.reviewerOneName || "not set"} · reviewer 2: {currentHistoryItem.reviewerTwoName || "not set"}
+                  </p>
+                  <p className="text-xs font-medium leading-5 text-zinc-600">
+                    {currentHistoryItem.sourceSheet ?? "no sheet"} · {decisionLabel(currentHistoryItem.decision)} · confidence{" "}
+                    {currentHistoryItem.confidence} · {currentHistoryItem.aiUsed ? `AI ${currentHistoryItem.model}` : "fallback"} · review{" "}
+                    {currentHistoryItem.reviewScore}/{currentHistoryItem.reviewGrade}
+                  </p>
                 </div>
-                <p className="text-xs font-semibold leading-5 text-zinc-700">
-                  {item.verificationComplete ? "verification complete" : "verification pending"} · reviewer 1:{" "}
-                  {item.reviewerOneName || "not set"} · reviewer 2: {item.reviewerTwoName || "not set"}
-                </p>
-                <p className="text-xs font-medium leading-5 text-zinc-600">
-                  {item.sourceSheet ?? "no sheet"} · {decisionLabel(item.decision)} · confidence {item.confidence} ·{" "}
-                  {item.aiUsed ? `AI ${item.model}` : "fallback"} · review {item.reviewScore}/{item.reviewGrade}
-                </p>
-              </button>
-            ))
+              ) : null}
+            </>
           ) : (
             <p className="rounded-md border border-dashed border-zinc-200 bg-zinc-50 p-3 text-sm font-semibold text-zinc-500">
               No saved full-text analyses yet.
@@ -859,6 +884,15 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
               disabled={isAnalyzing}
               className="mt-3 w-full text-sm text-zinc-700 disabled:cursor-not-allowed disabled:opacity-60 file:mr-3 file:rounded-md file:border-0 file:bg-zinc-900 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-zinc-700"
             />
+            <button
+              type="button"
+              onClick={analyzeFullText}
+              disabled={isAnalyzing || files.length === 0 || !reviewerSettingsReady}
+              className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
+            >
+              {isAnalyzing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <SearchCheck className="h-4 w-4" aria-hidden />}
+              {analyzeButtonLabel}
+            </button>
             <p className="mt-2 text-xs font-semibold leading-5 text-zinc-600">
               Select multiple PDF, Word, TXT, or MD files once. The app analyzes them one by one and saves each result as a separate history record.
             </p>
@@ -891,7 +925,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
             엑셀 screening row 또는 논문 정보
             <textarea
               value={referenceRecord}
-              onChange={(event) => setReferenceRecord(event.target.value)}
+              onChange={(event) => setReferenceRecord(stripGeneratedReferenceContext(event.target.value))}
               rows={6}
               placeholder="Screening_ID, first author, year, title, DOI, PMID, abstract 등을 엑셀에서 한 행 복사해 붙여 넣으세요."
               className="rounded-md border border-emerald-300 bg-white px-3 py-2 text-sm font-normal leading-6 text-zinc-800 outline-none focus:border-emerald-500"

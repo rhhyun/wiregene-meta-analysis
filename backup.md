@@ -1028,6 +1028,43 @@ git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin
 
 Never write the real OpenAI API key into `backup.md` or Git-tracked files.
 
+## 2026-06-13 Saved full-text dropdown, upload-button placement, and reference row cleanup
+
+User request:
+
+```text
+Full-text article AI eligibility assistant 항목에 현재 논문이 8개 밖에 안보입니다. 올린 리스트 전체가 보일 수 있도록 풀다운이나 드롭다운 형식으로 변경합니다. 그리고 full-text 분석 버튼을 업로드 버튼 주변에 위치해야 하고 엑셀 screening row 또는 논문 정보에는 왜 반복되는 3개 내용이 보이나요?
+```
+
+Implemented:
+
+- `src/components/MetaFullTextAssistant.tsx`: replaced the saved full-text card list limited by `slice(0, 8)` with a full saved-article dropdown.
+- Saved history loading now requests `limit=500`, matching the current maximum stored history count.
+- `src/app/api/meta-analysis/full-text/history/route.ts`: default GET and reviewer-settings PATCH overview limit changed from 50 to 500.
+- Moved the **Analyze full text / Analyze queue** button into the full-text upload box directly below the file input.
+- Added `stripGeneratedReferenceContext()` so generated `Excel source sheet: ...; review mode: ...` lines are hidden from the textarea and cannot accumulate on repeat analysis.
+- Existing saved records that contain repeated generated context lines are cleaned when opened in the UI.
+- Package version bumped to `0.1.22`.
+- UI version bumped to `Ver 1.57`.
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit: pass.
+npm.cmd run lint: pass.
+npm.cmd run build: pass.
+Seeded 10 temporary TXT full-text records through POST /api/meta-analysis/full-text/analyze.
+Browser verification on http://127.0.0.1:3027: Ver 1.57 rendered; Saved article list showed 10/10; saved dropdown had 11 options including placeholder; file input multiple=true; Analyze full text button was inside the upload box; repeated Excel source sheet lines were stripped from the reference textarea; console errors=[].
+```
+
+Regular Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+Do not store real API keys or Google tokens in Git or backup files.
+
 ## 2026-06-13 Batch full-text upload and sequential AI review
 
 User request:
