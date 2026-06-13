@@ -87,6 +87,19 @@ type MetaFullTextHistoryRecord = {
   verification: MetaFullTextVerification;
 };
 
+type BatchAnalysisStatus = "pending" | "analyzing" | "saved" | "failed";
+
+type BatchAnalysisResult = {
+  id: string;
+  fileName: string;
+  fileSize: number;
+  status: BatchAnalysisStatus;
+  savedRecordId: string | null;
+  decision: MetaFullTextAnalysis["eligibility"]["decision"] | null;
+  confidence: number | null;
+  message: string;
+};
+
 async function readAnalysisPayload(response: Response) {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -180,8 +193,34 @@ function boolLabel(value: boolean | null) {
   return "확인 필요";
 }
 
+function formatFileSize(bytes: number) {
+  const megabytes = bytes / 1024 / 1024;
+  if (megabytes >= 1) {
+    return `${megabytes.toLocaleString("ko-KR", { maximumFractionDigits: 1 })} MB`;
+  }
+  return `${Math.max(1, Math.round(bytes / 1024)).toLocaleString("ko-KR")} KB`;
+}
+
 function criteriaLabel(value: string) {
   return value.replaceAll("_", " ");
+}
+
+function batchFileId(file: File, index: number) {
+  return `${index}-${file.name}-${file.size}-${file.lastModified}`;
+}
+
+function batchStatusLabel(status: BatchAnalysisStatus) {
+  if (status === "analyzing") return "analyzing";
+  if (status === "saved") return "saved";
+  if (status === "failed") return "failed";
+  return "pending";
+}
+
+function batchStatusTone(status: BatchAnalysisStatus) {
+  if (status === "analyzing") return "border-sky-200 bg-sky-50 text-sky-900";
+  if (status === "saved") return "border-emerald-200 bg-emerald-50 text-emerald-900";
+  if (status === "failed") return "border-rose-200 bg-rose-50 text-rose-950";
+  return "border-zinc-200 bg-zinc-50 text-zinc-600";
 }
 
 const reviewerDecisionOptions: { value: ReviewerDecision; label: string }[] = [
@@ -206,7 +245,8 @@ const fixedExclusionReasons = [
 
 export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptions = [] }: MetaFullTextAssistantProps) {
   const analyzingRef = useRef(false);
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  const [batchResults, setBatchResults] = useState<BatchAnalysisResult[]>([]);
   const [worksheetName, setWorksheetName] = useState(worksheetOptions[0]?.sheetName ?? "");
   const [referenceRecord, setReferenceRecord] = useState("");
   const [analysis, setAnalysis] = useState<MetaFullTextAnalysis | null>(null);
@@ -234,6 +274,23 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
 
   const reviewerNamesReady = Boolean(reviewerOneName.trim()) && Boolean(reviewerTwoName.trim());
   const reviewerSettingsReady = reviewerNamesReady && reviewerNamesSaved;
+  const selectedFileSize = useMemo(() => files.reduce((total, item) => total + item.size, 0), [files]);
+  const firstSelectedFile = files[0] ?? null;
+  const selectedFileLabel =
+    files.length === 0
+      ? "PDF, Word, TXT"
+      : files.length === 1 && firstSelectedFile
+        ? firstSelectedFile.name
+        : `${files.length.toLocaleString("ko-KR")} files selected`;
+  const selectedFileDetail =
+    files.length === 0
+      ? "full-text source files"
+      : files.length === 1 && firstSelectedFile
+        ? formatFileSize(firstSelectedFile.size)
+        : `${files.length.toLocaleString("ko-KR")} files - ${formatFileSize(selectedFileSize)} total`;
+  const batchSavedCount = batchResults.filter((item) => item.status === "saved").length;
+  const batchFailedCount = batchResults.filter((item) => item.status === "failed").length;
+  const batchFinishedCount = batchSavedCount + batchFailedCount;
 
   const extractionCsv = useMemo(() => {
     if (!analysis) return "";
@@ -469,8 +526,20 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
     }
   }
 
-  function handleFileChange(nextFile: File | null) {
-    setFile(nextFile);
+  function handleFilesChange(nextFiles: File[]) {
+    setFiles(nextFiles);
+    setBatchResults(
+      nextFiles.map((nextFile, index) => ({
+        id: batchFileId(nextFile, index),
+        fileName: nextFile.name,
+        fileSize: nextFile.size,
+        status: "pending",
+        savedRecordId: null,
+        decision: null,
+        confidence: null,
+        message: "Waiting for sequential analysis.",
+      })),
+    );
     setAnalysis(null);
     setCurrentHistoryId(null);
     setError("");
@@ -490,63 +559,143 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
     }
   }
 
+  function createAnalysisFormData(nextFile: File) {
+    const formData = new FormData();
+    formData.set("file", nextFile);
+    formData.set(
+      "referenceRecord",
+      [
+        selectedWorksheet
+          ? `Excel source sheet: ${selectedWorksheet.sheetName} (${selectedWorksheet.label}); review mode: ${selectedWorksheet.reviewMode}`
+          : "",
+        referenceRecord,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
+    formData.set("extractionColumns", extractionColumns.join(","));
+    formData.set("sourceSheet", selectedWorksheet?.sheetName ?? "");
+    formData.set("sourceLabel", selectedWorksheet?.label ?? "");
+    formData.set("reviewMode", selectedWorksheet?.reviewMode ?? "");
+    formData.set("reviewerOneName", reviewerOneName);
+    formData.set("reviewerTwoName", reviewerTwoName);
+    return formData;
+  }
+
   async function analyzeFullText() {
-    if (analyzingRef.current || !file) return;
+    if (analyzingRef.current || files.length === 0) return;
     if (!reviewerSettingsReady) {
       setError("Save reviewer 1 and reviewer 2 names before full-text analysis.");
       return;
     }
+    const queuedFiles = files;
     analyzingRef.current = true;
     setError("");
     setNotice("");
     setIsAnalyzing(true);
+    setAnalysis(null);
+    setCurrentHistoryId(null);
+    resetVerificationState();
+    setBatchResults(
+      queuedFiles.map((nextFile, index) => ({
+        id: batchFileId(nextFile, index),
+        fileName: nextFile.name,
+        fileSize: nextFile.size,
+        status: "pending",
+        savedRecordId: null,
+        decision: null,
+        confidence: null,
+        message: "Waiting for sequential analysis.",
+      })),
+    );
     try {
-      const formData = new FormData();
-      formData.set("file", file);
-      formData.set(
-        "referenceRecord",
-        [
-          selectedWorksheet
-            ? `Excel source sheet: ${selectedWorksheet.sheetName} (${selectedWorksheet.label}); review mode: ${selectedWorksheet.reviewMode}`
-            : "",
-          referenceRecord,
-        ]
-          .filter(Boolean)
-          .join("\n"),
-      );
-      formData.set("extractionColumns", extractionColumns.join(","));
-      formData.set("sourceSheet", selectedWorksheet?.sheetName ?? "");
-      formData.set("sourceLabel", selectedWorksheet?.label ?? "");
-      formData.set("reviewMode", selectedWorksheet?.reviewMode ?? "");
-      formData.set("reviewerOneName", reviewerOneName);
-      formData.set("reviewerTwoName", reviewerTwoName);
+      let savedCount = 0;
+      let failedCount = 0;
 
-      const payload = await readAnalysisPayload(
-        await fetch("/api/meta-analysis/full-text/analyze", {
-          method: "POST",
-          body: formData,
-        }),
-      );
-      setAnalysis(payload.analysis);
-      if (payload.savedRecord) {
-        setCurrentHistoryId(payload.savedRecord.id);
-        upsertHistoryItem(payload.savedRecord);
-      } else {
-        setCurrentHistoryId(null);
+      for (const [index, nextFile] of queuedFiles.entries()) {
+        const resultId = batchFileId(nextFile, index);
+        setNotice(`Analyzing ${index + 1}/${queuedFiles.length}: ${nextFile.name}`);
+        setBatchResults((current) =>
+          current.map((item) =>
+            item.id === resultId
+              ? {
+                  ...item,
+                  status: "analyzing",
+                  message: "Extracting full text and requesting AI review.",
+                }
+              : item,
+          ),
+        );
+
+        try {
+          const payload = await readAnalysisPayload(
+            await fetch("/api/meta-analysis/full-text/analyze", {
+              method: "POST",
+              body: createAnalysisFormData(nextFile),
+            }),
+          );
+          setAnalysis(payload.analysis);
+          if (payload.savedRecord && !payload.saveError) {
+            savedCount += 1;
+            setCurrentHistoryId(payload.savedRecord.id);
+            upsertHistoryItem(payload.savedRecord);
+            setBatchResults((current) =>
+              current.map((item) =>
+                item.id === resultId
+                  ? {
+                      ...item,
+                      status: "saved",
+                      savedRecordId: payload.savedRecord?.id ?? null,
+                      decision: payload.analysis.eligibility.decision,
+                      confidence: payload.analysis.eligibility.confidence,
+                      message: "Saved automatically to full-text history.",
+                    }
+                  : item,
+              ),
+            );
+          } else {
+            failedCount += 1;
+            setCurrentHistoryId(null);
+            setBatchResults((current) =>
+              current.map((item) =>
+                item.id === resultId
+                  ? {
+                      ...item,
+                      status: "failed",
+                      decision: payload.analysis.eligibility.decision,
+                      confidence: payload.analysis.eligibility.confidence,
+                      message: payload.saveError
+                        ? savedErrorMessage(payload.saveError)
+                        : "Analysis finished, but no saved history record was returned.",
+                    }
+                  : item,
+              ),
+            );
+          }
+        } catch (caught) {
+          failedCount += 1;
+          setBatchResults((current) =>
+            current.map((item) =>
+              item.id === resultId
+                ? {
+                    ...item,
+                    status: "failed",
+                    message: caught instanceof Error ? caught.message : "full-text analysis failed.",
+                  }
+                : item,
+            ),
+          );
+        }
       }
+
+      await loadHistory();
       setNotice(
-        payload.analysis.aiUsed
-          ? `OpenAI ${payload.analysis.model}로 full-text article 분석 초안을 생성했습니다. 연구자가 반드시 원문 근거와 숫자를 검증해야 합니다.`
-          : payload.analysis.aiWarning ||
-              "OpenAI analysis was not used, so fallback rules generated only a low-confidence draft. Check AI settings and rerun before final review.",
+        `Batch analysis finished. Saved ${savedCount}/${queuedFiles.length} files; failed ${failedCount}. Open saved records to verify each result.`,
       );
-      if (payload.savedRecord) {
-        setNotice(`Saved analysis: ${payload.savedRecord.fileName}`);
-      }
-      if (payload.saveError) {
-        setError(savedErrorMessage(payload.saveError));
+      if (failedCount > 0) {
+        setError(`Batch analysis completed with ${failedCount} failed file(s). Check the batch queue details below.`);
       } else {
-        void loadHistory();
+        setError("");
       }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "full-text 분석에 실패했습니다.");
@@ -576,11 +725,11 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
         <button
           type="button"
           onClick={analyzeFullText}
-          disabled={isAnalyzing || !file || !reviewerSettingsReady}
+          disabled={isAnalyzing || files.length === 0 || !reviewerSettingsReady}
           className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
         >
           {isAnalyzing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <SearchCheck className="h-4 w-4" aria-hidden />}
-          {isAnalyzing ? "분석 중" : "full-text 분석"}
+          {isAnalyzing ? "Analyzing" : files.length > 1 ? `Analyze queue (${files.length})` : "Analyze full text"}
         </button>
       </div>
 
@@ -698,18 +847,21 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
                 <UploadCloud className="h-5 w-5" aria-hidden />
               </span>
               <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-zinc-950">{file ? file.name : "PDF, Word, TXT"}</p>
-                <p className="mt-1 text-xs font-medium text-zinc-500">
-                  {file ? `${Math.round(file.size / 1024).toLocaleString("ko-KR")} KB` : "full-text 원문 파일"}
-                </p>
+                <p className="truncate text-sm font-semibold text-zinc-950">{selectedFileLabel}</p>
+                <p className="mt-1 text-xs font-medium text-zinc-500">{selectedFileDetail}</p>
               </div>
             </div>
             <input
               type="file"
+              multiple
               accept=".pdf,.doc,.docx,.txt,.md,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
-              onChange={(event) => handleFileChange(event.target.files?.[0] ?? null)}
-              className="mt-3 w-full text-sm text-zinc-700 file:mr-3 file:rounded-md file:border-0 file:bg-zinc-900 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-zinc-700"
+              onChange={(event) => handleFilesChange(Array.from(event.target.files ?? []))}
+              disabled={isAnalyzing}
+              className="mt-3 w-full text-sm text-zinc-700 disabled:cursor-not-allowed disabled:opacity-60 file:mr-3 file:rounded-md file:border-0 file:bg-zinc-900 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-zinc-700"
             />
+            <p className="mt-2 text-xs font-semibold leading-5 text-zinc-600">
+              Select multiple PDF, Word, TXT, or MD files once. The app analyzes them one by one and saves each result as a separate history record.
+            </p>
           </div>
         </label>
 
@@ -747,6 +899,46 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
           </label>
         </div>
       </div>
+
+      {batchResults.length > 0 ? (
+        <section className="mt-4 rounded-md border border-emerald-200 bg-white p-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-zinc-950">Batch analysis queue</p>
+              <p className="mt-1 text-xs font-semibold leading-5 text-zinc-600">
+                Finished {batchFinishedCount}/{batchResults.length} files - saved {batchSavedCount}, failed {batchFailedCount}
+              </p>
+            </div>
+            {isAnalyzing ? (
+              <span className="inline-flex items-center gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-900">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                Sequential processing
+              </span>
+            ) : null}
+          </div>
+          <div className="mt-3 grid gap-2">
+            {batchResults.map((item, index) => (
+              <div key={item.id} className={`rounded-md border p-3 ${batchStatusTone(item.status)}`}>
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold">
+                      {index + 1}. {item.fileName}
+                    </p>
+                    <p className="mt-1 text-xs font-semibold opacity-80">{formatFileSize(item.fileSize)}</p>
+                  </div>
+                  <span className="shrink-0 rounded-md bg-white/80 px-2 py-1 text-xs font-semibold ring-1 ring-black/5">
+                    {batchStatusLabel(item.status)}
+                  </span>
+                </div>
+                <p className="mt-2 text-xs font-semibold leading-5">
+                  {item.decision ? `${decisionLabel(item.decision)} - confidence ${item.confidence ?? "n/a"}` : item.message}
+                </p>
+                {item.decision && item.message ? <p className="mt-1 text-xs leading-5 opacity-90">{item.message}</p> : null}
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       {error ? (
         <div className="mt-4 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-950" role="alert">

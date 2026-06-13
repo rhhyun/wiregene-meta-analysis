@@ -1028,6 +1028,47 @@ git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin
 
 Never write the real OpenAI API key into `backup.md` or Git-tracked files.
 
+## 2026-06-13 Batch full-text upload and sequential AI review
+
+User request:
+
+```text
+논문을 AI가 리뷰할 때 한꺼번에 화일 업로드하고 순차적으로 분석하는 방법이 좋겠습니다. 업로드를 하나하나 하다보니 상당한 매뉴얼 작업이 들어갑니다
+```
+
+Implemented:
+
+- `src/components/MetaFullTextAssistant.tsx`: changed the full-text upload state from a single `File` to a multi-file queue.
+- The file input now supports `multiple` for PDF, Word, TXT, and MD full-text files.
+- The full-text analysis button now processes selected files sequentially, one request at a time, through the existing `POST /api/meta-analysis/full-text/analyze` route.
+- Each file still gets its own saved full-text history record, so later verification can open records from **Saved full-text analyses**.
+- Added a **Batch analysis queue** panel showing each file as `pending`, `analyzing`, `saved`, or `failed`, plus decision/confidence/message when available.
+- Final batch notice reports saved and failed counts, e.g. `Saved X/Y files; failed Z`.
+- The file input is disabled while the sequential batch is running to prevent queue/history mismatch.
+- Package version bumped to `0.1.21`.
+- UI version bumped to `Ver 1.56`.
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit: pass.
+npm.cmd run lint: pass.
+npm.cmd run build: pass.
+Browser verification on http://127.0.0.1:3026: Ver 1.56 rendered, Screening tab opened, file input has multiple=true, batch instruction text rendered, console errors=[].
+```
+
+Regular Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+Notes for next PC:
+
+- Continue from `C:\Users\rhhyu\Documents\GitHub\wiregene-meta-analysis`.
+- Do not store real OpenAI keys or Google tokens in Git or backup files.
+- Batch upload is UI-driven; server API remains single-file per request to keep extraction/OpenAI/storage load sequential and traceable.
+
 ## 2026-06-13 Included-paper Excel dataset verification
 
 User request:
