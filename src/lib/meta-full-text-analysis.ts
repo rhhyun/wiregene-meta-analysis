@@ -203,6 +203,10 @@ const defaultCriticalFields = [
   "pain_definition",
 ];
 
+const defaultOpenAiFullTextCharacterLimit = 65_000;
+const openAiFullTextKeywordPattern =
+  /(?:abstract|method|methods|participants|respondents|sample|survey|questionnaire|result|results|prevalence|pain|musculoskeletal|PRMD|instrument|guitar|violin|viola|cello|orchestra|table|discussion|conclusion)/gi;
+
 const instrumentTerms = [
   "violin",
   "viola",
@@ -433,6 +437,8 @@ export async function analyzeMetaFullTextUpload(input: AnalyzeMetaFullTextInput)
 
   const analysisText = normalizeText(text);
   const extractionWarnings: string[] = [];
+  const openAiText = prepareOpenAiFullText(analysisText);
+  if (openAiText.warning) extractionWarnings.push(openAiText.warning);
   const fallback = fallbackAnalyzeFullText({
     fileName: input.fileName,
     fileType,
@@ -463,7 +469,7 @@ export async function analyzeMetaFullTextUpload(input: AnalyzeMetaFullTextInput)
     fileName: input.fileName,
     fileType,
     referenceRecord: input.referenceRecord ?? null,
-    text: analysisText,
+    text: openAiText.text,
     extractionColumns: input.extractionColumns,
     fallback,
     openaiApiKey: openaiConfig.config.apiKey,
@@ -741,7 +747,7 @@ async function analyzeWithOpenAI({
   openaiApiKey: string;
   openaiModel: string;
 }): Promise<{ analysis: AiMetaFullTextAnalysis | null; warning: string | null }> {
-  const openai = new OpenAI({ apiKey: openaiApiKey });
+  const openai = new OpenAI({ apiKey: openaiApiKey, maxRetries: 0, timeout: 45_000 });
   try {
     const response = await openai.responses.create({
       model: openaiModel,
@@ -1226,6 +1232,58 @@ function slugFromFileName(fileName: string) {
 
 function normalizeText(value: string) {
   return value.replace(/\u0000/g, " ").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function prepareOpenAiFullText(text: string) {
+  const limit = configuredOpenAiFullTextCharacterLimit();
+  if (text.length <= limit) return { text, warning: null };
+
+  const compacted = compactFullTextForOpenAi(text, limit);
+  return {
+    text: compacted,
+    warning: `Long full text was compacted for AI review (${text.length.toLocaleString("en-US")} -> ${compacted.length.toLocaleString("en-US")} chars) to avoid server timeout or model context failure. The full extracted text is still used for rule-based fallback signals.`,
+  };
+}
+
+function configuredOpenAiFullTextCharacterLimit() {
+  const configured = Number(process.env.META_FULL_TEXT_OPENAI_TEXT_LIMIT ?? "");
+  if (Number.isFinite(configured) && configured >= 20_000 && configured <= 180_000) return Math.floor(configured);
+  return defaultOpenAiFullTextCharacterLimit;
+}
+
+function compactFullTextForOpenAi(text: string, limit: number) {
+  const headLength = Math.min(24_000, Math.floor(limit * 0.4));
+  const tailLength = Math.min(10_000, Math.floor(limit * 0.16));
+  const keywordBudget = Math.max(0, limit - headLength - tailLength - 1_200);
+  const chunks = [
+    text.slice(0, headLength),
+    ...keywordExcerpts(text, keywordBudget),
+    text.slice(Math.max(headLength, text.length - tailLength)),
+  ];
+  return chunks
+    .map((chunk) => chunk.trim())
+    .filter(Boolean)
+    .join("\n\n[...]\n\n")
+    .slice(0, limit);
+}
+
+function keywordExcerpts(text: string, budget: number) {
+  if (budget <= 0) return [];
+  const chunks: string[] = [];
+  const used = new Set<string>();
+  openAiFullTextKeywordPattern.lastIndex = 0;
+
+  let match: RegExpExecArray | null;
+  while ((match = openAiFullTextKeywordPattern.exec(text)) && chunks.join("\n").length < budget) {
+    const start = Math.max(0, match.index - 1_200);
+    const end = Math.min(text.length, match.index + 2_200);
+    const key = `${Math.floor(start / 1_000)}-${Math.floor(end / 1_000)}`;
+    if (used.has(key)) continue;
+    used.add(key);
+    chunks.push(text.slice(start, end));
+  }
+
+  return chunks.join("\n\n").slice(0, budget).split(/\n{2,}/).filter(Boolean);
 }
 
 function normalizeList(values: unknown) {

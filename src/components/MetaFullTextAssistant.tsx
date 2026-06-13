@@ -400,7 +400,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
   }
 
   function upsertHistoryItem(item: MetaFullTextHistorySummary) {
-    setHistoryItems((current) => [item, ...current.filter((record) => record.id !== item.id)].slice(0, 50));
+    setHistoryItems((current) => [item, ...current.filter((record) => record.id !== item.id)].slice(0, 500));
   }
 
   const applyHistoryOverview = useCallback((payload: {
@@ -819,24 +819,50 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
         <div className="mt-3 grid gap-2">
           {historyItems.length > 0 ? (
             <>
-              <label className="grid gap-1 text-xs font-semibold uppercase text-zinc-500">
-                Saved article list ({historyItems.length.toLocaleString("ko-KR")}/{historyStats.totalCount.toLocaleString("ko-KR")})
-                <select
-                  value={currentHistoryId ?? ""}
-                  onChange={(event) => {
-                    if (event.target.value) void loadSavedAnalysis(event.target.value);
-                  }}
-                  className="h-11 rounded-md border border-zinc-300 bg-white px-3 text-sm font-semibold normal-case text-zinc-900 outline-none focus:border-emerald-500"
-                >
-                  <option value="">Select a saved full-text article...</option>
-                  {historyItems.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.fileName} | {item.sourceSheet ?? "no sheet"} | {decisionLabel(item.decision)} |{" "}
-                      {item.verificationComplete ? "verified" : "pending"} | {new Date(item.savedAt).toLocaleString("ko-KR")}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div>
+                <div className="flex items-center justify-between gap-3 text-xs font-semibold uppercase text-zinc-500">
+                  <span>Saved article list ({historyItems.length.toLocaleString("ko-KR")}/{historyStats.totalCount.toLocaleString("ko-KR")})</span>
+                  <span>{historyItems.filter((item) => item.verificationComplete).length.toLocaleString("ko-KR")} verified</span>
+                </div>
+                <div className="mt-2 max-h-[34rem] overflow-y-auto rounded-md border border-zinc-200 bg-zinc-50">
+                  <div className="divide-y divide-zinc-200">
+                    {historyItems.map((item, index) => {
+                      const selected = item.id === currentHistoryId;
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => void loadSavedAnalysis(item.id)}
+                          aria-pressed={selected}
+                          className={`grid w-full gap-2 px-3 py-3 text-left transition hover:bg-emerald-50 ${
+                            selected ? "bg-emerald-50 ring-1 ring-inset ring-emerald-200" : "bg-white"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <p className="min-w-0 truncate text-sm font-semibold text-zinc-950">
+                              {index + 1}. {item.fileName}
+                            </p>
+                            <span
+                              className={`shrink-0 rounded-md px-2 py-1 text-xs font-semibold ${
+                                item.verificationComplete ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-900"
+                              }`}
+                            >
+                              {item.verificationComplete ? "verified" : "pending"}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-2 text-xs font-semibold text-zinc-600">
+                            <span className="rounded-md bg-zinc-100 px-2 py-1">{item.sourceSheet ?? "no sheet"}</span>
+                            <span className="rounded-md bg-zinc-100 px-2 py-1">{decisionLabel(item.decision)}</span>
+                            <span className="rounded-md bg-zinc-100 px-2 py-1">confidence {item.confidence}</span>
+                            <span className="rounded-md bg-zinc-100 px-2 py-1">{new Date(item.savedAt).toLocaleString("ko-KR")}</span>
+                          </div>
+                          {item.titleGuess ? <p className="line-clamp-2 text-xs leading-5 text-zinc-500">{item.titleGuess}</p> : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
               {currentHistoryItem ? (
                 <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3">
                   <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">

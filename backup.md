@@ -1453,3 +1453,33 @@ git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin
 ```
 
 Never write the real OpenAI API key into `backup.md` or Git-tracked files.
+## 2026-06-14 Meta full-text upload and workspace width fix
+
+User clarified that the requested UI/upload work belongs to `meta.wiregene.com`, not Omni.
+
+Changes completed in the real source repository `C:\Users\rhhyu\Documents\GitHub\wiregene-meta-analysis`:
+
+- Added a collapsible outer left navigation rail in `ResearchWorkspaceShell`.
+- Added a collapsible Meta study project rail in `MetaStudyWorkspace`.
+- Moved recurring stage/workbook explanatory copy into closed `details` sections so routine work screens are less crowded.
+- Replaced the `Saved full-text analyses` dropdown with a tall scrollable saved-article list and kept the client-side history upsert cap at 500 records.
+- Added full-text analyze route diagnostics for upload received, analysis completed, history saved, history save failed, and analysis failure.
+- Set the full-text analyze route `maxDuration` to 60 seconds.
+- Added long full-text compaction before OpenAI review. Full extracted text still feeds fallback signals, but OpenAI receives a bounded article-focused text bundle to avoid timeout/context failures.
+- Set OpenAI full-text calls to no retries and a 45 second request timeout.
+- Updated visible version label to include `2026 copyright by JK Hyun`.
+- Bumped visible app version to `Ver 1.59 | 2026 copyright by JK Hyun` and npm package version to `0.1.24`.
+
+18 Zuhdi PDF verification:
+
+- File checked: `G:\내 드라이브\1_Thesis\Review_Pain Violin\Data\260606 New data\Articles\A2 Instrument 36\18 Zuhdi-OccupationalHealthProblems-2020.pdf`
+- PDF header `%PDF-1.6`, not encrypted, 5,916,449 bytes.
+- `pdf-parse` extraction succeeded: 146 pages, 140,617 extracted characters.
+- Direct full-text analysis succeeded with OpenAI disabled fallback.
+- Route-handler FormData upload test succeeded: HTTP 200, saved history record created, extractedTextLength 140,617.
+- The long PDF warning was recorded: full text compacted for AI review from 137,670 to 63,977 chars.
+
+Verification:
+
+- `npm.cmd run lint`: passed.
+- `npm.cmd run build`: passed.

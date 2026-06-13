@@ -13,6 +13,8 @@ import {
   LogOut,
   Menu,
   Network,
+  PanelLeftClose,
+  PanelLeftOpen,
   ShieldCheck,
 } from "lucide-react";
 import type { ReactNode } from "react";
@@ -60,6 +62,7 @@ export function ResearchWorkspaceShell({
   versionLabel: string;
 }) {
   const [view, setView] = useState<WorkspaceView>(initialView ?? "briefing");
+  const [navigationCollapsed, setNavigationCollapsed] = useState(false);
   const active = {
     briefing: briefingPanel,
     "central-grants": centralGrantPanel,
@@ -85,38 +88,57 @@ export function ResearchWorkspaceShell({
 
   return (
     <main className="min-h-screen bg-zinc-50 text-zinc-950">
-      <div className="grid min-h-screen lg:grid-cols-[280px_1fr]">
-        <aside className="border-b border-zinc-200 bg-white lg:border-b-0 lg:border-r">
-          <div className="border-b border-zinc-200 px-5 py-5">
+      <div
+        className={`grid min-h-screen transition-[grid-template-columns] duration-200 ${
+          navigationCollapsed ? "lg:grid-cols-[76px_minmax(0,1fr)]" : "lg:grid-cols-[280px_minmax(0,1fr)]"
+        }`}
+      >
+        <aside className="overflow-hidden border-b border-zinc-200 bg-white lg:border-b-0 lg:border-r">
+          <div className={`border-b border-zinc-200 py-5 ${navigationCollapsed ? "px-3" : "px-5"}`}>
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <span className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100">
                   <BookOpenText className="h-4 w-4" aria-hidden />
                 </span>
-                <div>
-                  <p className="text-sm font-semibold text-zinc-950">Research Briefing</p>
-                  <p className="text-xs font-medium text-zinc-500">{versionLabel}</p>
-                </div>
+                {!navigationCollapsed ? (
+                  <div>
+                    <p className="text-sm font-semibold text-zinc-950">Research Briefing</p>
+                    <p className="text-xs font-medium text-zinc-500">{versionLabel}</p>
+                  </div>
+                ) : null}
               </div>
+              <button
+                type="button"
+                onClick={() => setNavigationCollapsed((current) => !current)}
+                aria-label={navigationCollapsed ? "Expand navigation" : "Collapse navigation"}
+                title={navigationCollapsed ? "Expand navigation" : "Collapse navigation"}
+                className="hidden h-9 w-9 items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-500 transition hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700 lg:inline-flex"
+              >
+                {navigationCollapsed ? <PanelLeftOpen className="h-4 w-4" aria-hidden /> : <PanelLeftClose className="h-4 w-4" aria-hidden />}
+              </button>
               <Menu className="h-5 w-5 text-zinc-400 lg:hidden" aria-hidden />
             </div>
-            <AdminBadge currentUser={currentUser} />
+            <AdminBadge currentUser={currentUser} collapsed={navigationCollapsed} />
             <button
               type="button"
               onClick={logout}
-              className="mt-4 inline-flex h-9 w-full items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-sm font-semibold text-zinc-700 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
+              className={`mt-4 inline-flex h-9 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white text-sm font-semibold text-zinc-700 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700 ${
+                navigationCollapsed ? "w-9 px-0" : "w-full px-3"
+              }`}
+              title="Logout"
             >
               <LogOut className="h-4 w-4" aria-hidden />
-              Logout
+              {navigationCollapsed ? <span className="sr-only">Logout</span> : "Logout"}
             </button>
           </div>
 
-          <nav className="grid gap-2 px-3 py-4">
+          <nav className={`grid gap-2 py-4 ${navigationCollapsed ? "px-2" : "px-3"}`}>
             <WorkspaceNavButton
               active={view === "briefing"}
               icon={<FileSearch className="h-4 w-4" aria-hidden />}
               label="논문과 기사 검색"
               detail="PubMed, news, Zotero"
+              collapsed={navigationCollapsed}
               onClick={() => selectView("briefing")}
             />
             <WorkspaceNavButton
@@ -124,6 +146,7 @@ export function ResearchWorkspaceShell({
               icon={<ClipboardList className="h-4 w-4" aria-hidden />}
               label="연구과제 검색"
               detail="정부, 지자체, 규제기관"
+              collapsed={navigationCollapsed}
               onClick={() => selectView("central-grants")}
             />
             <WorkspaceNavButton
@@ -131,6 +154,7 @@ export function ResearchWorkspaceShell({
               icon={<Building2 className="h-4 w-4" aria-hidden />}
               label="투자 프로그램"
               detail="TIPS, 기업투자, Big Tech"
+              collapsed={navigationCollapsed}
               onClick={() => selectView("investment")}
             />
             <WorkspaceNavButton
@@ -138,6 +162,7 @@ export function ResearchWorkspaceShell({
               icon={<Globe2 className="h-4 w-4" aria-hidden />}
               label="글로벌 연구과제"
               detail="SCI, NIH, CDMRP"
+              collapsed={navigationCollapsed}
               onClick={() => selectView("global-research")}
             />
             <WorkspaceNavButton
@@ -145,6 +170,7 @@ export function ResearchWorkspaceShell({
               icon={<GraduationCap className="h-4 w-4" aria-hidden />}
               label="대학원·포닥 과제"
               detail="장학, 통합, fellowship"
+              collapsed={navigationCollapsed}
               onClick={() => selectView("trainee-fellowship")}
             />
             <WorkspaceNavButton
@@ -152,6 +178,7 @@ export function ResearchWorkspaceShell({
               icon={<ClipboardCheck className="h-4 w-4" aria-hidden />}
               label="지원 후보과제"
               detail="마감, 지원여부, RFP"
+              collapsed={navigationCollapsed}
               onClick={() => selectView("candidate-board")}
             />
             <WorkspaceNavButton
@@ -159,10 +186,11 @@ export function ResearchWorkspaceShell({
               icon={<FileText className="h-4 w-4" aria-hidden />}
               label="논문 관리"
               detail="1_Thesis, Data, References"
+              collapsed={navigationCollapsed}
               onClick={() => selectView("thesis-management")}
             />
 
-            {externalLinks.length ? (
+            {externalLinks.length && !navigationCollapsed ? (
               <div className="mt-2 border-t border-zinc-200 pt-3">
                 <p className="px-3 pb-2 text-xs font-semibold uppercase text-zinc-500">
                   Linked platforms
@@ -192,16 +220,16 @@ export function ResearchWorkspaceShell({
   );
 }
 
-function AdminBadge({ currentUser }: { currentUser?: CurrentWiregeneUser | null }) {
+function AdminBadge({ currentUser, collapsed }: { currentUser?: CurrentWiregeneUser | null; collapsed: boolean }) {
   if (!currentUser?.isAdmin) return null;
 
   return (
-    <div className="mt-4 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2">
-      <div className="flex items-center gap-2 text-sm font-semibold text-emerald-800">
+    <div className={`mt-4 rounded-md border border-emerald-200 bg-emerald-50 ${collapsed ? "px-2 py-2" : "px-3 py-2"}`}>
+      <div className={`flex items-center gap-2 text-sm font-semibold text-emerald-800 ${collapsed ? "justify-center text-[0px]" : ""}`}>
         <ShieldCheck className="h-4 w-4" aria-hidden />
         관리자
       </div>
-      <p className="mt-1 truncate text-xs font-medium text-emerald-700">{currentUser.username}</p>
+      {!collapsed ? <p className="mt-1 truncate text-xs font-medium text-emerald-700">{currentUser.username}</p> : null}
     </div>
   );
 }
@@ -231,29 +259,38 @@ function WorkspaceNavButton({
   icon,
   label,
   detail,
+  collapsed,
   onClick,
 }: {
   active: boolean;
   icon: ReactNode;
   label: string;
   detail: string;
+  collapsed: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`grid w-full grid-cols-[24px_1fr] items-start gap-3 rounded-md border px-3 py-3 text-left transition ${
+      title={`${label} - ${detail}`}
+      className={`grid w-full items-start rounded-md border text-left transition ${
+        collapsed ? "grid-cols-1 justify-items-center px-2 py-3" : "grid-cols-[24px_1fr] gap-3 px-3 py-3"
+      } ${
         active
           ? "border-emerald-200 bg-emerald-50 text-emerald-950"
           : "border-transparent bg-white text-zinc-700 hover:border-zinc-200 hover:bg-zinc-50"
       }`}
     >
       <span className={active ? "mt-0.5 text-emerald-700" : "mt-0.5 text-zinc-500"}>{icon}</span>
-      <span>
-        <span className="block text-sm font-semibold">{label}</span>
-        <span className="mt-0.5 block text-xs text-zinc-500">{detail}</span>
-      </span>
+      {collapsed ? (
+        <span className="sr-only">{`${label} - ${detail}`}</span>
+      ) : (
+        <span>
+          <span className="block text-sm font-semibold">{label}</span>
+          <span className="mt-0.5 block text-xs text-zinc-500">{detail}</span>
+        </span>
+      )}
     </button>
   );
 }

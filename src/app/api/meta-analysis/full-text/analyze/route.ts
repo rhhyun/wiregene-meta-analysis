@@ -9,6 +9,7 @@ import { orchestralPainProject } from "@/lib/meta-projects";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 const maxColumnPayloadCharacters = 4_000;
 
@@ -37,6 +38,7 @@ function allowedExtractionColumns(requestedColumns: string[]) {
 }
 
 export async function POST(request: Request) {
+  const startedAt = Date.now();
   const formData = await request.formData().catch(() => null);
   if (!formData) {
     return NextResponse.json(
@@ -49,6 +51,12 @@ export async function POST(request: Request) {
   if (!(uploaded instanceof File) || uploaded.size === 0) {
     return NextResponse.json({ error: "분석할 full-text PDF/Word/TXT 파일을 업로드해 주세요." }, { status: 400 });
   }
+
+  console.info("[meta-full-text/analyze] upload received", {
+    fileName: uploaded.name,
+    size: uploaded.size,
+    mimeType: uploaded.type,
+  });
 
   const referenceRecord = formString(formData, "referenceRecord");
   const sourceSheet = formString(formData, "sourceSheet");
@@ -68,6 +76,14 @@ export async function POST(request: Request) {
       extractionColumns,
     });
 
+    console.info("[meta-full-text/analyze] analysis completed", {
+      fileName: uploaded.name,
+      fileType: analysis.fileType,
+      extractedTextLength: analysis.extractedTextLength,
+      aiUsed: analysis.aiUsed,
+      elapsedMs: Date.now() - startedAt,
+    });
+
     try {
       const savedRecord = await saveMetaFullTextHistory({
         analysis,
@@ -77,6 +93,12 @@ export async function POST(request: Request) {
         referenceRecord: referenceRecord || null,
         reviewerOneName,
         reviewerTwoName,
+      });
+
+      console.info("[meta-full-text/analyze] history saved", {
+        fileName: uploaded.name,
+        historyId: savedRecord.id,
+        elapsedMs: Date.now() - startedAt,
       });
 
       return NextResponse.json({
@@ -106,6 +128,11 @@ export async function POST(request: Request) {
         },
       });
     } catch (saveError) {
+      console.error("[meta-full-text/analyze] history save failed", {
+        fileName: uploaded.name,
+        details: metaFullTextHistoryStorageErrorDetails(saveError),
+        elapsedMs: Date.now() - startedAt,
+      });
       return NextResponse.json({
         analysis,
         savedRecord: null,
@@ -113,6 +140,11 @@ export async function POST(request: Request) {
       });
     }
   } catch (error) {
+    console.error("[meta-full-text/analyze] failed", {
+      fileName: uploaded.name,
+      error: error instanceof Error ? error.message : String(error),
+      elapsedMs: Date.now() - startedAt,
+    });
     const message =
       error instanceof Error
         ? error.message

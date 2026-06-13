@@ -13,6 +13,8 @@ import {
   FlaskConical,
   KeyRound,
   ListChecks,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   Search,
   Target,
@@ -127,6 +129,7 @@ export function MetaStudyWorkspace({
   const [selectedProjectId, setSelectedProjectId] = useState(metaStudyProjects[0]?.id ?? "new-topic");
   const [stage, setStage] = useState<MetaStudyStage>("overview");
   const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
+  const [projectMenuCollapsed, setProjectMenuCollapsed] = useState(false);
 
   const selectedProject = useMemo(
     () => metaStudyProjects.find((project) => project.id === selectedProjectId),
@@ -146,22 +149,42 @@ export function MetaStudyWorkspace({
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[19rem_minmax(0,1fr)]">
-      <aside className="rounded-lg border border-zinc-200 bg-white p-4 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
-        <div className="flex items-center justify-between gap-3">
-          <div>
+    <div
+      className={`grid gap-6 transition-[grid-template-columns] duration-200 ${
+        projectMenuCollapsed ? "lg:grid-cols-[4.25rem_minmax(0,1fr)]" : "lg:grid-cols-[19rem_minmax(0,1fr)]"
+      }`}
+    >
+      <aside
+        className={`rounded-lg border border-zinc-200 bg-white lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto ${
+          projectMenuCollapsed ? "p-2" : "p-4"
+        }`}
+      >
+        <div className={`flex items-center gap-3 ${projectMenuCollapsed ? "justify-center" : "justify-between"}`}>
+          <div className={projectMenuCollapsed ? "hidden" : undefined}>
             <p className="text-xs font-semibold uppercase text-emerald-700">Meta studies</p>
             <h2 className="mt-1 text-lg font-semibold text-zinc-950">진행 중인 연구</h2>
           </div>
-          <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-md bg-emerald-50 px-2 text-sm font-semibold text-emerald-700">
+          <span className={`h-8 min-w-8 items-center justify-center rounded-md bg-emerald-50 px-2 text-sm font-semibold text-emerald-700 ${projectMenuCollapsed ? "hidden" : "inline-flex"}`}>
             {metaStudyProjects.length}
           </span>
+          <button
+            type="button"
+            onClick={() => setProjectMenuCollapsed((current) => !current)}
+            aria-label={projectMenuCollapsed ? "Expand meta study menu" : "Collapse meta study menu"}
+            title={projectMenuCollapsed ? "Expand meta study menu" : "Collapse meta study menu"}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-500 transition hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700"
+          >
+            {projectMenuCollapsed ? <PanelLeftOpen className="h-4 w-4" aria-hidden /> : <PanelLeftClose className="h-4 w-4" aria-hidden />}
+          </button>
         </div>
 
         <button
           type="button"
           onClick={openNewTopic}
-          className={`mt-4 flex w-full items-center gap-3 rounded-md border p-3 text-left transition ${
+          title="New topic"
+          className={`mt-4 flex w-full items-center rounded-md border p-3 text-left transition ${
+            projectMenuCollapsed ? "justify-center" : "gap-3"
+          } ${
             selectedProjectId === "new-topic"
               ? "border-emerald-300 bg-emerald-50"
               : "border-dashed border-zinc-300 bg-white hover:border-emerald-300 hover:bg-emerald-50"
@@ -170,7 +193,7 @@ export function MetaStudyWorkspace({
           <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-zinc-950 text-white">
             <Plus className="h-4 w-4" aria-hidden />
           </span>
-          <span>
+          <span className={projectMenuCollapsed ? "sr-only" : undefined}>
             <span className="block text-sm font-semibold text-zinc-950">신규 주제</span>
             <span className="mt-1 block text-xs leading-5 text-zinc-500">PRISMA 검색 디자인부터 시작</span>
           </span>
@@ -182,18 +205,24 @@ export function MetaStudyWorkspace({
               key={project.id}
               type="button"
               onClick={() => openProject(project)}
-              className={`rounded-md border p-3 text-left transition ${
+              title={project.shortTitle}
+              className={`rounded-md border text-left transition ${
+                projectMenuCollapsed ? "flex h-12 items-center justify-center p-0" : "p-3"
+              } ${
                 selectedProjectId === project.id
                   ? "border-emerald-300 bg-emerald-50"
                   : "border-zinc-200 bg-white hover:border-zinc-300"
               }`}
             >
-              <span className="block text-sm font-semibold leading-5 text-zinc-950">{project.shortTitle}</span>
-              <span className="mt-2 block text-xs leading-5 text-zinc-500">{project.status}</span>
-              <span className="mt-3 block h-2 overflow-hidden rounded-full bg-zinc-100">
-                <span className="block h-full bg-emerald-600" style={{ width: `${project.progress}%` }} />
-              </span>
-              <span className="mt-2 block text-xs font-semibold text-emerald-700">{project.progress}% designed</span>
+              {projectMenuCollapsed ? <Database className="h-4 w-4 text-emerald-700" aria-hidden /> : null}
+              <span className={projectMenuCollapsed ? "sr-only" : "block text-sm font-semibold leading-5 text-zinc-950"}>{project.shortTitle}</span>
+              {!projectMenuCollapsed ? <span className="mt-2 block text-xs leading-5 text-zinc-500">{project.status}</span> : null}
+              {!projectMenuCollapsed ? (
+                <span className="mt-3 block h-2 overflow-hidden rounded-full bg-zinc-100">
+                  <span className="block h-full bg-emerald-600" style={{ width: `${project.progress}%` }} />
+                </span>
+              ) : null}
+              {!projectMenuCollapsed ? <span className="mt-2 block text-xs font-semibold text-emerald-700">{project.progress}% designed</span> : null}
             </button>
           ))}
         </div>
@@ -202,7 +231,10 @@ export function MetaStudyWorkspace({
           <button
             type="button"
             onClick={() => setAiSettingsOpen(true)}
-            className={`mt-4 flex w-full items-center gap-3 rounded-md border p-3 text-left transition ${
+            title="AI settings"
+            className={`mt-4 flex w-full items-center rounded-md border p-3 text-left transition ${
+              projectMenuCollapsed ? "justify-center" : "gap-3"
+            } ${
               aiSettingsOpen
                 ? "border-emerald-300 bg-emerald-50"
                 : "border-zinc-200 bg-white hover:border-emerald-300 hover:bg-emerald-50"
@@ -211,14 +243,14 @@ export function MetaStudyWorkspace({
             <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-emerald-700 text-white">
               <KeyRound className="h-4 w-4" aria-hidden />
             </span>
-            <span>
+            <span className={projectMenuCollapsed ? "sr-only" : undefined}>
               <span className="block text-sm font-semibold text-zinc-950">AI 평가 설정</span>
               <span className="mt-1 block text-xs leading-5 text-zinc-500">OpenAI key / model</span>
             </span>
           </button>
         ) : null}
 
-        <div className="mt-5 rounded-md border border-zinc-200 bg-zinc-50 p-3">
+        <div className={`mt-5 rounded-md border border-zinc-200 bg-zinc-50 p-3 ${projectMenuCollapsed ? "hidden" : ""}`}>
           <p className="text-xs font-semibold uppercase text-zinc-500">Operating rule</p>
           <p className="mt-2 text-xs leading-5 text-zinc-600">
             연구별 protocol, search, screening, extraction, analysis를 분리해 저장하고, 기존 검색 시스템은 건드리지 않습니다.
@@ -728,9 +760,12 @@ function WorkbookFullTextBoard({ project }: { project: MetaStudyProject }) {
         <div>
           <p className="text-sm font-semibold text-emerald-900">Excel workbook standard workflow</p>
           <h3 className="mt-1 text-lg font-semibold text-zinc-950">업로드 대상은 3개 sheet, 나머지는 audit/support로 고정</h3>
-          <p className="mt-2 max-w-4xl text-sm leading-6 text-zinc-700">
+          <details className="mt-3 max-w-4xl rounded-md border border-emerald-200 bg-white/80 px-3 py-2">
+            <summary className="cursor-pointer text-sm font-semibold text-emerald-900">Workbook rule</summary>
+            <p className="mt-2 text-sm leading-6 text-zinc-700">
             Summary의 초기 검색/PRISMA 숫자는 이전 PDF 값을 기준으로 유지합니다. 실제 full-text PDF/Word 확인 중 탈락이 생기면 아래 current/included/excluded 값을 직접 수정하고 CSV로 남깁니다.
-          </p>
+            </p>
+          </details>
         </div>
         <div className="flex flex-wrap gap-2">
           <button
@@ -1379,7 +1414,10 @@ function StageHeader({ eyebrow, title, detail }: { eyebrow: string; title: strin
     <div>
       <p className="text-sm font-semibold text-emerald-700">{eyebrow}</p>
       <h3 className="mt-1 text-xl font-semibold tracking-normal text-zinc-950">{title}</h3>
-      <p className="mt-2 max-w-4xl text-sm leading-6 text-zinc-600">{detail}</p>
+      <details className="mt-3 max-w-4xl rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2">
+        <summary className="cursor-pointer text-sm font-semibold text-zinc-700">Stage note</summary>
+        <p className="mt-2 text-sm leading-6 text-zinc-600">{detail}</p>
+      </details>
     </div>
   );
 }
@@ -1411,12 +1449,12 @@ function Checklist({ title, items }: { title: string; items: string[] }) {
 
 function CheckCard({ title, detail }: { title: string; detail: string }) {
   return (
-    <article className="rounded-md border border-zinc-200 p-4">
-      <div className="flex items-start gap-2">
+    <details className="rounded-md border border-zinc-200 p-4">
+      <summary className="flex cursor-pointer list-none items-start gap-2">
         <FlaskConical className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" aria-hidden />
         <p className="text-sm font-semibold text-zinc-950">{title}</p>
-      </div>
+      </summary>
       <p className="mt-2 text-sm leading-6 text-zinc-600">{detail}</p>
-    </article>
+    </details>
   );
 }
