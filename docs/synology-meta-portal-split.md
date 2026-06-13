@@ -90,6 +90,11 @@ meta.wiregene.com -> NAS_IP:3001
 
 ## Portal Service
 
+ID/PW addition, deletion, and password reset/change are performed only through
+`portal.wiregene.com`. Meta and other research services use Portal
+authentication and should not provide separate writable account-management
+screens.
+
 ```sh
 /bin/sh /volume1/docker/wiregene-portal/scripts/synology-start-portal.sh
 ```

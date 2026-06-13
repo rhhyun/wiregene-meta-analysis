@@ -8,6 +8,7 @@ import {
   RefreshCw,
   RotateCcw,
   ShieldCheck,
+  Trash2,
   Users,
 } from "lucide-react";
 import type { FormEvent, ReactNode } from "react";
@@ -165,6 +166,37 @@ export function AccountManagementPanel() {
     }
   }
 
+  async function deleteAccount(account: AccountSummary) {
+    if (!account.id) return;
+    const confirmed = window.confirm(`${account.username} ID를 Portal 계정 목록에서 삭제할까요?`);
+    if (!confirmed) return;
+    setTemporaryPassword(null);
+
+    try {
+      const response = await fetch("/api/admin/accounts", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accountId: account.id }),
+      });
+      const payload = (await response.json()) as {
+        account?: AccountSummary;
+        error?: string;
+      };
+
+      if (!response.ok || !payload.account) {
+        throw new Error(payload.error || `HTTP ${response.status}`);
+      }
+
+      await reloadAccounts();
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        status: "error",
+        message: error instanceof Error ? error.message : "Account deletion failed.",
+      }));
+    }
+  }
+
   useEffect(() => {
     let mounted = true;
 
@@ -200,9 +232,15 @@ export function AccountManagementPanel() {
             <p className="text-sm font-semibold text-emerald-700">Access Control</p>
             <h2 className="mt-1 text-2xl font-semibold tracking-normal text-zinc-950">ID 관리</h2>
             <p className="mt-2 text-sm leading-6 text-zinc-600">
-              Wiregene 서브사이트별 접근 ID와 Portal 계정을 한 곳에서 확인합니다.
+              ID/PW 추가, 삭제, 변경은 portal.wiregene.com에서만 진행합니다. Meta/Search/HW ERP는 Portal 인증을 사용합니다.
             </p>
           </div>
+          <a
+            href="https://portal.wiregene.com/?wiregene_from=account-management"
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-4 text-sm font-semibold text-emerald-800 transition hover:border-emerald-300 hover:bg-emerald-100"
+          >
+            portal.wiregene.com
+          </a>
           <button
             type="button"
             onClick={() => void reloadAccounts()}
@@ -359,14 +397,24 @@ export function AccountManagementPanel() {
                   </div>
                 </div>
                 {state.writable && account.source === "PORTAL_ACCOUNTS" ? (
-                  <button
-                    type="button"
-                    onClick={() => void resetPassword(account)}
-                    className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-xs font-semibold text-zinc-700 transition hover:border-emerald-300 hover:bg-emerald-50"
-                  >
-                    <RotateCcw className="h-3.5 w-3.5" aria-hidden />
-                    PW 재발급
-                  </button>
+                  <div className="flex flex-wrap gap-2 lg:justify-end">
+                    <button
+                      type="button"
+                      onClick={() => void resetPassword(account)}
+                      className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-xs font-semibold text-zinc-700 transition hover:border-emerald-300 hover:bg-emerald-50"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+                      PW 재발급
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void deleteAccount(account)}
+                      className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-rose-200 bg-white px-3 text-xs font-semibold text-rose-700 transition hover:bg-rose-50"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                      ID 삭제
+                    </button>
+                  </div>
                 ) : null}
               </div>
             ))}

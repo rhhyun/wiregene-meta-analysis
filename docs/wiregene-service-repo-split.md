@@ -35,6 +35,9 @@ folder for `meta` or `portal`. It remains the source folder for
 - Synology scheduler tasks should not depend on a shared source checkout.
 - Portal account management, meta-analysis workflows, and search/briefing jobs
   have different environment variables and failure modes.
+- ID/PW addition, deletion, and password reset/change are managed only from
+  `portal.wiregene.com`; meta/search services consume Portal authentication and
+  must not expose separate writable account-management screens.
 - Each service can be deployed, rolled back, and restarted independently.
 
 ## Create Standalone Repositories

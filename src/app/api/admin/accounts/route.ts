@@ -8,6 +8,7 @@ import {
 } from "@/lib/basic-auth-users";
 import {
   createPortalAccount,
+  deletePortalAccount,
   listPortalAccountSummaries,
   portalSites,
   type PortalSiteId,
@@ -85,6 +86,26 @@ export async function PATCH(request: Request) {
     }
 
     const result = await resetPortalAccountPassword(payload.accountId);
+    return NextResponse.json(result);
+  } catch (error) {
+    return accountErrorResponse(error);
+  }
+}
+
+export async function DELETE(request: Request) {
+  if (!isPortalMode(request)) return portalOnlyResponse();
+  if (!(await isAuthenticatedAdminRequest(request))) return authRequiredResponse();
+
+  try {
+    const payload = (await request.json()) as {
+      accountId?: string;
+    };
+
+    if (!payload.accountId) {
+      return NextResponse.json({ error: "Account ID is required." }, { status: 400 });
+    }
+
+    const result = await deletePortalAccount(payload.accountId);
     return NextResponse.json(result);
   } catch (error) {
     return accountErrorResponse(error);

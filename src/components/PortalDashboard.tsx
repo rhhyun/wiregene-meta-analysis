@@ -106,6 +106,9 @@ export function PortalDashboard({
             <div>
               <p className="text-sm font-semibold text-emerald-700">Platform Launcher</p>
               <h2 className="text-xl font-semibold tracking-normal">Wiregene 연구 플랫폼</h2>
+              <p className="mt-1 text-sm leading-6 text-zinc-600">
+                ID/PW 추가, 삭제, 재발급은 Portal에서만 처리하고 각 연구 사이트는 Portal 인증을 사용합니다.
+              </p>
             </div>
           </div>
           <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">

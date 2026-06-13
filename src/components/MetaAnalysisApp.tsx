@@ -32,7 +32,7 @@ export function MetaAnalysisApp({
               className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-4 text-sm font-semibold text-zinc-700 transition hover:border-emerald-300 hover:bg-emerald-50"
             >
               <ShieldCheck className="h-4 w-4" aria-hidden />
-              Portal
+              Portal ID/PW
             </a>
           </div>
         </div>

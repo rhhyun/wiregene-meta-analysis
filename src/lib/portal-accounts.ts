@@ -150,6 +150,19 @@ export async function resetPortalAccountPassword(accountId: string) {
   };
 }
 
+export async function deletePortalAccount(accountId: string) {
+  const data = await portalAccountStorage.read();
+  const account = data.accounts.find((candidate) => candidate.id === accountId);
+  if (!account) throw new Error("Account not found.");
+
+  data.accounts = data.accounts.filter((candidate) => candidate.id !== accountId);
+  await portalAccountStorage.write(data);
+
+  return {
+    account: toSummary(account),
+  };
+}
+
 export async function verifyPortalAccountCredentials(input: {
   username: string;
   password: string;

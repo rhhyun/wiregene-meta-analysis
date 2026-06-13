@@ -1028,6 +1028,49 @@ git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin
 
 Never write the real OpenAI API key into `backup.md` or Git-tracked files.
 
+## 2026-06-13 Portal-only ID/PW account management
+
+User request:
+
+```text
+앞으로 ID, PW 삭제 추가 변경은 portal.wiregene.com에서 진행하도록 합니다
+```
+
+Implemented:
+
+- Confirmed `/api/admin/accounts` remains writable only in Portal mode.
+- Added `deletePortalAccount()` in `src/lib/portal-accounts.ts`.
+- Added `DELETE /api/admin/accounts` for Portal-managed account deletion. It still requires Portal/admin authentication and is blocked outside Portal mode.
+- `src/components/AccountManagementPanel.tsx`: added a Portal-only operation notice: ID/PW add/delete/change happens on `portal.wiregene.com`.
+- `src/components/AccountManagementPanel.tsx`: added **ID 삭제** next to **PW 재발급** for Portal DB accounts.
+- `src/components/MetaAnalysisApp.tsx`: changed the Meta header link from `Portal` to `Portal ID/PW`.
+- `src/components/PortalDashboard.tsx`: added a platform notice that ID/PW add/delete/reset is handled only by Portal and research sites use Portal auth.
+- `docs/wiregene-service-repo-split.md` and `docs/synology-meta-portal-split.md`: documented the Portal-only account-management rule.
+- Package version bumped to `0.1.23`.
+- UI version bumped to `Ver 1.58`.
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit: pass.
+npm.cmd run lint: pass.
+npm.cmd run build: pass.
+Portal-mode API test on http://127.0.0.1:3028: created a temporary Portal account, deleted it with DELETE /api/admin/accounts, and confirmed the count dropped.
+Browser verification on http://127.0.0.1:3028: Ver 1.58 visible, Portal-only ID/PW notice visible, temporary Portal user visible, PW 재발급 and ID 삭제 buttons visible, console errors=[].
+Temporary account and dev server were cleaned up after verification.
+```
+
+Regular Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+Important:
+
+- Do not manage writable ID/PW operations inside Meta or Search.
+- Do not store real passwords, temporary passwords, API keys, or tokens in Git or `backup.md`.
+
 ## 2026-06-13 Saved full-text dropdown, upload-button placement, and reference row cleanup
 
 User request:
