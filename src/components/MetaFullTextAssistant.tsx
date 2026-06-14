@@ -102,7 +102,8 @@ type BatchAnalysisResult = {
 
 const fullTextHistoryListUrl = "/api/meta-analysis/full-text/history?limit=500";
 const largeFileUploadThresholdBytes = 4 * 1024 * 1024;
-const largeFileUploadChunkBytes = 2_500_000;
+const googleDriveResumableChunkUnitBytes = 256 * 1024;
+const largeFileUploadChunkBytes = googleDriveResumableChunkUnitBytes * 9;
 
 type ApiPayload = Record<string, unknown>;
 
@@ -286,6 +287,13 @@ function formatFileSize(bytes: number) {
   return `${Math.max(1, Math.round(bytes / 1024)).toLocaleString("ko-KR")} KB`;
 }
 
+function nextUploadStartFromGoogleRange(range: string | null | undefined) {
+  const match = /^bytes=0-(\d+)$/i.exec(range?.trim() ?? "");
+  if (!match) return null;
+  const lastReceivedByte = Number(match[1]);
+  return Number.isSafeInteger(lastReceivedByte) && lastReceivedByte >= 0 ? lastReceivedByte + 1 : null;
+}
+
 async function uploadLargeFileThroughServerChunks(
   nextFile: File,
   session: DirectUploadSessionPayload,
@@ -293,12 +301,15 @@ async function uploadLargeFileThroughServerChunks(
 ) {
   const totalChunks = Math.ceil(nextFile.size / largeFileUploadChunkBytes);
   let uploadedFile: GoogleDriveUploadPayload | null = null;
+  let start = 0;
+  let chunkIndex = 0;
 
-  for (let chunkIndex = 0, start = 0; start < nextFile.size; chunkIndex += 1, start += largeFileUploadChunkBytes) {
+  while (start < nextFile.size) {
+    chunkIndex += 1;
     const end = Math.min(nextFile.size, start + largeFileUploadChunkBytes) - 1;
     const chunk = nextFile.slice(start, end + 1);
     onStage(
-      `Uploading large file through Meta server chunk ${chunkIndex + 1}/${totalChunks} (${formatFileSize(
+      `Uploading large file through Meta server chunk ${chunkIndex}/${totalChunks} (${formatFileSize(
         end + 1,
       )}/${formatFileSize(nextFile.size)}).`,
     );
@@ -328,7 +339,16 @@ async function uploadLargeFileThroughServerChunks(
     const payload = await readChunkUploadPayload(chunkResponse);
     if (payload.complete) {
       uploadedFile = payload.file ?? null;
+      break;
     }
+
+    const nextStart = nextUploadStartFromGoogleRange(payload.receivedRange) ?? end + 1;
+    if (nextStart <= start || nextStart > nextFile.size) {
+      throw new Error(
+        `Large-file chunk upload returned an invalid resume offset: ${payload.receivedRange ?? "missing Range"}.`,
+      );
+    }
+    start = nextStart;
   }
 
   if (!uploadedFile?.id) {

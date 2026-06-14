@@ -5,6 +5,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+const googleDriveResumableChunkUnitBytes = 256 * 1024;
+
 type ChunkForwardErrorDetails = {
   requestId: string;
   phase: string;
@@ -62,6 +64,13 @@ function errorResponse(details: ChunkForwardErrorDetails, status = 400) {
   );
 }
 
+function helpForReceiveChunkError(message: string) {
+  if (message.includes("Invalid Google Drive resumable upload chunk size")) {
+    return "Refresh the page and confirm the UI shows Ver 1.62 or later. Older page bundles used a non-Google-compatible chunk size.";
+  }
+  return "The large file is uploaded through the Meta same-origin chunk proxy. If this message appears, check the request id in server logs and verify the Google Drive resumable upload session is still valid.";
+}
+
 export async function POST(request: Request) {
   const requestId = randomUUID();
   const startedAt = Date.now();
@@ -88,6 +97,12 @@ export async function POST(request: Request) {
     const expectedBytes = chunkEnd - chunkStart + 1;
     if (chunkBuffer.byteLength !== expectedBytes) {
       throw new Error(`Chunk byte length mismatch. Expected ${expectedBytes}, received ${chunkBuffer.byteLength}.`);
+    }
+    const isFinalChunk = chunkEnd === fileSize - 1;
+    if (!isFinalChunk && chunkBuffer.byteLength % googleDriveResumableChunkUnitBytes !== 0) {
+      throw new Error(
+        `Invalid Google Drive resumable upload chunk size. Non-final chunks must be a multiple of ${googleDriveResumableChunkUnitBytes} bytes; received ${chunkBuffer.byteLength}.`,
+      );
     }
 
     const googleResponse = await fetch(uploadUrl, {
@@ -131,7 +146,7 @@ export async function POST(request: Request) {
           googleRange,
           message: rawText.trim() || `Google Drive returned HTTP ${googleResponse.status}.`,
           help:
-            "The browser reached the Meta server, but Google Drive rejected this upload chunk. Regenerate Google Drive credentials and retry; if this repeats, use the Synology/local Docker deployment for very large batches.",
+            "The browser reached the Meta server, but Google Drive rejected this upload chunk. Refresh the page to load the latest chunked uploader; if this repeats after redeploy, check the request id in server logs.",
         },
         502,
       );
@@ -165,8 +180,7 @@ export async function POST(request: Request) {
         fileSize,
         chunkBytes: null,
         message,
-        help:
-          "The large file is now uploaded through the Meta same-origin chunk proxy. If this message appears, check the request id in server logs and verify the Google Drive resumable upload session is still valid.",
+        help: helpForReceiveChunkError(message),
       },
       400,
     );

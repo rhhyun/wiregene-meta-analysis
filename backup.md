@@ -805,6 +805,62 @@ Regular Synology deploy/run command after GitHub push:
 git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
 ```
 
+## 2026-06-14 Google Drive resumable chunk-size correction
+
+User reported the same 5.6 MB Zuhdi PDF still failed after the chunk proxy fix:
+
+```text
+Large-file chunk upload failed before analysis.
+phase: forward_chunk_to_google_drive
+chunkStart: 2500000
+chunkEnd: 4999999
+fileSize: 5916449
+chunkBytes: 2500000
+httpStatus: 503
+message: Invalid request. According to the Content-Range header, the upload offset is 2500000 byte(s), which exceeds already uploaded size of 2359296 byte(s).
+```
+
+Root cause:
+
+- The previous chunk proxy used an arbitrary chunk size of `2,500,000` bytes.
+- Google Drive resumable upload requires non-final chunks to align to 256 KiB units.
+- Google accepted only `2,359,296` bytes (`256 * 1024 * 9`) from the first chunk, then rejected the second chunk because the client started at `2,500,000`.
+
+Implemented:
+
+- `src/components/MetaFullTextAssistant.tsx`
+  - Replaced `2,500,000` byte chunks with `256 * 1024 * 9 = 2,359,296` byte chunks.
+  - Added parsing of Google `Range: bytes=0-N` responses so the next chunk starts at the exact acknowledged offset.
+- `src/app/api/meta-analysis/full-text/upload-chunk/route.ts`
+  - Added server-side validation that all non-final chunks must be a multiple of `262,144` bytes before forwarding to Google Drive.
+  - Improved the error help for stale page bundles: refresh and confirm `Ver 1.62` or later.
+- Package version bumped to `0.1.27`.
+- UI version bumped to `Ver 1.62 | 2026 copyright by JK Hyun`.
+
+Verification:
+
+```text
+npm run lint: pass.
+npx tsc --noEmit: pass.
+npm run build: pass.
+Production build includes /api/meta-analysis/full-text/upload-chunk.
+Targeted bad chunk test: 2,500,000-byte non-final chunk is rejected locally with HTTP 400 before Google forwarding, message says non-final chunks must be a multiple of 262144 bytes.
+Targeted aligned chunk test: 2,359,296-byte non-final chunk passes local validation and reaches Google forwarding; fake upload id returns expected HTTP 502/404 from Google.
+curl with Host: meta.wiregene.com showed Ver 1.62.
+Browser verification in forced Meta mode on http://127.0.0.1:3212: Ver 1.62 visible; Screening tab unique; full-text upload visible; file input multiple=true; accepts PDF, Word, TXT, MD; Analyze full text visible; console errors=[].
+```
+
+Notes:
+
+- No private full-text PDF was transmitted during this verification.
+- No OpenAI or Google secret was written to Git or backup.
+
+Regular Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 ## 2026-06-13 Google Drive OAuth invalid_grant guidance fix
 
 User-reported error:
