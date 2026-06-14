@@ -28,6 +28,11 @@ type MetaFullTextAssistantProps = {
 };
 
 type ReviewerDecision = "pending" | "include_quantitative" | "include_narrative_support" | "exclude" | "conflict";
+type HistoryFilter =
+  | "all"
+  | "verification_pending"
+  | "verification_complete"
+  | MetaFullTextAnalysis["eligibility"]["decision"];
 
 type MetaFullTextHistorySummary = {
   id: string;
@@ -51,6 +56,10 @@ type MetaFullTextHistorySummary = {
   verificationComplete: boolean;
   reviewerOneName: string;
   reviewerTwoName: string;
+  reviewerOneDecision: string;
+  reviewerTwoDecision: string;
+  fixedExclusionReason: string;
+  conflictStatus: string;
 };
 
 type MetaFullTextVerification = {
@@ -382,6 +391,16 @@ function batchStatusTone(status: BatchAnalysisStatus) {
   return "border-zinc-200 bg-zinc-50 text-zinc-600";
 }
 
+function humanDecisionBucket(item: MetaFullTextHistorySummary) {
+  if (!item.verificationComplete) return "pending";
+  const decisions = [item.reviewerOneDecision, item.reviewerTwoDecision];
+  if (decisions.every((decision) => decision === "include_quantitative" || decision === "include_narrative_support")) {
+    return "include";
+  }
+  if (decisions.every((decision) => decision === "exclude")) return "exclude";
+  return "conflict";
+}
+
 function stripGeneratedReferenceContext(value: string | null | undefined) {
   return (value ?? "")
     .split(/\r?\n/)
@@ -438,6 +457,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
   const [isSavingVerification, setIsSavingVerification] = useState(false);
   const [isSavingReviewerSettings, setIsSavingReviewerSettings] = useState(false);
   const [reviewerNamesSaved, setReviewerNamesSaved] = useState(false);
+  const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("all");
 
   const reviewerNamesReady = Boolean(reviewerOneName.trim()) && Boolean(reviewerTwoName.trim());
   const reviewerSettingsReady = reviewerNamesReady && reviewerNamesSaved;
@@ -462,6 +482,63 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
   const currentHistoryItem = useMemo(
     () => historyItems.find((item) => item.id === currentHistoryId) ?? null,
     [currentHistoryId, historyItems],
+  );
+  const historyDecisionCounts = useMemo(
+    () => ({
+      all: historyItems.length,
+      include_quantitative: historyItems.filter((item) => item.decision === "include_quantitative").length,
+      uncertain: historyItems.filter((item) => item.decision === "uncertain").length,
+      exclude: historyItems.filter((item) => item.decision === "exclude").length,
+      include_narrative_support: historyItems.filter((item) => item.decision === "include_narrative_support").length,
+      verification_pending: historyItems.filter((item) => !item.verificationComplete).length,
+      verification_complete: historyItems.filter((item) => item.verificationComplete).length,
+    }),
+    [historyItems],
+  );
+  const historySheetProgress = useMemo(() => {
+    const rows = new Map<
+      string,
+      {
+        label: string;
+        saved: number;
+        verified: number;
+        humanInclude: number;
+        humanExclude: number;
+        pending: number;
+        conflict: number;
+      }
+    >();
+    for (const item of historyItems) {
+      const key = item.sourceSheet || "No Excel sheet";
+      const row = rows.get(key) ?? {
+        label: item.sourceLabel ? `${key} · ${item.sourceLabel}` : key,
+        saved: 0,
+        verified: 0,
+        humanInclude: 0,
+        humanExclude: 0,
+        pending: 0,
+        conflict: 0,
+      };
+      row.saved += 1;
+      if (item.verificationComplete) row.verified += 1;
+      const bucket = humanDecisionBucket(item);
+      if (bucket === "include") row.humanInclude += 1;
+      if (bucket === "exclude") row.humanExclude += 1;
+      if (bucket === "pending") row.pending += 1;
+      if (bucket === "conflict") row.conflict += 1;
+      rows.set(key, row);
+    }
+    return [...rows.values()].sort((left, right) => right.saved - left.saved);
+  }, [historyItems]);
+  const filteredHistoryItems = useMemo(
+    () =>
+      historyItems.filter((item) => {
+        if (historyFilter === "all") return true;
+        if (historyFilter === "verification_pending") return !item.verificationComplete;
+        if (historyFilter === "verification_complete") return item.verificationComplete;
+        return item.decision === historyFilter;
+      }),
+    [historyFilter, historyItems],
   );
   const analyzeButtonLabel = isAnalyzing
     ? "Analyzing"
@@ -1043,17 +1120,89 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
             {historyError}
           </div>
         ) : null}
+        {historySheetProgress.length > 0 ? (
+          <div className="mt-3 overflow-x-auto rounded-md border border-zinc-200 bg-white">
+            <table className="w-full min-w-[760px] border-collapse text-left text-xs">
+              <thead className="bg-zinc-50 text-zinc-500">
+                <tr>
+                  <th className="border-b border-zinc-200 px-3 py-2">Excel source sheet</th>
+                  <th className="border-b border-zinc-200 px-3 py-2">Saved</th>
+                  <th className="border-b border-zinc-200 px-3 py-2">Human verified</th>
+                  <th className="border-b border-zinc-200 px-3 py-2">Human include</th>
+                  <th className="border-b border-zinc-200 px-3 py-2">Human exclude</th>
+                  <th className="border-b border-zinc-200 px-3 py-2">Pending/conflict</th>
+                </tr>
+              </thead>
+              <tbody>
+                {historySheetProgress.map((row) => (
+                  <tr key={row.label}>
+                    <td className="border-b border-zinc-100 px-3 py-2 font-semibold text-zinc-950">{row.label}</td>
+                    <td className="border-b border-zinc-100 px-3 py-2 text-zinc-700">{row.saved.toLocaleString("ko-KR")}</td>
+                    <td className="border-b border-zinc-100 px-3 py-2 text-zinc-700">{row.verified.toLocaleString("ko-KR")}</td>
+                    <td className="border-b border-zinc-100 px-3 py-2 text-emerald-800">{row.humanInclude.toLocaleString("ko-KR")}</td>
+                    <td className="border-b border-zinc-100 px-3 py-2 text-rose-800">{row.humanExclude.toLocaleString("ko-KR")}</td>
+                    <td className="border-b border-zinc-100 px-3 py-2 text-amber-800">{(row.pending + row.conflict).toLocaleString("ko-KR")}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+        <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          {([
+            ["include_quantitative", "정량분석후보", historyDecisionCounts.include_quantitative],
+            ["uncertain", "판정보류", historyDecisionCounts.uncertain],
+            ["exclude", "제외후보", historyDecisionCounts.exclude],
+            ["include_narrative_support", "서술/근거후보", historyDecisionCounts.include_narrative_support],
+          ] as const).map(([filter, label, count]) => (
+            <button
+              key={filter}
+              type="button"
+              onClick={() => setHistoryFilter(filter)}
+              className={`rounded-md border p-3 text-left transition ${
+                historyFilter === filter
+                  ? "border-emerald-400 bg-emerald-50"
+                  : "border-zinc-200 bg-white hover:border-emerald-300 hover:bg-emerald-50"
+              }`}
+            >
+              <span className="block text-xs font-semibold uppercase text-zinc-500">{label}</span>
+              <span className="mt-1 block text-2xl font-semibold text-zinc-950">{count.toLocaleString("ko-KR")}</span>
+            </button>
+          ))}
+        </div>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {([
+            ["all", `All saved ${historyDecisionCounts.all}`],
+            ["verification_pending", `Verification pending ${historyDecisionCounts.verification_pending}`],
+            ["verification_complete", `Verified ${historyDecisionCounts.verification_complete}`],
+          ] as const).map(([filter, label]) => (
+            <button
+              key={filter}
+              type="button"
+              onClick={() => setHistoryFilter(filter)}
+              className={`inline-flex h-8 items-center rounded-md px-2 text-xs font-semibold transition ${
+                historyFilter === filter
+                  ? "bg-emerald-700 text-white"
+                  : "bg-zinc-100 text-zinc-700 hover:bg-emerald-50 hover:text-emerald-800"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <div className="mt-3 grid gap-2">
           {historyItems.length > 0 ? (
             <>
               <div>
                 <div className="flex items-center justify-between gap-3 text-xs font-semibold uppercase text-zinc-500">
-                  <span>Saved article list ({historyItems.length.toLocaleString("ko-KR")}/{historyStats.totalCount.toLocaleString("ko-KR")})</span>
+                  <span>
+                    Saved article list ({filteredHistoryItems.length.toLocaleString("ko-KR")}/{historyItems.length.toLocaleString("ko-KR")} shown)
+                  </span>
                   <span>{historyItems.filter((item) => item.verificationComplete).length.toLocaleString("ko-KR")} verified</span>
                 </div>
                 <div className="mt-2 max-h-[34rem] overflow-y-auto rounded-md border border-zinc-200 bg-zinc-50">
                   <div className="divide-y divide-zinc-200">
-                    {historyItems.map((item, index) => {
+                    {filteredHistoryItems.map((item, index) => {
                       const selected = item.id === currentHistoryId;
                       return (
                         <button
@@ -1087,6 +1236,11 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
                         </button>
                       );
                     })}
+                    {filteredHistoryItems.length === 0 ? (
+                      <p className="bg-white p-3 text-sm font-semibold text-zinc-500">
+                        No saved articles match this filter.
+                      </p>
+                    ) : null}
                   </div>
                 </div>
               </div>

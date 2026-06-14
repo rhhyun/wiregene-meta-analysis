@@ -228,12 +228,12 @@ export function MetaExtractionDatasetPanel({ extractionSections }: MetaExtractio
           </button>
           <button
             type="button"
-            onClick={() => void copyCsv(overview?.csv ?? "", "Full Excel CSV")}
+            onClick={() => void copyCsv(overview?.csv ?? "", "Draft Excel CSV")}
             disabled={!overview?.records.length}
             className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-3 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
           >
             <FileSpreadsheet className="h-4 w-4" aria-hidden />
-            Copy full Excel CSV
+            Copy draft Excel CSV (not saved)
           </button>
         </div>
       </div>
@@ -244,6 +244,44 @@ export function MetaExtractionDatasetPanel({ extractionSections }: MetaExtractio
         <Metric label="Verified rows" value={loading ? "..." : String(overview?.stats.verifiedRowCount ?? 0)} />
         <Metric label="Manual fields" value={loading ? "..." : String(overview?.stats.manualRequiredFieldCount ?? 0)} />
       </div>
+
+      {overview?.records.length ? (
+        <section className="mt-4 rounded-md border border-emerald-200 bg-white">
+          <div className="border-b border-emerald-100 p-3">
+            <p className="text-sm font-semibold text-zinc-950">Excel dataset preview before CSV copy</p>
+            <p className="mt-1 text-xs leading-5 text-zinc-500">
+              현재 draft CSV에는 {overview.stats.excelRowCount.toLocaleString("ko-KR")} row, {overview.columns.length.toLocaleString("ko-KR")} columns가 있습니다.
+              아래는 첫 5개 row의 audit preview입니다.
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] border-collapse text-left text-xs">
+              <thead className="bg-zinc-50 text-zinc-500">
+                <tr>
+                  <th className="border-b border-zinc-200 px-3 py-2">File</th>
+                  <th className="border-b border-zinc-200 px-3 py-2">Decision</th>
+                  <th className="border-b border-zinc-200 px-3 py-2">Source sheet</th>
+                  <th className="border-b border-zinc-200 px-3 py-2">Evidence</th>
+                  <th className="border-b border-zinc-200 px-3 py-2">Manual fields</th>
+                  <th className="border-b border-zinc-200 px-3 py-2">Verified</th>
+                </tr>
+              </thead>
+              <tbody>
+                {overview.records.slice(0, 5).map((record) => (
+                  <tr key={record.id}>
+                    <td className="border-b border-zinc-100 px-3 py-2 font-semibold text-zinc-950">{record.fileName}</td>
+                    <td className="border-b border-zinc-100 px-3 py-2 text-zinc-700">{record.finalDecision}</td>
+                    <td className="border-b border-zinc-100 px-3 py-2 text-zinc-700">{record.sourceSheet ?? "no sheet"}</td>
+                    <td className="border-b border-zinc-100 px-3 py-2 text-zinc-700">{record.evidenceCount}</td>
+                    <td className="border-b border-zinc-100 px-3 py-2 text-zinc-700">{record.manualRequiredFields.length}</td>
+                    <td className="border-b border-zinc-100 px-3 py-2 text-zinc-700">{record.verified ? "yes" : "no"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
 
       {notice ? <StatusMessage tone="success" message={notice} /> : null}
       {error ? <StatusMessage tone="error" message={error} /> : null}

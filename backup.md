@@ -805,6 +805,77 @@ Regular Synology deploy/run command after GitHub push:
 git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
 ```
 
+## 2026-06-14 Meta workflow UX pass for protocol/search/screening verification
+
+Actual working repository:
+
+```text
+C:\Users\rhhyu\Documents\GitHub\wiregene-meta-analysis
+```
+
+User request:
+
+- New topic workflow must not be only "skeleton copy"; researchers need to paste ChatGPT/Gemini planning text, edit fields, and save.
+- PRISMA protocol must be editable and support paste/review prompt workflow.
+- Search design must support PubMed plus other DB access links and allow externally searched result counts/export files to be entered.
+- Screening must show full-text AI decision categories at the top and let the user click them to filter saved papers.
+- Reviewer verification progress must be visible and saved results must remain reviewable later.
+- Included-paper Excel dataset must show what will be copied/exported before CSV copy.
+- Consider future multi-model comparison, but start with reliable saved artifacts and prompt/export surfaces.
+
+Specialist agent input used:
+
+- Meta-analysis/statistics workflow review: history records should become the authority for saved screening and verification counts.
+- Protocol/search workflow review: add editable/pasteable planning surfaces before skeleton/query copy actions.
+- AI architecture review: implement prompt/export surfaces first; add multi-model provider comparison later after persistence and cost controls are stable.
+
+Implemented:
+
+- `src/components/MetaStudyWorkspace.tsx`
+  - Added editable new-topic draft with ChatGPT/Gemini paste area, structured fields, save button, saved timestamp, and AI planning prompt copy.
+  - Added editable PRISMA protocol draft with PICO/PEO, eligibility, exclusion, synthesis fields, save button, saved timestamp, and AI review prompt copy.
+  - Added DB `Open` links for PubMed, Scopus, Web of Science, Embase, and Cochrane.
+  - Added external search result import log with actual n, export file, notes, local save, saved timestamp, and CSV copy.
+- `src/components/MetaFullTextAssistant.tsx`
+  - Added top decision cards for quantitative candidate, uncertain, exclude candidate, and narrative/evidence candidate.
+  - Cards filter the saved article list.
+  - Added all/pending/verified filters.
+  - Added source-sheet progress table showing saved, human verified, human include, human exclude, and pending/conflict counts.
+- `src/lib/meta-full-text-history.ts`
+  - Added reviewer decision/exclusion/conflict fields to history summaries so client-side progress can be computed from saved records.
+- `src/components/MetaExtractionDatasetPanel.tsx`
+  - Renamed draft CSV action to make clear it is not saving.
+  - Added Excel dataset preview before CSV copy, including row/column counts and first five audit rows.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.28`
+  - UI label: `Ver 1.63 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npm run lint: pass.
+npx tsc --noEmit --pretty false: pass.
+npm run build: pass.
+Browser verification in Meta mode on http://127.0.0.1:3214:
+- Ver 1.63 visible.
+- New topic page shows AI-planned topic draft, save button, and skeleton as secondary block.
+- PRISMA Protocol page shows Editable PRISMA protocol draft and save/prompt buttons.
+- Search Design page shows External search result import log and 5 DB Open links.
+- Screening page shows source-sheet progress, decision filter cards, saved-article list, and included-paper dataset panel.
+- Browser console errors/warnings: none.
+```
+
+Current limitation / next work:
+
+- New-topic/protocol/search draft saves are local-browser persistence only. For team-wide persistence across PCs, next iteration should add project-level server/Google Drive storage APIs.
+- Multi-model comparison is not implemented yet. Recommended next step is to add a model-review prompt pack/export first, then provider adapters for OpenAI/Gemini/open models once storage and cost controls are ready.
+
+Regular Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 ## 2026-06-14 Google Drive resumable chunk-size correction
 
 User reported the same 5.6 MB Zuhdi PDF still failed after the chunk proxy fix:

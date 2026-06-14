@@ -63,6 +63,10 @@ export type MetaFullTextHistorySummary = {
   verificationComplete: boolean;
   reviewerOneName: string;
   reviewerTwoName: string;
+  reviewerOneDecision: string;
+  reviewerTwoDecision: string;
+  fixedExclusionReason: string;
+  conflictStatus: string;
 };
 
 export type MetaFullTextReviewerSettings = {
@@ -272,6 +276,10 @@ function toSummary(record: MetaFullTextHistoryRecord): MetaFullTextHistorySummar
     verificationComplete: isVerificationComplete(record.verification),
     reviewerOneName: record.verification.reviewerOneName,
     reviewerTwoName: record.verification.reviewerTwoName,
+    reviewerOneDecision: record.verification.reviewerOneDecision,
+    reviewerTwoDecision: record.verification.reviewerTwoDecision,
+    fixedExclusionReason: record.verification.fixedExclusionReason,
+    conflictStatus: record.verification.conflictStatus,
   };
 }
 

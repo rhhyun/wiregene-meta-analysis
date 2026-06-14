@@ -16,6 +16,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
+  Save,
   Search,
   Target,
   Workflow,
@@ -102,6 +103,9 @@ const fullTextExclusionReasons = [
 ];
 
 const workbookBoardStorageKey = "wiregene-meta-workbook-fulltext-board-v1";
+const newTopicDraftStorageKey = "wiregene-meta-new-topic-draft-v1";
+const protocolDraftStorageKey = "wiregene-meta-protocol-draft-v1";
+const searchImportStorageKey = "wiregene-meta-search-import-log-v1";
 
 const analysisReadinessRows = [
   ["Overall PRMD prevalence", "현재 61-column template에는 없음; 필요 시 overall_PRMD_n/total 추가", "Template extension candidate"],
@@ -118,6 +122,26 @@ const methodSentences = [
   "We performed an arm-based random-effects meta-analysis of region-specific pain prevalence and an exploratory Bayesian network meta-regression to compare prespecified biomechanical asymmetry groups when studies reported two or more instrument groups.",
   "Feature-based exploratory clustering was performed to examine whether the prespecified groups showed internally coherent biomechanical profiles.",
 ];
+
+function readStoredJson<T>(key: string, fallback: T): T {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function databaseSearchUrl(database: string, query: string, pubMedUrl?: string) {
+  const normalized = database.toLowerCase();
+  if (normalized.includes("pubmed")) return pubMedUrl || buildPubMedSearchUrl(query);
+  if (normalized.includes("scopus")) return "https://www.scopus.com/search/form.uri?display=advanced";
+  if (normalized.includes("web of science")) return "https://www.webofscience.com/wos/woscc/advanced-search";
+  if (normalized.includes("embase")) return "https://www.embase.com/search/quick";
+  if (normalized.includes("cochrane")) return "https://www.cochranelibrary.com/advanced-search";
+  return "";
+}
 
 export function MetaStudyWorkspace({
   initialSearchQuery,
@@ -381,6 +405,49 @@ function OverviewStage({ project, pubMedUrl }: { project: MetaStudyProject; pubM
 }
 
 function ProtocolStage({ project }: { project: MetaStudyProject }) {
+  const storageKey = `${protocolDraftStorageKey}:${project.id}`;
+  const [protocolPaste, setProtocolPaste] = useState("");
+  const [savedAt, setSavedAt] = useState("");
+  const [draft, setDraft] = useState(() =>
+    readStoredJson(storageKey, {
+      population: "orchestral musicians, instrumentalists, music students/professionals",
+      exposure: "instrument-imposed postural asymmetry",
+      comparator: "low or mixed asymmetry instruments",
+      outcomes: "region-specific and laterality-specific pain prevalence",
+      eligibility:
+        "Observational full-text studies with extractable instrument-specific or group-specific PRMD/pain data.",
+      exclusion:
+        "Wrong population, no region-specific pain outcome, no instrument-specific data, no extractable denominator, review/editorial/conference abstract, intervention-only treatment effect study.",
+      synthesis:
+        "Arm-based random-effects prevalence meta-analysis; comparative layer only when studies report two or more prespecified asymmetry groups; exploratory ML as pattern validation.",
+    }),
+  );
+
+  function updateProtocolField(field: keyof typeof draft, value: string) {
+    setDraft((current) => ({ ...current, [field]: value }));
+  }
+
+  function saveProtocolDraft() {
+    const nextSavedAt = new Date().toISOString();
+    window.localStorage.setItem(storageKey, JSON.stringify(draft));
+    setSavedAt(nextSavedAt);
+  }
+
+  const protocolPrompt = [
+    "You are a PRISMA 2020 systematic review protocol reviewer.",
+    "Review and improve the following protocol draft without changing the research intent.",
+    "",
+    `Population: ${draft.population}`,
+    `Exposure: ${draft.exposure}`,
+    `Comparator: ${draft.comparator}`,
+    `Outcomes: ${draft.outcomes}`,
+    `Eligibility: ${draft.eligibility}`,
+    `Exclusion: ${draft.exclusion}`,
+    `Synthesis: ${draft.synthesis}`,
+    "",
+    protocolPaste,
+  ].join("\n");
+
   return (
     <div className="grid gap-5">
       <StageHeader
@@ -389,11 +456,78 @@ function ProtocolStage({ project }: { project: MetaStudyProject }) {
         detail="이 단계에서 분류 기준을 잠그면, 결과를 본 뒤 group을 바꿨다는 post hoc grouping 공격을 피할 수 있습니다."
       />
       <div className="grid gap-3 lg:grid-cols-4">
-        <Metric label="Population" value="orchestral musicians, instrumentalists, music students/professionals" />
-        <Metric label="Exposure" value="instrument-imposed postural asymmetry" />
-        <Metric label="Comparator" value="low or mixed asymmetry instruments" />
-        <Metric label="Outcomes" value="region-specific and laterality-specific pain prevalence" />
+        <Metric label="Population" value={draft.population} />
+        <Metric label="Exposure" value={draft.exposure} />
+        <Metric label="Comparator" value={draft.comparator} />
+        <Metric label="Outcomes" value={draft.outcomes} />
       </div>
+      <section className="rounded-md border border-emerald-200 bg-emerald-50 p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-emerald-900">Editable PRISMA protocol draft</p>
+            <p className="mt-1 text-sm leading-6 text-zinc-700">
+              ChatGPT/Gemini에서 작성한 protocol 초안을 붙여 넣고, 연구자가 PICO/PEO와 eligibility를 직접 수정한 뒤 저장합니다.
+            </p>
+            {savedAt ? <p className="mt-2 text-xs font-semibold text-emerald-800">저장완료: {new Date(savedAt).toLocaleString("ko-KR")}</p> : null}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={saveProtocolDraft}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-3 text-sm font-semibold text-white transition hover:bg-emerald-800"
+            >
+              <Save className="h-4 w-4" aria-hidden />
+              Protocol draft 저장
+            </button>
+            <button
+              type="button"
+              onClick={() => void navigator.clipboard?.writeText(protocolPrompt)}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-emerald-300 bg-white px-3 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100"
+            >
+              <ClipboardList className="h-4 w-4" aria-hidden />
+              AI 검토 prompt 복사
+            </button>
+          </div>
+        </div>
+        <label className="mt-4 grid gap-2 text-sm font-semibold text-zinc-700">
+          AI protocol draft 붙여넣기
+          <textarea
+            value={protocolPaste}
+            onChange={(event) => setProtocolPaste(event.target.value)}
+            rows={5}
+            placeholder="ChatGPT/Gemini가 작성한 PICO, inclusion/exclusion, outcome hierarchy, synthesis plan을 붙여 넣으세요."
+            className="rounded-md border border-emerald-300 bg-white px-3 py-2 text-sm font-normal leading-6 text-zinc-800 outline-none focus:border-emerald-500"
+          />
+        </label>
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          {([
+            ["population", "Population"],
+            ["exposure", "Exposure"],
+            ["comparator", "Comparator"],
+            ["outcomes", "Outcomes"],
+            ["eligibility", "Inclusion / eligibility"],
+            ["exclusion", "Exclusion rule"],
+            ["synthesis", "Synthesis plan"],
+          ] as const).map(([field, label]) => (
+            <label
+              key={field}
+              className={
+                field === "synthesis"
+                  ? "grid gap-1 text-xs font-semibold uppercase text-zinc-500 lg:col-span-2"
+                  : "grid gap-1 text-xs font-semibold uppercase text-zinc-500"
+              }
+            >
+              {label}
+              <textarea
+                value={draft[field]}
+                onChange={(event) => updateProtocolField(field, event.target.value)}
+                rows={field === "synthesis" ? 3 : 2}
+                className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-normal normal-case leading-6 text-zinc-900 outline-none focus:border-emerald-500"
+              />
+            </label>
+          ))}
+        </div>
+      </section>
       <div className="grid gap-3 lg:grid-cols-3">
         {project.exposureGroups.map((group) => (
           <article key={group.group} className="rounded-md border border-zinc-200 p-4">
@@ -428,6 +562,51 @@ function SearchStage({
   pubMedQuery: string;
   pubMedUrl: string;
 }) {
+  type SearchImportRow = { resultCount: string; exportFile: string; notes: string; completedAt: string };
+  const storageKey = `${searchImportStorageKey}:${project.id}`;
+  const [importRows, setImportRows] = useState(() => readStoredJson<Record<string, SearchImportRow>>(storageKey, {}));
+  const [importSavedAt, setImportSavedAt] = useState("");
+
+  function updateImportRow(database: string, field: "resultCount" | "exportFile" | "notes", value: string) {
+    setImportRows((current) => {
+      const previous = current[database] ?? { resultCount: "", exportFile: "", notes: "", completedAt: "" };
+      return {
+        ...current,
+        [database]: {
+          ...previous,
+          [field]: field === "resultCount" ? value.replace(/[^\d]/g, "") : value,
+        },
+      };
+    });
+  }
+
+  function saveSearchImportLog() {
+    const completedAt = new Date().toISOString();
+    const nextRows = Object.fromEntries(
+      project.searchRuns.map((run) => {
+        const previous = importRows[run.database] ?? { resultCount: "", exportFile: "", notes: "", completedAt: "" };
+        return [run.database, { ...previous, completedAt }];
+      }),
+    );
+    window.localStorage.setItem(storageKey, JSON.stringify(nextRows));
+    setImportRows(nextRows);
+    setImportSavedAt(completedAt);
+  }
+
+  function searchImportCsv() {
+    return csvRows([
+      ["database", "original_screenshot_count", "external_result_count", "export_file", "notes", "completed_at"],
+      ...project.searchRuns.map((run) => [
+        run.database,
+        String(run.resultCount),
+        importRows[run.database]?.resultCount ?? "",
+        importRows[run.database]?.exportFile ?? "",
+        importRows[run.database]?.notes ?? "",
+        importRows[run.database]?.completedAt ?? "",
+      ]),
+    ]);
+  }
+
   return (
     <div className="grid gap-5">
       <StageHeader
@@ -472,7 +651,9 @@ function SearchStage({
               </tr>
             </thead>
             <tbody>
-              {project.searchRuns.map((run) => (
+              {project.searchRuns.map((run) => {
+                const runUrl = databaseSearchUrl(run.database, run.query, pubMedUrl);
+                return (
                 <tr key={run.database}>
                   <td className="border-b border-zinc-100 px-4 py-3 font-semibold text-zinc-950">{run.database}</td>
                   <td className="border-b border-zinc-100 px-4 py-3 text-zinc-700">{run.searchedAt}</td>
@@ -484,6 +665,17 @@ function SearchStage({
                   <td className="border-b border-zinc-100 px-4 py-3 text-xs leading-5 text-zinc-600">{run.limits}</td>
                   <td className="border-b border-zinc-100 px-4 py-3 text-xs leading-5 text-zinc-600">{run.exportAction}</td>
                   <td className="border-b border-zinc-100 px-4 py-3">
+                    {runUrl ? (
+                      <a
+                        href={runUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mr-2 inline-flex h-8 items-center justify-center gap-2 rounded-md bg-emerald-700 px-2 text-xs font-semibold text-white transition hover:bg-emerald-800"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+                        Open
+                      </a>
+                    ) : null}
                     <button
                       type="button"
                       onClick={() => void navigator.clipboard?.writeText(run.query)}
@@ -492,6 +684,83 @@ function SearchStage({
                       <ClipboardList className="h-3.5 w-3.5" aria-hidden />
                       복사
                     </button>
+                  </td>
+                </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="rounded-md border border-emerald-200 bg-emerald-50 p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-emerald-900">External search result import log</p>
+            <p className="mt-1 text-sm leading-6 text-zinc-700">
+              PubMed 외 DB에서 직접 검색한 실제 결과 수와 export 파일명을 입력하고 저장합니다.
+            </p>
+            {importSavedAt ? <p className="mt-2 text-xs font-semibold text-emerald-800">저장완료: {new Date(importSavedAt).toLocaleString("ko-KR")}</p> : null}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={saveSearchImportLog}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-3 text-sm font-semibold text-white transition hover:bg-emerald-800"
+            >
+              <Save className="h-4 w-4" aria-hidden />
+              Search log 저장
+            </button>
+            <button
+              type="button"
+              onClick={() => void navigator.clipboard?.writeText(searchImportCsv())}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-emerald-300 bg-white px-3 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100"
+            >
+              <FileSpreadsheet className="h-4 w-4" aria-hidden />
+              Import log CSV 복사
+            </button>
+          </div>
+        </div>
+        <div className="mt-4 overflow-x-auto rounded-md border border-emerald-200 bg-white">
+          <table className="w-full min-w-[900px] border-collapse text-left text-sm">
+            <thead className="bg-emerald-50 text-xs uppercase text-emerald-900">
+              <tr>
+                <th className="border-b border-emerald-200 px-3 py-3">Database</th>
+                <th className="border-b border-emerald-200 px-3 py-3">Screenshot n</th>
+                <th className="border-b border-emerald-200 px-3 py-3">Actual n</th>
+                <th className="border-b border-emerald-200 px-3 py-3">Export file</th>
+                <th className="border-b border-emerald-200 px-3 py-3">Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {project.searchRuns.map((run) => (
+                <tr key={run.database}>
+                  <td className="border-b border-zinc-100 px-3 py-3 font-semibold text-zinc-950">{run.database}</td>
+                  <td className="border-b border-zinc-100 px-3 py-3 text-zinc-700">{run.resultCount.toLocaleString()}</td>
+                  <td className="border-b border-zinc-100 px-3 py-3">
+                    <input
+                      value={importRows[run.database]?.resultCount ?? ""}
+                      onChange={(event) => updateImportRow(run.database, "resultCount", event.target.value)}
+                      className="h-9 w-28 rounded-md border border-zinc-300 px-2 text-sm outline-none focus:border-emerald-500"
+                      inputMode="numeric"
+                      placeholder="n"
+                    />
+                  </td>
+                  <td className="border-b border-zinc-100 px-3 py-3">
+                    <input
+                      value={importRows[run.database]?.exportFile ?? ""}
+                      onChange={(event) => updateImportRow(run.database, "exportFile", event.target.value)}
+                      className="h-9 w-full rounded-md border border-zinc-300 px-2 text-sm outline-none focus:border-emerald-500"
+                      placeholder="RIS/CSV/NBIB filename"
+                    />
+                  </td>
+                  <td className="border-b border-zinc-100 px-3 py-3">
+                    <input
+                      value={importRows[run.database]?.notes ?? ""}
+                      onChange={(event) => updateImportRow(run.database, "notes", event.target.value)}
+                      className="h-9 w-full rounded-md border border-zinc-300 px-2 text-sm outline-none focus:border-emerald-500"
+                      placeholder="date, filters, access notes"
+                    />
                   </td>
                 </tr>
               ))}
@@ -1373,6 +1642,38 @@ function ReferencesStage({ project }: { project: MetaStudyProject }) {
 
 function NewTopicWorkspace() {
   const starterQuery = "(Population terms) AND (Exposure or intervention terms) AND (Outcome terms)";
+  const [sourceText, setSourceText] = useState("");
+  const [savedAt, setSavedAt] = useState("");
+  const [draft, setDraft] = useState(() =>
+    readStoredJson(newTopicDraftStorageKey, {
+      title: "",
+      researchQuestion: "",
+      population: "",
+      exposure: "",
+      outcomes: "",
+      databases: "PubMed, Scopus, Web of Science, Embase, Cochrane",
+      eligibility: "",
+      searchBlocks: starterQuery,
+      extractionPlan: "",
+    }),
+  );
+
+  function updateDraft(field: keyof typeof draft, value: string) {
+    setDraft((current) => ({ ...current, [field]: value }));
+  }
+
+  function saveNewTopicDraft() {
+    const nextSavedAt = new Date().toISOString();
+    window.localStorage.setItem(newTopicDraftStorageKey, JSON.stringify({ ...draft, sourceText, savedAt: nextSavedAt }));
+    setSavedAt(nextSavedAt);
+  }
+
+  const planningPrompt = [
+    "You are helping design a PRISMA 2020 systematic review/meta-analysis project.",
+    "Convert the idea below into PICO/PEO, eligibility, databases, search blocks, screening rules, extraction fields, and analysis plan.",
+    "",
+    sourceText || "(paste the research idea here)",
+  ].join("\n");
 
   return (
     <div className="grid gap-5">
@@ -1389,6 +1690,75 @@ function NewTopicWorkspace() {
           <Metric label="2. Protocol" value="eligibility, outcome hierarchy, risk of bias, synthesis plan 고정" />
           <Metric label="3. Search" value="PubMed/Scopus/WoS/Embase/Cochrane 검색식과 기간 전략 작성" />
         </div>
+        <section className="mt-5 rounded-md border border-emerald-200 bg-emerald-50 p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-emerald-900">AI-planned topic draft</p>
+              <p className="mt-1 text-sm leading-6 text-zinc-700">
+                ChatGPT/Gemini에서 구상한 내용을 붙여 넣고, 연구자가 제목, 질문, 검색/추출 계획을 수정한 뒤 저장합니다.
+              </p>
+              {savedAt ? <p className="mt-2 text-xs font-semibold text-emerald-800">저장완료: {new Date(savedAt).toLocaleString("ko-KR")}</p> : null}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={saveNewTopicDraft}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-3 text-sm font-semibold text-white transition hover:bg-emerald-800"
+              >
+                <Save className="h-4 w-4" aria-hidden />
+                Topic draft 저장
+              </button>
+              <button
+                type="button"
+                onClick={() => void navigator.clipboard?.writeText(planningPrompt)}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-emerald-300 bg-white px-3 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100"
+              >
+                <ClipboardList className="h-4 w-4" aria-hidden />
+                AI planning prompt 복사
+              </button>
+            </div>
+          </div>
+          <label className="mt-4 grid gap-2 text-sm font-semibold text-zinc-700">
+            ChatGPT/Gemini 구상 내용 붙여넣기
+            <textarea
+              value={sourceText}
+              onChange={(event) => setSourceText(event.target.value)}
+              rows={6}
+              placeholder="연구 아이디어, PICO/PEO, 검색식, inclusion/exclusion, 추출 parameter, 분석계획을 그대로 붙여 넣으세요."
+              className="rounded-md border border-emerald-300 bg-white px-3 py-2 text-sm font-normal leading-6 text-zinc-800 outline-none focus:border-emerald-500"
+            />
+          </label>
+          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+            {([
+              ["title", "Working title"],
+              ["researchQuestion", "Research question"],
+              ["population", "Population"],
+              ["exposure", "Exposure / predictor"],
+              ["outcomes", "Outcomes"],
+              ["databases", "Databases"],
+              ["eligibility", "Eligibility / exclusion"],
+              ["searchBlocks", "Search blocks"],
+              ["extractionPlan", "Extraction / analysis plan"],
+            ] as const).map(([field, label]) => (
+              <label
+                key={field}
+                className={
+                  field === "searchBlocks" || field === "extractionPlan"
+                    ? "grid gap-1 text-xs font-semibold uppercase text-zinc-500 lg:col-span-2"
+                    : "grid gap-1 text-xs font-semibold uppercase text-zinc-500"
+                }
+              >
+                {label}
+                <textarea
+                  value={draft[field]}
+                  onChange={(event) => updateDraft(field, event.target.value)}
+                  rows={field === "searchBlocks" || field === "extractionPlan" ? 4 : 2}
+                  className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-normal normal-case leading-6 text-zinc-900 outline-none focus:border-emerald-500"
+                />
+              </label>
+            ))}
+          </div>
+        </section>
         <div className="mt-5 grid gap-3 lg:grid-cols-2">
           <Checklist title="PRISMA start locks" items={newTopicLocks} />
           <div className="rounded-md border border-emerald-200 bg-emerald-50 p-4">
