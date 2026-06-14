@@ -18,20 +18,80 @@ type Matrix2D = [number, number, number, number, number, number];
 export async function extractPdfTextWithPdfParse(buffer: Buffer): Promise<PdfParseTextResult> {
   const { createRequire } = await import("module");
   const require = createRequire(import.meta.url);
-  installPdfParseNodePolyfills(require);
-
-  const { PDFParse } = require("pdf-parse") as typeof import("pdf-parse");
-  configurePdfParseWorker(require, PDFParse as PdfParseConstructor);
-  const parser = new PDFParse({ data: new Uint8Array(buffer) });
   try {
-    const result = await parser.getText();
-    return {
-      text: result.text ?? "",
-      totalPages: result.total,
-    };
-  } finally {
-    await parser.destroy();
+    installPdfParseNodePolyfills(require);
+
+    const { PDFParse } = require("pdf-parse") as typeof import("pdf-parse");
+    configurePdfParseWorker(require, PDFParse as PdfParseConstructor);
+    const parser = new PDFParse({ data: new Uint8Array(buffer) });
+    try {
+      const result = await parser.getText();
+      return {
+        text: result.text ?? "",
+        totalPages: result.total,
+      };
+    } finally {
+      await parser.destroy();
+    }
+  } catch (error) {
+    throw new Error(formatPdfTextExtractionError(error), { cause: error });
   }
+}
+
+function formatPdfTextExtractionError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  const normalized = message.replace(/\s+/g, " ").trim();
+  if (/DOMMatrix|ImageData|Path2D|canvas/i.test(normalized)) {
+    return `PDF text extraction could not initialize the Node PDF graphics polyfills. Details: ${normalized}`;
+  }
+  if (/pdf\.worker|worker/i.test(normalized)) {
+    return `PDF text extraction could not locate or initialize the pdf.js worker file. Details: ${normalized}`;
+  }
+  if (/password|encrypted/i.test(normalized)) {
+    return `PDF text extraction failed because the PDF appears encrypted or password protected. Details: ${normalized}`;
+  }
+  if (/invalid|corrupt|xref|trailer|parse/i.test(normalized)) {
+    return `PDF text extraction failed because the PDF could not be parsed as a valid text PDF. Details: ${normalized}`;
+  }
+  return `PDF text extraction failed. Details: ${normalized || "unknown error"}`;
+}
+
+function checkedPdfWorkerUrl(require: NodeRequire, filePath: string) {
+  try {
+    const fs = require("node:fs") as typeof import("node:fs");
+    const { pathToFileURL } = require("node:url") as typeof import("node:url");
+    return fs.existsSync(filePath) ? pathToFileURL(filePath).toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+function existingPdfWorkerCandidates(require: NodeRequire) {
+  try {
+    const path = require("node:path") as typeof import("node:path");
+    const mainPath = require.resolve("pdf-parse");
+    const packageRoot = path.resolve(path.dirname(mainPath), "../../..");
+    const pdfJsRoot = path.dirname(require.resolve("pdfjs-dist/package.json"));
+    return [
+      path.join(path.dirname(mainPath), "pdf.worker.mjs"),
+      path.join(packageRoot, "dist", "pdf-parse", "cjs", "pdf.worker.mjs"),
+      path.join(packageRoot, "dist", "pdf-parse", "esm", "pdf.worker.mjs"),
+      path.join(packageRoot, "dist", "pdf-parse", "web", "pdf.worker.mjs"),
+      path.join(packageRoot, "dist", "worker", "pdf.worker.mjs"),
+      path.join(pdfJsRoot, "legacy", "build", "pdf.worker.mjs"),
+      path.join(pdfJsRoot, "build", "pdf.worker.mjs"),
+    ];
+  } catch {
+    return [];
+  }
+}
+
+function resolvePdfParseWorkerUrl(require: NodeRequire) {
+  for (const candidate of existingPdfWorkerCandidates(require)) {
+    const workerUrl = checkedPdfWorkerUrl(require, candidate);
+    if (workerUrl) return workerUrl;
+  }
+  return null;
 }
 
 function installPdfParseNodePolyfills(require: NodeRequire) {
@@ -59,18 +119,6 @@ function configurePdfParseWorker(require: NodeRequire, PDFParse: PdfParseConstru
   const workerUrl = resolvePdfParseWorkerUrl(require);
   if (workerUrl) {
     PDFParse.setWorker(workerUrl);
-  }
-}
-
-function resolvePdfParseWorkerUrl(require: NodeRequire) {
-  try {
-    const path = require("node:path") as typeof import("node:path");
-    const { pathToFileURL } = require("node:url") as typeof import("node:url");
-    const mainPath = require.resolve("pdf-parse");
-    const workerPath = path.join(path.dirname(mainPath), "pdf.worker.mjs");
-    return pathToFileURL(workerPath).toString();
-  } catch {
-    return null;
   }
 }
 

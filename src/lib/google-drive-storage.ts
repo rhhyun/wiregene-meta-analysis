@@ -24,6 +24,7 @@ type DriveFile = {
   name: string;
   webViewLink?: string;
   mimeType?: string;
+  size?: string;
 };
 
 type DriveIndexEntry = {
@@ -352,6 +353,71 @@ export async function writeTextFileToGoogleDrive(name: string, contents: string,
 
   const file = await findFileByName(name);
   await uploadText(name, contents, file?.id);
+}
+
+export async function createGoogleDriveResumableUploadSession(input: {
+  fileName: string;
+  mimeType?: string;
+  fileSize?: number;
+}) {
+  const parent = await targetParentId();
+  const mimeType = input.mimeType?.trim() || "application/octet-stream";
+  const metadata = {
+    name: input.fileName.trim() || `full-text-${new Date().toISOString()}`,
+    parents: parent ? [parent] : undefined,
+    mimeType,
+  };
+  const url = new URL(driveUploadUrl);
+  url.searchParams.set("uploadType", "resumable");
+  url.searchParams.set("fields", "id,name,mimeType,size,webViewLink");
+  url.searchParams.set("supportsAllDrives", "true");
+
+  const headers: Record<string, string> = {
+    "content-type": "application/json; charset=UTF-8",
+    "x-upload-content-type": mimeType,
+  };
+  if (Number.isFinite(input.fileSize) && (input.fileSize ?? 0) > 0) {
+    headers["x-upload-content-length"] = String(Math.floor(input.fileSize ?? 0));
+  }
+
+  const response = await driveFetch(url.toString(), {
+    method: "POST",
+    headers,
+    body: JSON.stringify(metadata),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Google Drive resumable upload session failed: ${response.status} ${await response.text()}`);
+  }
+
+  const uploadUrl = response.headers.get("location");
+  if (!uploadUrl) throw new Error("Google Drive did not return a resumable upload URL.");
+  return {
+    uploadUrl,
+    storage: "google-drive" as const,
+  };
+}
+
+export async function getGoogleDriveFileMetadata(fileId: string) {
+  const url = new URL(`${driveFilesUrl}/${encodeURIComponent(fileId)}`);
+  url.searchParams.set("fields", "id,name,mimeType,size,webViewLink");
+  url.searchParams.set("supportsAllDrives", "true");
+  const response = await driveFetch(url.toString());
+  if (!response.ok) {
+    throw new Error(`Google Drive metadata lookup failed: ${response.status} ${await response.text()}`);
+  }
+  return (await response.json()) as DriveFile;
+}
+
+export async function readBinaryFileFromGoogleDrive(fileId: string) {
+  const url = new URL(`${driveFilesUrl}/${encodeURIComponent(fileId)}`);
+  url.searchParams.set("alt", "media");
+  url.searchParams.set("supportsAllDrives", "true");
+  const response = await driveFetch(url.toString());
+  if (!response.ok) {
+    throw new Error(`Google Drive binary download failed: ${response.status} ${await response.text()}`);
+  }
+  return Buffer.from(await response.arrayBuffer());
 }
 
 export async function saveReportToGoogleDrive(report: ReportWithItems) {

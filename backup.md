@@ -1149,6 +1149,93 @@ Notes for next PC:
 - Do not store real OpenAI keys or Google tokens in Git or backup files.
 - Batch upload is UI-driven; server API remains single-file per request to keep extraction/OpenAI/storage load sequential and traceable.
 
+## 2026-06-14 Large full-text upload diagnostics and direct Google Drive path
+
+Actual working repository:
+
+```text
+C:\Users\rhhyu\Documents\GitHub\wiregene-meta-analysis
+```
+
+User-reported unresolved failure:
+
+```text
+After uploading 18 Zuhdi-OccupationalHealthProblems-2020.pdf (5.6 MB), Batch analysis queue showed saved 0, failed 1, and only "full-text analysis failed" / "full-text 분석에 실패했습니다."
+```
+
+Root cause found by two delegated specialist agents:
+
+- PDF extraction itself is not the likely failure for the Zuhdi PDF. Local extraction of the recorded 5.9 MB / 146 page PDF succeeded with 140,617 chars in the previous verification.
+- On Vercel, direct function request/response body size is 4.5 MB. A 5.6 MB multipart upload can be rejected by the platform before the analyzer route runs, producing a non-JSON 413 style response that the old UI collapsed into a generic failure.
+- Save failure, analysis failure, OpenAI fallback, and platform upload rejection were mixed together in the batch UI.
+
+Implemented:
+
+- `src/app/api/meta-analysis/full-text/upload-session/route.ts`: new small JSON endpoint creates a Google Drive resumable upload session for large files.
+- `src/lib/google-drive-storage.ts`: added Google Drive resumable upload session creation, binary download, and metadata lookup helpers.
+- `src/app/api/meta-analysis/full-text/analyze/route.ts`: accepts both normal multipart uploads and JSON `{ driveFileId }` analysis requests.
+- Large files are downloaded by the server from Google Drive after the browser uploads them directly, so the Vercel request body no longer carries the PDF.
+- Full-text analyze route now returns structured diagnostics: `requestId`, `phase`, `source`, `fileName`, `fileSize`, `mimeType`, `elapsedMs`, `status`, `extractedTextLength`, and actionable `help`.
+- Analysis success plus history save failure is now returned as `analyzed_not_saved`, not as a failed analysis.
+- `src/components/MetaFullTextAssistant.tsx`: files larger than 4 MB automatically use the direct Google Drive upload path, then call analysis with the Drive file id.
+- Batch queue statuses are now `pending`, `analyzing`, `saved`, `analyzed_not_saved`, and `failed`.
+- Batch queue summary now shows saved, analyzed-not-saved, and failed counts separately.
+- Batch rows preserve long diagnostic text with line breaks and include `Open saved result` for saved rows.
+- Non-JSON HTTP errors such as Vercel 413 are now converted into visible diagnostic payloads instead of the generic failure text.
+- `src/lib/pdf-text.ts`: worker resolution now checks actual existing `pdf.worker.mjs` candidates before calling `PDFParse.setWorker`, and PDF parser failures are mapped to useful messages for DOMMatrix, worker, encrypted PDF, invalid PDF, and generic parse failures.
+- `next.config.ts`: added `experimental.proxyClientMaxBodySize: "250mb"` so self-hosted Next proxy buffering does not silently truncate larger local/Synology uploads.
+- Full-text analyze route `maxDuration` increased to 300 seconds.
+- Package version bumped to `0.1.25`.
+- UI version bumped to `Ver 1.60 | 2026 copyright by JK Hyun`.
+
+Verification:
+
+```text
+npm run lint: pass
+npx tsc --noEmit: pass
+npm run build: pass
+```
+
+API verification on existing local dev server with `Host: meta.wiregene.com`:
+
+```text
+Small TXT multipart upload: HTTP 200, saved true, source multipart, status saved, extractedTextLength 283.
+Bad JSON Drive request: HTTP 400, error includes driveFileId requirement, phase parse_google_drive_reference, source google-drive, requestId, help.
+Upload-session request without local Drive credentials: HTTP 400, phase create_google_drive_upload_session, help explains required Google Drive env vars.
+Actual user-provided plan PDF path: HTTP 200, saved true, source multipart, status saved, extractedTextLength 13,156, aiUsed false locally because no local OpenAI key was configured.
+```
+
+Browser verification:
+
+```text
+Production server in meta mode on http://127.0.0.1:3210: Ver 1.60 visible.
+Screening tab opened.
+Full-text article AI eligibility assistant visible.
+Analyze full text button visible.
+Saved full-text analyses list visible.
+Console errors: none.
+Temporary verification server stopped after the check.
+```
+
+Operational requirements for Vercel large PDF uploads:
+
+```text
+META_FULL_TEXT_HISTORY_STORAGE_BACKEND=google-drive or REPORT_STORAGE_BACKEND=google-drive
+GOOGLE_DRIVE_CLIENT_ID=<oauth-client-id>
+GOOGLE_DRIVE_CLIENT_SECRET=<oauth-client-secret>
+GOOGLE_DRIVE_REFRESH_TOKEN=<oauth-refresh-token generated with the same client id/secret>
+GOOGLE_DRIVE_FOLDER_ID=<target folder id>
+OPENAI_API_KEY=<deployment secret> or saved Meta AI settings
+```
+
+Do not store real Google tokens, OpenAI keys, passwords, or temporary credentials in Git or backup files.
+
+Regular Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 ## 2026-06-13 Included-paper Excel dataset verification
 
 User request:

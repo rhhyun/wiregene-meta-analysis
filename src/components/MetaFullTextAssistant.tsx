@@ -87,7 +87,7 @@ type MetaFullTextHistoryRecord = {
   verification: MetaFullTextVerification;
 };
 
-type BatchAnalysisStatus = "pending" | "analyzing" | "saved" | "failed";
+type BatchAnalysisStatus = "pending" | "analyzing" | "saved" | "analyzed_not_saved" | "failed";
 
 type BatchAnalysisResult = {
   id: string;
@@ -101,17 +101,92 @@ type BatchAnalysisResult = {
 };
 
 const fullTextHistoryListUrl = "/api/meta-analysis/full-text/history?limit=500";
+const directUploadThresholdBytes = 4 * 1024 * 1024;
+
+type ApiPayload = Record<string, unknown>;
+
+type AnalysisPayload = {
+  analysis: MetaFullTextAnalysis;
+  savedRecord?: MetaFullTextHistorySummary | null;
+  saveError?: unknown;
+  diagnostics?: unknown;
+};
+
+type DirectUploadSessionPayload = {
+  uploadUrl: string;
+  requestId: string;
+  storage: "google-drive";
+};
+
+type GoogleDriveUploadPayload = {
+  id?: string;
+  name?: string;
+  mimeType?: string;
+  size?: string | number;
+};
 
 async function readAnalysisPayload(response: Response) {
-  const payload = await response.json().catch(() => ({}));
+  const { payload } = await readResponsePayload(response);
   if (!response.ok) {
     throw new Error(apiErrorMessage(payload, "full-text 분석에 실패했습니다."));
   }
-  return payload as {
-    analysis: MetaFullTextAnalysis;
-    savedRecord?: MetaFullTextHistorySummary | null;
-    saveError?: unknown;
+  return payload as AnalysisPayload;
+}
+
+async function readUploadSessionPayload(response: Response) {
+  const { payload } = await readResponsePayload(response);
+  if (!response.ok) {
+    throw new Error(apiErrorMessage(payload, "Large-file direct upload session failed."));
+  }
+  if (typeof payload.uploadUrl !== "string" || !payload.uploadUrl.trim()) {
+    throw new Error("Large-file upload session did not return an upload URL.");
+  }
+  return payload as DirectUploadSessionPayload;
+}
+
+async function readGoogleDriveUploadPayload(response: Response) {
+  const { payload } = await readResponsePayload(response);
+  if (!response.ok) {
+    throw new Error(apiErrorMessage(payload, "Large-file direct upload failed."));
+  }
+  return payload as GoogleDriveUploadPayload;
+}
+
+async function readResponsePayload(response: Response): Promise<{ payload: ApiPayload; rawText: string; isJson: boolean }> {
+  const rawText = await response.text().catch(() => "");
+  const contentType = response.headers.get("content-type") ?? "";
+  const isJson = contentType.toLowerCase().includes("json");
+  if (rawText.trim() && isJson) {
+    try {
+      return { payload: JSON.parse(rawText) as ApiPayload, rawText, isJson };
+    } catch {
+      // Fall through to the safe non-JSON diagnostic payload.
+    }
+  }
+
+  return {
+    payload: response.ok
+      ? {}
+      : {
+          error: `Request failed with HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ""}.`,
+          details: {
+            httpStatus: response.status,
+            contentType,
+            raw: shortenErrorText(rawText),
+            help:
+              response.status === 413 || /FUNCTION_PAYLOAD_TOO_LARGE|body size|payload/i.test(rawText)
+                ? "The file did not reach the analyzer route because the platform rejected the upload body. Large files must use direct Google Drive upload or Synology/local Docker."
+                : "The server returned a non-JSON error response. Check this raw response and the deployment logs.",
+          },
+        },
+    rawText,
+    isJson: false,
   };
+}
+
+function shortenErrorText(value: string) {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  return normalized.length > 600 ? `${normalized.slice(0, 597)}...` : normalized;
 }
 
 async function readHistoryListPayload(response: Response) {
@@ -214,6 +289,7 @@ function batchFileId(file: File, index: number) {
 function batchStatusLabel(status: BatchAnalysisStatus) {
   if (status === "analyzing") return "analyzing";
   if (status === "saved") return "saved";
+  if (status === "analyzed_not_saved") return "analyzed, not saved";
   if (status === "failed") return "failed";
   return "pending";
 }
@@ -221,6 +297,7 @@ function batchStatusLabel(status: BatchAnalysisStatus) {
 function batchStatusTone(status: BatchAnalysisStatus) {
   if (status === "analyzing") return "border-sky-200 bg-sky-50 text-sky-900";
   if (status === "saved") return "border-emerald-200 bg-emerald-50 text-emerald-900";
+  if (status === "analyzed_not_saved") return "border-amber-200 bg-amber-50 text-amber-950";
   if (status === "failed") return "border-rose-200 bg-rose-50 text-rose-950";
   return "border-zinc-200 bg-zinc-50 text-zinc-600";
 }
@@ -299,8 +376,9 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
         ? formatFileSize(firstSelectedFile.size)
         : `${files.length.toLocaleString("ko-KR")} files - ${formatFileSize(selectedFileSize)} total`;
   const batchSavedCount = batchResults.filter((item) => item.status === "saved").length;
+  const batchAnalyzedNotSavedCount = batchResults.filter((item) => item.status === "analyzed_not_saved").length;
   const batchFailedCount = batchResults.filter((item) => item.status === "failed").length;
-  const batchFinishedCount = batchSavedCount + batchFailedCount;
+  const batchFinishedCount = batchSavedCount + batchAnalyzedNotSavedCount + batchFailedCount;
   const currentHistoryItem = useMemo(
     () => historyItems.find((item) => item.id === currentHistoryId) ?? null,
     [currentHistoryId, historyItems],
@@ -602,6 +680,90 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
     return formData;
   }
 
+  function createAnalysisJsonPayload(nextFile: File, driveFile: GoogleDriveUploadPayload) {
+    const cleanedReferenceRecord = stripGeneratedReferenceContext(referenceRecord);
+    const driveSize = Number(driveFile.size);
+    return {
+      driveFileId: driveFile.id,
+      fileName: driveFile.name || nextFile.name,
+      mimeType: driveFile.mimeType || nextFile.type || "application/octet-stream",
+      fileSize: Number.isFinite(driveSize) && driveSize > 0 ? driveSize : nextFile.size,
+      referenceRecord: [
+        selectedWorksheet
+          ? `Excel source sheet: ${selectedWorksheet.sheetName} (${selectedWorksheet.label}); review mode: ${selectedWorksheet.reviewMode}`
+          : "",
+        cleanedReferenceRecord,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      extractionColumns,
+      sourceSheet: selectedWorksheet?.sheetName ?? "",
+      sourceLabel: selectedWorksheet?.label ?? "",
+      reviewMode: selectedWorksheet?.reviewMode ?? "",
+      reviewerOneName,
+      reviewerTwoName,
+    };
+  }
+
+  function shouldUseDirectUpload(nextFile: File) {
+    return nextFile.size > directUploadThresholdBytes;
+  }
+
+  async function analyzeSingleFullTextFile(nextFile: File, onStage: (message: string) => void) {
+    if (!shouldUseDirectUpload(nextFile)) {
+      onStage("Extracting full text and requesting AI review.");
+      return readAnalysisPayload(
+        await fetch("/api/meta-analysis/full-text/analyze", {
+          method: "POST",
+          body: createAnalysisFormData(nextFile),
+        }),
+      );
+    }
+
+    onStage("Creating a direct Google Drive upload session for this large file.");
+    const session = await readUploadSessionPayload(
+      await fetch("/api/meta-analysis/full-text/upload-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileName: nextFile.name,
+          mimeType: nextFile.type || "application/octet-stream",
+          fileSize: nextFile.size,
+        }),
+      }),
+    );
+
+    onStage("Uploading large file directly to Google Drive before analysis.");
+    let uploadResponse: Response;
+    try {
+      uploadResponse = await fetch(session.uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": nextFile.type || "application/octet-stream" },
+        body: nextFile,
+      });
+    } catch (error) {
+      throw new Error(
+        `Large-file direct upload failed before analysis. Details: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+
+    const driveFile = await readGoogleDriveUploadPayload(uploadResponse);
+    if (!driveFile.id) {
+      throw new Error("Large-file direct upload finished, but Google Drive did not return a file id.");
+    }
+
+    onStage("Analyzing the uploaded full text from Google Drive.");
+    return readAnalysisPayload(
+      await fetch("/api/meta-analysis/full-text/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(createAnalysisJsonPayload(nextFile, driveFile)),
+      }),
+    );
+  }
+
   async function analyzeFullText() {
     if (analyzingRef.current || files.length === 0) return;
     if (!reviewerSettingsReady) {
@@ -630,6 +792,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
     );
     try {
       let savedCount = 0;
+      let analyzedNotSavedCount = 0;
       let failedCount = 0;
 
       for (const [index, nextFile] of queuedFiles.entries()) {
@@ -641,18 +804,19 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
               ? {
                   ...item,
                   status: "analyzing",
-                  message: "Extracting full text and requesting AI review.",
+                  message: shouldUseDirectUpload(nextFile)
+                    ? "Preparing direct Google Drive upload for this large file."
+                    : "Extracting full text and requesting AI review.",
                 }
               : item,
           ),
         );
 
         try {
-          const payload = await readAnalysisPayload(
-            await fetch("/api/meta-analysis/full-text/analyze", {
-              method: "POST",
-              body: createAnalysisFormData(nextFile),
-            }),
+          const payload = await analyzeSingleFullTextFile(nextFile, (message) =>
+            setBatchResults((current) =>
+              current.map((item) => (item.id === resultId ? { ...item, message } : item)),
+            ),
           );
           setAnalysis(payload.analysis);
           if (payload.savedRecord && !payload.saveError) {
@@ -674,14 +838,14 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
               ),
             );
           } else {
-            failedCount += 1;
+            analyzedNotSavedCount += 1;
             setCurrentHistoryId(null);
             setBatchResults((current) =>
               current.map((item) =>
                 item.id === resultId
                   ? {
                       ...item,
-                      status: "failed",
+                      status: "analyzed_not_saved",
                       decision: payload.analysis.eligibility.decision,
                       confidence: payload.analysis.eligibility.confidence,
                       message: payload.saveError
@@ -710,10 +874,12 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
 
       await loadHistory();
       setNotice(
-        `Batch analysis finished. Saved ${savedCount}/${queuedFiles.length} files; failed ${failedCount}. Open saved records to verify each result.`,
+        `Batch analysis finished. Saved ${savedCount}/${queuedFiles.length} files; analyzed but not saved ${analyzedNotSavedCount}; failed ${failedCount}. Open saved records to verify each result.`,
       );
-      if (failedCount > 0) {
-        setError(`Batch analysis completed with ${failedCount} failed file(s). Check the batch queue details below.`);
+      if (failedCount > 0 || analyzedNotSavedCount > 0) {
+        setError(
+          `Batch analysis completed with ${failedCount} failed file(s) and ${analyzedNotSavedCount} analyzed-not-saved file(s). Check the batch queue details below.`,
+        );
       } else {
         setError("");
       }
@@ -966,7 +1132,8 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
             <div>
               <p className="text-sm font-semibold text-zinc-950">Batch analysis queue</p>
               <p className="mt-1 text-xs font-semibold leading-5 text-zinc-600">
-                Finished {batchFinishedCount}/{batchResults.length} files - saved {batchSavedCount}, failed {batchFailedCount}
+                Finished {batchFinishedCount}/{batchResults.length} files - saved {batchSavedCount}, analyzed not saved{" "}
+                {batchAnalyzedNotSavedCount}, failed {batchFailedCount}
               </p>
             </div>
             {isAnalyzing ? (
@@ -990,10 +1157,21 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
                     {batchStatusLabel(item.status)}
                   </span>
                 </div>
-                <p className="mt-2 text-xs font-semibold leading-5">
+                <p className="mt-2 whitespace-pre-wrap break-words text-xs font-semibold leading-5">
                   {item.decision ? `${decisionLabel(item.decision)} - confidence ${item.confidence ?? "n/a"}` : item.message}
                 </p>
-                {item.decision && item.message ? <p className="mt-1 text-xs leading-5 opacity-90">{item.message}</p> : null}
+                {item.decision && item.message ? (
+                  <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-5 opacity-90">{item.message}</p>
+                ) : null}
+                {item.savedRecordId ? (
+                  <button
+                    type="button"
+                    onClick={() => void loadSavedAnalysis(item.savedRecordId as string)}
+                    className="mt-2 inline-flex h-8 items-center rounded-md bg-white/85 px-3 text-xs font-semibold text-zinc-900 ring-1 ring-black/10 transition hover:bg-white"
+                  >
+                    Open saved result
+                  </button>
+                ) : null}
               </div>
             ))}
           </div>
@@ -1004,7 +1182,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
         <div className="mt-4 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-950" role="alert">
           <div className="flex gap-2">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-            <span>{error}</span>
+            <span className="whitespace-pre-wrap break-words">{error}</span>
           </div>
         </div>
       ) : null}
