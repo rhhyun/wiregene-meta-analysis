@@ -101,7 +101,8 @@ type BatchAnalysisResult = {
 };
 
 const fullTextHistoryListUrl = "/api/meta-analysis/full-text/history?limit=500";
-const directUploadThresholdBytes = 4 * 1024 * 1024;
+const largeFileUploadThresholdBytes = 4 * 1024 * 1024;
+const largeFileUploadChunkBytes = 2_500_000;
 
 type ApiPayload = Record<string, unknown>;
 
@@ -125,6 +126,13 @@ type GoogleDriveUploadPayload = {
   size?: string | number;
 };
 
+type ChunkUploadPayload = {
+  complete?: boolean;
+  file?: GoogleDriveUploadPayload;
+  receivedRange?: string | null;
+  requestId?: string;
+};
+
 async function readAnalysisPayload(response: Response) {
   const { payload } = await readResponsePayload(response);
   if (!response.ok) {
@@ -136,7 +144,7 @@ async function readAnalysisPayload(response: Response) {
 async function readUploadSessionPayload(response: Response) {
   const { payload } = await readResponsePayload(response);
   if (!response.ok) {
-    throw new Error(apiErrorMessage(payload, "Large-file direct upload session failed."));
+    throw new Error(apiErrorMessage(payload, "Large-file upload session failed."));
   }
   if (typeof payload.uploadUrl !== "string" || !payload.uploadUrl.trim()) {
     throw new Error("Large-file upload session did not return an upload URL.");
@@ -144,12 +152,12 @@ async function readUploadSessionPayload(response: Response) {
   return payload as DirectUploadSessionPayload;
 }
 
-async function readGoogleDriveUploadPayload(response: Response) {
+async function readChunkUploadPayload(response: Response) {
   const { payload } = await readResponsePayload(response);
   if (!response.ok) {
-    throw new Error(apiErrorMessage(payload, "Large-file direct upload failed."));
+    throw new Error(apiErrorMessage(payload, "Large-file chunk upload failed."));
   }
-  return payload as GoogleDriveUploadPayload;
+  return payload as ChunkUploadPayload;
 }
 
 async function readResponsePayload(response: Response): Promise<{ payload: ApiPayload; rawText: string; isJson: boolean }> {
@@ -175,7 +183,7 @@ async function readResponsePayload(response: Response): Promise<{ payload: ApiPa
             raw: shortenErrorText(rawText),
             help:
               response.status === 413 || /FUNCTION_PAYLOAD_TOO_LARGE|body size|payload/i.test(rawText)
-                ? "The file did not reach the analyzer route because the platform rejected the upload body. Large files must use direct Google Drive upload or Synology/local Docker."
+                ? "The file did not reach the analyzer route because the platform rejected the upload body. Large files must use the Meta server chunk upload path or Synology/local Docker."
                 : "The server returned a non-JSON error response. Check this raw response and the deployment logs.",
           },
         },
@@ -276,6 +284,58 @@ function formatFileSize(bytes: number) {
     return `${megabytes.toLocaleString("ko-KR", { maximumFractionDigits: 1 })} MB`;
   }
   return `${Math.max(1, Math.round(bytes / 1024)).toLocaleString("ko-KR")} KB`;
+}
+
+async function uploadLargeFileThroughServerChunks(
+  nextFile: File,
+  session: DirectUploadSessionPayload,
+  onStage: (message: string) => void,
+) {
+  const totalChunks = Math.ceil(nextFile.size / largeFileUploadChunkBytes);
+  let uploadedFile: GoogleDriveUploadPayload | null = null;
+
+  for (let chunkIndex = 0, start = 0; start < nextFile.size; chunkIndex += 1, start += largeFileUploadChunkBytes) {
+    const end = Math.min(nextFile.size, start + largeFileUploadChunkBytes) - 1;
+    const chunk = nextFile.slice(start, end + 1);
+    onStage(
+      `Uploading large file through Meta server chunk ${chunkIndex + 1}/${totalChunks} (${formatFileSize(
+        end + 1,
+      )}/${formatFileSize(nextFile.size)}).`,
+    );
+
+    let chunkResponse: Response;
+    try {
+      chunkResponse = await fetch("/api/meta-analysis/full-text/upload-chunk", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "x-wiregene-upload-url": session.uploadUrl,
+          "x-wiregene-chunk-start": String(start),
+          "x-wiregene-chunk-end": String(end),
+          "x-wiregene-file-size": String(nextFile.size),
+          "x-wiregene-file-name": encodeURIComponent(nextFile.name).slice(0, 700),
+        },
+        body: chunk,
+      });
+    } catch (error) {
+      throw new Error(
+        `Large-file chunk upload failed before analysis. Details: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+
+    const payload = await readChunkUploadPayload(chunkResponse);
+    if (payload.complete) {
+      uploadedFile = payload.file ?? null;
+    }
+  }
+
+  if (!uploadedFile?.id) {
+    throw new Error("Large-file chunk upload finished, but Google Drive did not return a file id.");
+  }
+
+  return uploadedFile;
 }
 
 function criteriaLabel(value: string) {
@@ -705,12 +765,12 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
     };
   }
 
-  function shouldUseDirectUpload(nextFile: File) {
-    return nextFile.size > directUploadThresholdBytes;
+  function shouldUseLargeFileUpload(nextFile: File) {
+    return nextFile.size > largeFileUploadThresholdBytes;
   }
 
   async function analyzeSingleFullTextFile(nextFile: File, onStage: (message: string) => void) {
-    if (!shouldUseDirectUpload(nextFile)) {
+    if (!shouldUseLargeFileUpload(nextFile)) {
       onStage("Extracting full text and requesting AI review.");
       return readAnalysisPayload(
         await fetch("/api/meta-analysis/full-text/analyze", {
@@ -720,7 +780,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
       );
     }
 
-    onStage("Creating a direct Google Drive upload session for this large file.");
+    onStage("Creating a Google Drive resumable upload session for this large file.");
     const session = await readUploadSessionPayload(
       await fetch("/api/meta-analysis/full-text/upload-session", {
         method: "POST",
@@ -733,26 +793,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
       }),
     );
 
-    onStage("Uploading large file directly to Google Drive before analysis.");
-    let uploadResponse: Response;
-    try {
-      uploadResponse = await fetch(session.uploadUrl, {
-        method: "PUT",
-        headers: { "Content-Type": nextFile.type || "application/octet-stream" },
-        body: nextFile,
-      });
-    } catch (error) {
-      throw new Error(
-        `Large-file direct upload failed before analysis. Details: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    }
-
-    const driveFile = await readGoogleDriveUploadPayload(uploadResponse);
-    if (!driveFile.id) {
-      throw new Error("Large-file direct upload finished, but Google Drive did not return a file id.");
-    }
+    const driveFile = await uploadLargeFileThroughServerChunks(nextFile, session, onStage);
 
     onStage("Analyzing the uploaded full text from Google Drive.");
     return readAnalysisPayload(
@@ -804,8 +845,8 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
               ? {
                   ...item,
                   status: "analyzing",
-                  message: shouldUseDirectUpload(nextFile)
-                    ? "Preparing direct Google Drive upload for this large file."
+                  message: shouldUseLargeFileUpload(nextFile)
+                    ? "Preparing server chunk upload for this large file."
                     : "Extracting full text and requesting AI review.",
                 }
               : item,

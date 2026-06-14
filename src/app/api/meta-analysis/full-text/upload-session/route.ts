@@ -41,7 +41,7 @@ export async function POST(request: Request) {
           elapsedMs: Date.now() - startedAt,
           message: error instanceof Error ? error.message : String(error),
           help:
-            "Large files on Vercel must be uploaded directly to Google Drive first. Check GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET, GOOGLE_DRIVE_REFRESH_TOKEN, and GOOGLE_DRIVE_FOLDER_ID, then redeploy.",
+            "Large files on Vercel must use a Google Drive resumable upload session plus the Meta chunk upload route. Check GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET, GOOGLE_DRIVE_REFRESH_TOKEN, and GOOGLE_DRIVE_FOLDER_ID, then redeploy.",
         },
       },
       { status: 400 },

@@ -329,7 +329,7 @@ function helpForAnalyzeError(message: string, context: AnalyzeRequestContext) {
     return "Google Drive OAuth failed. Regenerate GOOGLE_DRIVE_REFRESH_TOKEN with the same client id/secret used in deployment, then redeploy.";
   }
   if (normalized.includes("413") || normalized.includes("payload") || normalized.includes("body") || normalized.includes("too large")) {
-    return "Large files on Vercel cannot be sent through the function request body. Use the direct Google Drive upload path or run the Synology/local Docker deployment.";
+    return "Large files on Vercel cannot be sent through the function request body. Use the Meta server chunk upload path or run the Synology/local Docker deployment.";
   }
   if (normalized.includes("dommatrix") || normalized.includes("pdf.worker") || normalized.includes("canvas")) {
     return "The PDF parser runtime did not initialize correctly. Redeploy the latest build and verify pdf-parse worker files are included.";

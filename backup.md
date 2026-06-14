@@ -1570,3 +1570,56 @@ Verification:
 
 - `npm.cmd run lint`: passed.
 - `npm.cmd run build`: passed.
+
+## 2026-06-14 Large full-text upload CORS fix with same-origin chunk proxy
+
+User reported that the 5.6 MB full-text PDF still failed in the UI:
+
+```text
+Large-file direct upload failed before analysis. Details: Failed to fetch
+```
+
+Root cause:
+
+- The previous fix created a Google Drive resumable upload session, but the browser then sent the PDF directly to the Google upload URL.
+- That can fail before the Meta analyzer route sees the file, typically as browser/CORS/network-layer `Failed to fetch`.
+- The direct browser-to-Google path has now been removed.
+
+Implemented in `C:\Users\rhhyu\Documents\GitHub\wiregene-meta-analysis`:
+
+- Added `src/app/api/meta-analysis/full-text/upload-chunk/route.ts`.
+- Large files now use this path:
+  1. Browser requests `/api/meta-analysis/full-text/upload-session`.
+  2. Browser slices the file into about 2.5 MB chunks.
+  3. Browser sends each chunk only to same-origin `/api/meta-analysis/full-text/upload-chunk`.
+  4. The Meta server forwards each chunk to the Google Drive resumable upload URL with `Content-Range`.
+  5. After Google Drive returns the final file id, `/api/meta-analysis/full-text/analyze` analyzes by `driveFileId`.
+- Updated `src/components/MetaFullTextAssistant.tsx` to remove direct browser `PUT` to Google Drive.
+- Updated upload/analyze diagnostics so failures now identify `receive_or_forward_upload_chunk` or `forward_chunk_to_google_drive` rather than collapsing into only `Failed to fetch`.
+- Updated large-file help text from "direct Google Drive upload" to "Meta server chunk upload path".
+- Bumped npm package version to `0.1.26`.
+- Bumped visible UI version to `Ver 1.61 | 2026 copyright by JK Hyun`.
+
+Verification:
+
+```text
+npm run lint: pass.
+npx tsc --noEmit: pass.
+npm run build: pass.
+Production build includes /api/meta-analysis/full-text/upload-chunk.
+Local chunk API missing-session test: HTTP 400 JSON with requestId and phase receive_or_forward_upload_chunk.
+Local chunk API fake Google session test: HTTP 502 JSON with phase forward_chunk_to_google_drive and chunk byte diagnostics, proving server-side forwarding path runs.
+curl with Host: meta.wiregene.com showed Ver 1.61.
+Browser verification in forced Meta mode on http://127.0.0.1:3211: Ver 1.61 visible; Screening tab unique; full-text upload label visible; file input multiple=true; accepts PDF, Word, TXT, MD; Analyze full text visible; console errors=[].
+```
+
+Notes:
+
+- No OpenAI or Google secret was written to Git or backup.
+- The test did not upload a real full-text article to Google/OpenAI. It verified the new upload path and UI without transmitting a private PDF.
+
+Regular Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
