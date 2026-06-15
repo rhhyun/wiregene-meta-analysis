@@ -68,6 +68,13 @@ Synology deploy/run command:
 git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
 ```
 
+GitHub update:
+
+```text
+Committed and pushed to origin/main:
+541b13a Isolate new meta study stage copy
+```
+
 ## 작업 위치
 
 실제 작업 저장소:
