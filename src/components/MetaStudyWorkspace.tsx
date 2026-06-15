@@ -104,6 +104,7 @@ const fullTextExclusionReasons = [
 
 const workbookBoardStorageKey = "wiregene-meta-workbook-fulltext-board-v1";
 const newTopicDraftStorageKey = "wiregene-meta-new-topic-draft-v1";
+const userMetaProjectsStorageKey = "wiregene-meta-user-study-projects-v1";
 const protocolDraftStorageKey = "wiregene-meta-protocol-draft-v1";
 const searchImportStorageKey = "wiregene-meta-search-import-log-v1";
 
@@ -154,6 +155,251 @@ function readStoredJson<T>(key: string, fallback: T): T {
   }
 }
 
+function compactTitle(value: string, fallback: string) {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (!normalized) return fallback;
+  return normalized.length > 78 ? `${normalized.slice(0, 75)}...` : normalized;
+}
+
+function slugPart(value: string) {
+  return (
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9가-힣]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 42) || "meta-topic"
+  );
+}
+
+function splitDraftList(value: string, fallback: string[] = []) {
+  const items = value
+    .split(/[\n;,]+/)
+    .map((item) => item.replace(/^[-*]\s*/, "").trim())
+    .filter(Boolean);
+  return items.length > 0 ? items : fallback;
+}
+
+function parseDatabaseDraft(value: string) {
+  const fallback = ["PubMed", "Scopus", "Web of Science", "Embase", "Cochrane"];
+  return splitDraftList(value, fallback).map((item) => {
+    const countMatch = item.match(/\b(\d{1,7})\b/);
+    const database =
+      item
+        .replace(/\b\d{1,7}\b/g, "")
+        .replace(/\b(results?|records?|hits?)\b/gi, "")
+        .replace(/[()=:.-]+$/g, "")
+        .trim() || item.trim();
+    const resultCount = countMatch ? Number(countMatch[1]) : 0;
+    return { database, resultCount: Number.isFinite(resultCount) ? resultCount : 0 };
+  });
+}
+
+function createNewTopicProject(draft: NewTopicDraft, sourceText: string, reviewItems: string[]): MetaStudyProject {
+  const now = new Date();
+  const searchedAt = now.toISOString().slice(0, 10);
+  const title = compactTitle(draft.title, "Untitled meta-analysis topic");
+  const databases = parseDatabaseDraft(draft.databases);
+  const totalRecords = databases.reduce((total, item) => total + item.resultCount, 0);
+  const searchQuery =
+    draft.searchBlocks.trim() ||
+    [draft.population, draft.exposure, draft.outcomes]
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .join(" AND ") ||
+    "(Population terms) AND (Exposure terms) AND (Outcome terms)";
+  const extractionColumns = [
+    "study_id",
+    "first_author",
+    "year",
+    "country",
+    "design",
+    "sample_size_total",
+    "population",
+    "exposure_group",
+    "comparator",
+    "outcome_name",
+    "event_n",
+    "outcome_total",
+    "effect_size",
+    "standard_error",
+    "risk_of_bias_overall",
+    "notes",
+  ];
+
+  return {
+    id: `user-${now.getTime()}-${slugPart(title)}`,
+    shortTitle: compactTitle(title, "AI parsed topic"),
+    title,
+    status: "AI parsed draft - PI review required",
+    progress: 12,
+    sourcePath: `New topic AI analysis; saved ${now.toISOString()}`,
+    researchQuestion: draft.researchQuestion || "Research question needs PI confirmation.",
+    novelty: "AI가 구상내용을 초기 연구계획으로 parsing했습니다. Protocol lock 전에 연구자가 모든 필드를 확인해야 합니다.",
+    targetJournals: ["TBD after protocol lock"],
+    immediateImprovement: reviewItems.length > 0 ? reviewItems : ["AI 분석 결과를 protocol, search, extraction 항목별로 확인합니다."],
+    nextActions: [
+      "Protocol 탭에서 PICO/PEO, eligibility, exclusion, synthesis plan을 확정",
+      "Search 탭에서 DB별 검색식과 실제 result count를 확인",
+      "Extraction 탭에서 CSV header와 outcome denominator를 연구 주제에 맞게 수정",
+      "Screening 탭에서 two-reviewer rule과 exclusion reason set을 고정",
+    ],
+    searchBlocks: [
+      { label: "AI parsed search block", role: "Draft search", query: searchQuery },
+    ],
+    searchRuns: databases.map((item) => ({
+      database: item.database,
+      searchedAt,
+      label: "AI parsed search draft",
+      query: searchQuery,
+      resultCount: item.resultCount,
+      limits: "Confirm database syntax, year/language limits, and exact run date before protocol lock.",
+      source: "New topic AI analysis input",
+      exportAction: "Run exact search, export RIS/CSV/NBIB, and update external result count.",
+    })),
+    prismaRows: [
+      {
+        step: "Records identified from databases",
+        count: totalRecords > 0 ? totalRecords : null,
+        status: totalRecords > 0 ? "working" : "pending",
+        note: totalRecords > 0 ? "Sum of AI-parsed database counts; verify against actual DB exports." : "Enter DB result counts after running searches.",
+      },
+      {
+        step: "Records after deduplication",
+        count: null,
+        status: "pending",
+        note: "Run deduplication after RIS/CSV/NBIB export.",
+      },
+      {
+        step: "Title/abstract screening completed",
+        count: null,
+        status: "pending",
+        note: "Complete two-reviewer screening after deduplication.",
+      },
+      {
+        step: "Full-text assessment queue",
+        count: null,
+        status: "pending",
+        note: "Populate after title/abstract screening.",
+      },
+    ],
+    screeningQueue: [
+      {
+        category: "Title/abstract screening",
+        count: totalRecords,
+        priority: "Start",
+        action: "Deduplicate first, then classify include/exclude/maybe by two reviewers.",
+        decisionRule: "AI priority may assist sorting only; final inclusion requires reviewer decision.",
+      },
+      {
+        category: "Full-text eligibility",
+        count: 0,
+        priority: "After screening",
+        action: "Upload full texts and record fixed exclusion reasons.",
+        decisionRule: "Exclude only with protocol-defined reason and supporting note.",
+      },
+    ],
+    workbookSheets: [
+      {
+        sheetName: "Full_Text_Extraction_Draft",
+        label: "AI parsed full-text extraction queue",
+        count: 0,
+        source: "New topic AI analysis",
+        uploadRequired: true,
+        priority: "Pilot",
+        reviewMode: "cautious",
+        action: "Add full-text files after screening and pilot extraction.",
+        decisionRule: "Quantitative synthesis requires extractable n/total or effect size fields.",
+      },
+      {
+        sheetName: "Decision_Rules",
+        label: "Protocol decision rules",
+        count: 1,
+        source: "New topic AI analysis",
+        uploadRequired: false,
+        priority: "Rules",
+        reviewMode: "not_required",
+        action: "Use for eligibility, extraction, and analysis consistency.",
+        decisionRule: "Lock before full screening.",
+      },
+    ],
+    exposureGroups: [
+      {
+        group: "AI parsed exposure",
+        instruments: draft.exposure || "Exposure/group definition needs confirmation.",
+        interpretation: "Use this as a draft only; lock the final exposure definition in the Protocol tab.",
+      },
+    ],
+    exposureFeatures: splitDraftList(draft.exposure, ["Exposure definition needs PI confirmation."]).map((feature) => ({
+      feature: compactTitle(feature, "Exposure feature"),
+      definition: "AI parsed draft; confirm operational definition before screening.",
+    })),
+    extractionColumns,
+    extractionSections: [
+      { section: "Study identity", fields: extractionColumns.slice(0, 6) },
+      { section: "Population and exposure", fields: extractionColumns.slice(6, 9) },
+      { section: "Outcome data", fields: extractionColumns.slice(9, 14) },
+      { section: "Bias and notes", fields: extractionColumns.slice(14) },
+    ],
+    analysisLayers: [
+      {
+        layer: "Primary synthesis",
+        method: "Random-effects meta-analysis if extractable quantitative data are available",
+        purpose: draft.extractionPlan || "Confirm effect size, denominator, and heterogeneity plan before analysis.",
+      },
+      {
+        layer: "Sensitivity / narrative layer",
+        method: "Narrative synthesis or subgroup/sensitivity analysis as data allow",
+        purpose: "Use when studies are too heterogeneous or counts are not extractable.",
+      },
+    ],
+    manuscriptOutputs: [
+      "PRISMA flow diagram after search and deduplication",
+      "Protocol-ready eligibility and search supplement",
+      "Study characteristics and extraction schema table",
+      "Primary synthesis figure/table after data lock",
+    ],
+    references: [
+      {
+        title: "PRISMA 2020 checklist",
+        note: "Reporting checklist and flow diagram template for systematic reviews and meta-analyses.",
+        url: "https://www.prisma-statement.org/prisma-2020-checklist",
+      },
+      {
+        title: "Cochrane Handbook for Systematic Reviews of Interventions",
+        note: "Search, selection, extraction, risk of bias, synthesis, and interpretation methods.",
+        url: "https://training.cochrane.org/handbook/current",
+      },
+    ],
+  };
+}
+
+function initialProtocolDraft(project: MetaStudyProject) {
+  if (project.id === "orchestral-prmd-asymmetry") {
+    return {
+      population: "orchestral musicians, instrumentalists, music students/professionals",
+      exposure: "instrument-imposed postural asymmetry",
+      comparator: "low or mixed asymmetry instruments",
+      outcomes: "region-specific and laterality-specific pain prevalence",
+      eligibility:
+        "Observational full-text studies with extractable instrument-specific or group-specific PRMD/pain data.",
+      exclusion:
+        "Wrong population, no region-specific pain outcome, no instrument-specific data, no extractable denominator, review/editorial/conference abstract, intervention-only treatment effect study.",
+      synthesis:
+        "Arm-based random-effects prevalence meta-analysis; comparative layer only when studies report two or more prespecified asymmetry groups; exploratory ML as pattern validation.",
+    };
+  }
+
+  return {
+    population: project.searchBlocks.find((block) => block.role.toLowerCase().includes("population"))?.query || project.researchQuestion,
+    exposure: project.exposureGroups.map((group) => `${group.group}: ${group.instruments}`).join("\n") || "Exposure needs confirmation.",
+    comparator: "Comparator or subgroup contrast needs PI confirmation.",
+    outcomes: project.searchBlocks.find((block) => block.role.toLowerCase().includes("outcome"))?.query || "Primary and secondary outcomes need confirmation.",
+    eligibility: project.immediateImprovement.join("\n") || "Inclusion criteria need confirmation.",
+    exclusion: "Define exclusion reasons before screening.",
+    synthesis: project.analysisLayers.map((layer) => `${layer.layer}: ${layer.method}. ${layer.purpose}`).join("\n"),
+  };
+}
+
 function databaseSearchUrl(database: string, query: string, pubMedUrl?: string) {
   const normalized = database.toLowerCase();
   if (normalized.includes("pubmed")) return pubMedUrl || buildPubMedSearchUrl(query);
@@ -171,14 +417,18 @@ export function MetaStudyWorkspace({
   initialSearchQuery?: string;
   currentUser?: CurrentWiregeneUser | null;
 }) {
-  const [selectedProjectId, setSelectedProjectId] = useState(metaStudyProjects[0]?.id ?? "new-topic");
+  const [userProjects, setUserProjects] = useState<MetaStudyProject[]>(() =>
+    readStoredJson<MetaStudyProject[]>(userMetaProjectsStorageKey, []),
+  );
+  const [selectedProjectId, setSelectedProjectId] = useState(() => userProjects[0]?.id ?? metaStudyProjects[0]?.id ?? "new-topic");
   const [stage, setStage] = useState<MetaStudyStage>("overview");
   const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
   const [projectMenuCollapsed, setProjectMenuCollapsed] = useState(false);
+  const allProjects = useMemo(() => [...userProjects, ...metaStudyProjects], [userProjects]);
 
   const selectedProject = useMemo(
-    () => metaStudyProjects.find((project) => project.id === selectedProjectId),
-    [selectedProjectId],
+    () => allProjects.find((project) => project.id === selectedProjectId),
+    [allProjects, selectedProjectId],
   );
 
   function openNewTopic() {
@@ -191,6 +441,17 @@ export function MetaStudyWorkspace({
     setAiSettingsOpen(false);
     setSelectedProjectId(project.id);
     setStage("overview");
+  }
+
+  function addUserProject(project: MetaStudyProject) {
+    setUserProjects((current) => {
+      const next = [project, ...current.filter((item) => item.id !== project.id)].slice(0, 30);
+      window.localStorage.setItem(userMetaProjectsStorageKey, JSON.stringify(next));
+      return next;
+    });
+    setAiSettingsOpen(false);
+    setSelectedProjectId(project.id);
+    setStage("protocol");
   }
 
   return (
@@ -210,7 +471,7 @@ export function MetaStudyWorkspace({
             <h2 className="mt-1 text-lg font-semibold text-zinc-950">진행 중인 연구</h2>
           </div>
           <span className={`h-8 min-w-8 items-center justify-center rounded-md bg-emerald-50 px-2 text-sm font-semibold text-emerald-700 ${projectMenuCollapsed ? "hidden" : "inline-flex"}`}>
-            {metaStudyProjects.length}
+            {allProjects.length}
           </span>
           <button
             type="button"
@@ -245,7 +506,7 @@ export function MetaStudyWorkspace({
         </button>
 
         <div className="mt-4 grid gap-2">
-          {metaStudyProjects.map((project) => (
+          {allProjects.map((project) => (
             <button
               key={project.id}
               type="button"
@@ -307,9 +568,9 @@ export function MetaStudyWorkspace({
         {aiSettingsOpen ? (
           <MetaAiSettingsPanel />
         ) : selectedProject ? (
-          <ProjectWorkspace project={selectedProject} stage={stage} setStage={setStage} initialSearchQuery={initialSearchQuery} />
+          <ProjectWorkspace key={selectedProject.id} project={selectedProject} stage={stage} setStage={setStage} initialSearchQuery={initialSearchQuery} />
         ) : (
-          <NewTopicWorkspace />
+          <NewTopicWorkspace onCreateProject={addUserProject} />
         )}
       </section>
     </div>
@@ -429,20 +690,7 @@ function ProtocolStage({ project }: { project: MetaStudyProject }) {
   const storageKey = `${protocolDraftStorageKey}:${project.id}`;
   const [protocolPaste, setProtocolPaste] = useState("");
   const [savedAt, setSavedAt] = useState("");
-  const [draft, setDraft] = useState(() =>
-    readStoredJson(storageKey, {
-      population: "orchestral musicians, instrumentalists, music students/professionals",
-      exposure: "instrument-imposed postural asymmetry",
-      comparator: "low or mixed asymmetry instruments",
-      outcomes: "region-specific and laterality-specific pain prevalence",
-      eligibility:
-        "Observational full-text studies with extractable instrument-specific or group-specific PRMD/pain data.",
-      exclusion:
-        "Wrong population, no region-specific pain outcome, no instrument-specific data, no extractable denominator, review/editorial/conference abstract, intervention-only treatment effect study.",
-      synthesis:
-        "Arm-based random-effects prevalence meta-analysis; comparative layer only when studies report two or more prespecified asymmetry groups; exploratory ML as pattern validation.",
-    }),
-  );
+  const [draft, setDraft] = useState(() => readStoredJson(storageKey, initialProtocolDraft(project)));
 
   function updateProtocolField(field: keyof typeof draft, value: string) {
     setDraft((current) => ({ ...current, [field]: value }));
@@ -1661,7 +1909,7 @@ function ReferencesStage({ project }: { project: MetaStudyProject }) {
   );
 }
 
-function NewTopicWorkspace() {
+function NewTopicWorkspace({ onCreateProject }: { onCreateProject: (project: MetaStudyProject) => void }) {
   const starterQuery = "(Population terms) AND (Exposure or intervention terms) AND (Outcome terms)";
   const [sourceText, setSourceText] = useState("");
   const [savedAt, setSavedAt] = useState("");
@@ -1687,13 +1935,14 @@ function NewTopicWorkspace() {
     setDraft((current) => ({ ...current, [field]: value }));
   }
 
-  function saveNewTopicDraft() {
+  function saveNewTopicDraft(nextDraft = draft, nextReviewItems = reviewItems, nextSourceText = sourceText) {
     const nextSavedAt = new Date().toISOString();
     window.localStorage.setItem(
       newTopicDraftStorageKey,
-      JSON.stringify({ ...draft, sourceText, needsUserReview: reviewItems, savedAt: nextSavedAt }),
+      JSON.stringify({ ...nextDraft, sourceText: nextSourceText, needsUserReview: nextReviewItems, savedAt: nextSavedAt }),
     );
     setSavedAt(nextSavedAt);
+    return nextSavedAt;
   }
 
   const planningPrompt = [
@@ -1724,18 +1973,20 @@ function NewTopicWorkspace() {
       const payload = (await response.json().catch(() => ({}))) as NewTopicAnalysisPayload;
       if (!response.ok) throw new Error(payload.error || "AI 분석 요청이 실패했습니다.");
 
-      setDraft((current) => ({
-        ...current,
-        ...Object.fromEntries(
-          Object.entries(payload.draft ?? {}).filter(([, value]) => typeof value === "string"),
-        ),
-      }));
-      setReviewItems(payload.needsUserReview ?? []);
+      const parsedDraftPatch = Object.fromEntries(
+        Object.entries(payload.draft ?? {}).filter(([, value]) => typeof value === "string"),
+      ) as Partial<NewTopicDraft>;
+      const nextDraft = { ...draft, ...parsedDraftPatch };
+      const nextReviewItems = payload.needsUserReview ?? [];
+      setDraft(nextDraft);
+      setReviewItems(nextReviewItems);
+      saveNewTopicDraft(nextDraft, nextReviewItems, input);
       setAnalysisNotice(
         payload.model
-          ? `AI 분석 완료: ${payload.model} 결과를 항목별 draft에 반영했습니다.`
-          : `자동 parsing 완료: ${payload.note ?? "규칙 기반 분석 결과를 항목별 draft에 반영했습니다."}`,
+          ? `AI 분석 완료: ${payload.model} 결과를 저장하고 진행 중인 연구에 추가했습니다.`
+          : `자동 parsing 완료: ${payload.note ?? "규칙 기반 분석 결과를 저장하고 진행 중인 연구에 추가했습니다."}`,
       );
+      onCreateProject(createNewTopicProject(nextDraft, input, nextReviewItems));
     } catch (caught) {
       setAnalysisError(caught instanceof Error ? caught.message : "AI 분석 중 오류가 발생했습니다.");
     } finally {
@@ -1779,7 +2030,7 @@ function NewTopicWorkspace() {
               </button>
               <button
                 type="button"
-                onClick={saveNewTopicDraft}
+                onClick={() => saveNewTopicDraft()}
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-emerald-300 bg-white px-3 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100"
               >
                 <Save className="h-4 w-4" aria-hidden />

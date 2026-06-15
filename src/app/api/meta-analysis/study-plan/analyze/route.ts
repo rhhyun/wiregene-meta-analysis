@@ -2,7 +2,7 @@ import OpenAI from "openai";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { config } from "@/lib/config";
+import { metaAiSettingsErrorDetails, resolveMetaOpenAIConfig } from "@/lib/meta-ai-settings";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -202,27 +202,50 @@ export async function POST(request: Request) {
 
   const fallback = fallbackStudyPlan(parsed.data.sourceText);
 
-  if (!config.openaiApiKey) {
+  let aiConfig: Awaited<ReturnType<typeof resolveMetaOpenAIConfig>>;
+  try {
+    aiConfig = await resolveMetaOpenAIConfig();
+  } catch (error) {
+    console.error("Meta AI settings could not be resolved; using fallback parser.", error);
+    return NextResponse.json({
+      ok: true,
+      model: null,
+      draft: fallback.draft,
+      needsUserReview: [
+        "AI 평가 설정 저장소를 읽지 못해 규칙 기반 parsing 결과를 사용했습니다.",
+        ...fallback.needsUserReview,
+      ],
+      note: "AI 평가 설정 저장소를 읽지 못해 fallback parser 결과를 반환했습니다.",
+      settingsError: metaAiSettingsErrorDetails(error),
+    });
+  }
+
+  if (!aiConfig.enabled) {
     return NextResponse.json({
       ok: true,
       model: null,
       draft: fallback.draft,
       needsUserReview: fallback.needsUserReview,
-      note: "OPENAI_API_KEY가 없어 규칙 기반 parsing 결과를 반환했습니다.",
+      apiKeySource: aiConfig.source,
+      note:
+        aiConfig.source === "missing"
+          ? "저장된 OpenAI API key와 서버 환경변수 key를 찾지 못해 규칙 기반 parsing 결과를 반환했습니다."
+          : "AI 평가 설정이 비활성화되어 규칙 기반 parsing 결과를 반환했습니다.",
     });
   }
 
   try {
-    const openai = new OpenAI({ apiKey: config.openaiApiKey });
+    const openai = new OpenAI({ apiKey: aiConfig.apiKey });
     const response = await openai.responses.create({
-      model: config.openaiModel,
+      model: aiConfig.modelName,
       input: studyPlanPrompt(parsed.data.sourceText),
     });
     const body = responseSchema.parse(JSON.parse(extractJson(response.output_text)));
 
     return NextResponse.json({
       ok: true,
-      model: config.openaiModel,
+      model: aiConfig.modelName,
+      apiKeySource: aiConfig.source,
       draft: { ...fallback.draft, ...body.draft },
       needsUserReview: body.needsUserReview?.length ? body.needsUserReview : fallback.needsUserReview,
     });
@@ -231,6 +254,8 @@ export async function POST(request: Request) {
     return NextResponse.json({
       ok: true,
       model: null,
+      attemptedModel: aiConfig.modelName,
+      apiKeySource: aiConfig.source,
       draft: fallback.draft,
       needsUserReview: [
         "OpenAI 분석에 실패해 규칙 기반 parsing 결과를 사용했습니다.",

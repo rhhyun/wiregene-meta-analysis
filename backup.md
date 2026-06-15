@@ -81,6 +81,95 @@ Synology deploy/run command:
 git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
 ```
 
+## 2026-06-15 New topic AI settings and auto-project flow fix
+
+사용자 지적:
+
+```text
+신규 주제를 넣었으면 AI 분석 후에 자동 저장, 그리고 다음 단계로 넘어가면서 진행 중인 연구에 추가가 되어야 하는데 지금은 초기 분석, 그것도 AI 분석도 못하고 그 화면에서 더 진행이 안됩니다.
+현재 AI 평가 설정은 gpt-5-nano로 분명히 되어 있는데 api key가 없다고하면 얼마나 당황스럽습니까
+```
+
+원인:
+
+- 신규 주제 분석 API가 기존 AI 평가 설정 저장소를 사용하지 않고 `config.openaiApiKey` 환경변수만 직접 확인했다.
+- 따라서 Meta AI settings 화면에 저장된 key/model이 있어도 신규 주제 분석 route에서는 key가 없는 것처럼 fallback 처리될 수 있었다.
+- 신규 주제 draft는 `wiregene-meta-new-topic-draft-v1`에만 저장되고, 왼쪽 `진행 중인 연구` 목록은 정적 `metaStudyProjects` 배열만 렌더링했다.
+- 결과적으로 AI 분석 결과가 진행 중인 연구에 추가되거나 다음 Protocol 단계로 넘어가는 구조가 없었다.
+
+변경 내용:
+
+- `src/app/api/meta-analysis/study-plan/analyze/route.ts`
+  - `resolveMetaOpenAIConfig()`를 사용하도록 수정했다.
+  - 저장된 OpenAI key, 환경변수 key, 저장된 model name을 신규 주제 분석 route에서 동일하게 사용한다.
+  - key source를 `saved`, `environment`, `missing`으로 구분해 응답한다.
+  - 설정 저장소 읽기 실패와 key 미존재를 구분해 fallback note를 반환한다.
+- `src/components/MetaStudyWorkspace.tsx`
+  - AI 분석 결과를 `MetaStudyProject`로 변환하는 생성기를 추가했다.
+  - 분석 완료 시 draft를 자동 저장하고 `wiregene-meta-user-study-projects-v1`에 사용자 연구로 저장한다.
+  - 새 연구를 왼쪽 `진행 중인 연구` 목록 맨 위에 표시한다.
+  - 분석 완료 후 새 연구의 `Protocol` 단계로 자동 이동한다.
+  - Protocol stage 기본값을 프로젝트별로 생성해, 신규 AI draft가 다음 단계의 editable protocol fields에 반영되도록 했다.
+- `package.json`, `package-lock.json`
+  - package version `0.1.29` -> `0.1.30`.
+- `src/lib/version.ts`
+  - UI label `Ver 1.64` -> `Ver 1.65 | 2026 copyright by JK Hyun`.
+
+검증:
+
+```text
+npm run lint: pass.
+npx tsc --noEmit: pass.
+npm run build: pass.
+Browser verification: WIREGENE_APP_MODE=meta dev server opened at http://127.0.0.1:3221.
+Meta screen displayed Ver 1.65.
+New topic screen displayed 신규 주제, 구상내용 붙여넣기, AI 분석 시작, 수정 내용 저장.
+Old main-path labels "AI planning prompt 복사" and "skeleton 복사" were not present.
+Browser console error/warning log: empty.
+```
+
+로컬 API 확인:
+
+```text
+POST /api/meta-analysis/study-plan/analyze returned ok=true.
+This local dev process had no .data/meta/meta-ai-settings.json and no OpenAI/Meta AI secret environment variables, so apiKeySource=missing and fallback parsing was expected locally.
+The route now uses the saved AI settings resolver; Synology/production must run with the same AI settings storage/secret used by the settings panel.
+```
+
+Synology deploy/run command:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+## 2026-06-15 Why the user still saw Ver 1.64
+
+사용자 지적:
+
+```text
+변한게 없고 버전이 1.64인데 왜 이럴까요
+```
+
+확인 결과:
+
+- 수정된 실제 소스는 `C:\Users\HyunJK\Documents\Playground\research-briefing-platform\wiregene-meta-analysis`에 있고 여기서는 `BRIEFING_VERSION = "1.65"`가 맞다.
+- 하지만 이 변경 6개 파일은 아직 Git commit/push 되지 않은 working tree 상태였다.
+- 따라서 Synology/production이 `git pull`을 해도 `Ver 1.65` 코드가 내려갈 수 없었다.
+- `localhost:3000`은 Meta 앱이 아니라 `hyunlab-wiregene-platform-frontend` Docker container가 잡고 있었다.
+- `C:\Users\HyunJK\Documents\GitHub\wiregene-meta-analysis`는 오래된 복사본이며 `src/components/MetaStudyWorkspace.tsx`에 아직 `skeleton 복사`가 남아 있고 `BRIEFING_VERSION = "1.35"`다.
+
+정리:
+
+- 사용자가 `Ver 1.64`를 본 이유는 새 코드가 실행/배포 서버에 반영되지 않았기 때문이다.
+- 반드시 이 repo의 변경사항을 GitHub에 push한 뒤 Synology에서 pull/restart 해야 한다.
+- 확인해야 할 실제 source of truth는 `C:\Users\HyunJK\Documents\Playground\research-briefing-platform\wiregene-meta-analysis`다.
+
+Required deploy sequence:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 ## 2026-06-12 Synology 명령 정정
 
 사용자 오류 보고:
