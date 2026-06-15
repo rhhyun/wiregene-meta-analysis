@@ -159,6 +159,12 @@ type ProjectFileSaveResponse = {
   storage: ProjectStorageSummary;
 };
 
+type UserMetaProjectsResponse = {
+  ok?: boolean;
+  projects?: MetaStudyProject[];
+  error?: string;
+};
+
 const projectFileSavedEventName = "wiregene-meta-project-file-saved";
 
 const analysisReadinessRows = [
@@ -226,6 +232,17 @@ function readStoredJson<T>(key: string, fallback: T): T {
   } catch {
     return fallback;
   }
+}
+
+function mergeMetaStudyProjects(primary: MetaStudyProject[], secondary: MetaStudyProject[]) {
+  const seen = new Set<string>();
+  const merged: MetaStudyProject[] = [];
+  for (const project of [...primary, ...secondary]) {
+    if (!project?.id || seen.has(project.id)) continue;
+    seen.add(project.id);
+    merged.push(project);
+  }
+  return merged.slice(0, 30);
 }
 
 function compactTitle(value: string, fallback: string) {
@@ -676,6 +693,50 @@ export function MetaStudyWorkspace({
     [allProjects, selectedProjectId],
   );
 
+  const saveUserProjects = useCallback(async (projects: MetaStudyProject[]) => {
+    try {
+      await fetch("/api/meta-analysis/projects", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projects }),
+      });
+    } catch {
+      // Keep the local copy; the next successful load will merge it back.
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadUserProjects() {
+      try {
+        const response = await fetch("/api/meta-analysis/projects", { cache: "no-store" });
+        const payload = (await response.json().catch(() => ({}))) as UserMetaProjectsResponse;
+        if (!response.ok) throw new Error(payload.error || "Failed to load meta study projects.");
+
+        const serverProjects = Array.isArray(payload.projects) ? payload.projects : [];
+        if (cancelled) return;
+
+        setUserProjects((current) => {
+          const next = mergeMetaStudyProjects(serverProjects, current);
+          window.localStorage.setItem(userMetaProjectsStorageKey, JSON.stringify(next));
+          setSelectedProjectId((currentId) =>
+            next.length > 0 && currentId === metaStudyProjects[0]?.id ? next[0].id : currentId,
+          );
+          if (serverProjects.length < next.length) void saveUserProjects(next);
+          return next;
+        });
+      } catch {
+        // Local browser drafts still work when server-side storage is unavailable.
+      }
+    }
+
+    void loadUserProjects();
+    return () => {
+      cancelled = true;
+    };
+  }, [saveUserProjects]);
+
   function openNewTopic() {
     setAiSettingsOpen(false);
     setSelectedProjectId("new-topic");
@@ -690,8 +751,9 @@ export function MetaStudyWorkspace({
 
   function addUserProject(project: MetaStudyProject) {
     setUserProjects((current) => {
-      const next = [project, ...current.filter((item) => item.id !== project.id)].slice(0, 30);
+      const next = mergeMetaStudyProjects([project], current);
       window.localStorage.setItem(userMetaProjectsStorageKey, JSON.stringify(next));
+      void saveUserProjects(next);
       return next;
     });
     setAiSettingsOpen(false);

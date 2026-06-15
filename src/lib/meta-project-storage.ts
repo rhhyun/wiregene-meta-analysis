@@ -3,6 +3,7 @@ import { promises as fs } from "fs";
 import path from "path";
 
 const defaultProjectStorageRoot = ".data/meta/projects";
+const defaultUserProjectsFile = ".data/meta/user-study-projects.json";
 const maxProjectTextFileBytes = 25 * 1024 * 1024;
 const allowedTextFileExtensions = new Set([".csv", ".json", ".md", ".txt", ".tsv"]);
 
@@ -30,6 +31,40 @@ export type MetaProjectSavedFile = MetaProjectFileSummary & {
   projectPath: string;
   synologyPathHint: string | null;
 };
+
+type UserProjectFile = {
+  projects: unknown[];
+  updatedAt?: string;
+};
+
+export async function readStoredMetaStudyProjects<T>(): Promise<T[]> {
+  const filePath = userProjectsFilePath();
+  try {
+    const raw = await fs.readFile(filePath, "utf8");
+    const parsed = JSON.parse(raw) as Partial<UserProjectFile>;
+    return Array.isArray(parsed.projects) ? (parsed.projects as T[]) : [];
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+}
+
+export async function writeStoredMetaStudyProjects<T extends { id?: string }>(projects: T[]): Promise<T[]> {
+  if (isServerlessRuntime()) {
+    throw new Error(
+      "Meta study project storage cannot write to a read-only serverless filesystem. Use the Synology/local Docker deployment or configure a writable project storage backend.",
+    );
+  }
+
+  const normalized = dedupeProjects(projects).slice(0, 30);
+  const filePath = userProjectsFilePath();
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await writeTextFileAtomically(
+    filePath,
+    JSON.stringify({ updatedAt: new Date().toISOString(), projects: normalized }, null, 2),
+  );
+  return normalized;
+}
 
 export async function getMetaProjectStorageSummary(projectId: string): Promise<MetaProjectStorageSummary> {
   const folderName = safeProjectFolder(projectId);
@@ -92,6 +127,23 @@ export async function saveMetaProjectTextFile(input: {
 function projectStorageRoot() {
   const configured = process.env.META_PROJECT_STORAGE_ROOT?.trim() || defaultProjectStorageRoot;
   return path.resolve(/*turbopackIgnore: true*/ process.cwd(), configured);
+}
+
+function userProjectsFilePath() {
+  const configured = process.env.META_USER_PROJECTS_FILE?.trim() || defaultUserProjectsFile;
+  return path.resolve(/*turbopackIgnore: true*/ process.cwd(), configured);
+}
+
+function dedupeProjects<T extends { id?: string }>(projects: T[]) {
+  const seen = new Set<string>();
+  const deduped: T[] = [];
+  for (const project of projects) {
+    const id = typeof project.id === "string" ? project.id.trim() : "";
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    deduped.push(project);
+  }
+  return deduped;
 }
 
 function safeProjectFolder(projectId: string) {
