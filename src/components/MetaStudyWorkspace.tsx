@@ -145,6 +145,47 @@ const methodSentences = [
   "Feature-based exploratory clustering was performed to examine whether the prespecified groups showed internally coherent biomechanical profiles.",
 ];
 
+const genericScreeningRules = [
+  ["AI priority ranking", "AI는 우선순위 정렬과 메모 작성만 보조하며 최종 포함/제외 판정은 reviewer가 확정합니다."],
+  ["Two independent reviewers", "include, exclude, maybe를 독립 판정하고 conflict는 PI 또는 senior reviewer가 해결합니다."],
+  ["Reason-coded exclusion", "population, exposure/intervention, comparator, outcome, design, duplicate, unavailable full text 등 protocol-defined 사유로만 제외합니다."],
+  ["Full-text audit trail", "full text 단계의 제외 사유와 근거 위치를 기록해 Methods와 supplement에 연결합니다."],
+];
+
+const genericFullTextExclusionReasons = [
+  "wrong population",
+  "wrong exposure/intervention",
+  "wrong comparator or no eligible group",
+  "wrong outcome",
+  "wrong study design",
+  "no extractable denominator or effect size",
+  "duplicate record",
+  "review/book chapter/editorial",
+  "conference abstract only",
+  "non-English full text",
+];
+
+const genericAnalysisSafeguards = [
+  ["Primary claim", "사전에 고정한 primary outcome과 synthesis method를 벗어나 결론을 확장하지 않습니다."],
+  ["Quantitative eligibility", "추출 가능한 denominator/effect size와 불확실성 지표가 있는 결과만 정량 합성에 포함합니다."],
+  ["Subgroup separation", "subgroup, sensitivity, exploratory analysis는 primary synthesis와 분리해 해석합니다."],
+  ["AI/ML position", "AI/ML 또는 clustering은 data exploration 보조로만 두고 main causal/clinical claim으로 사용하지 않습니다."],
+];
+
+const genericAnalysisReadinessRows = [
+  ["Primary outcome", "event_n/total 또는 effect_size/standard_error", "Pending until extraction"],
+  ["Secondary outcome", "protocol-defined secondary outcome fields", "Pending until extraction"],
+  ["Subgroup analysis", "subgroup variable plus sufficient studies per subgroup", "Not ready until extraction count confirms"],
+  ["Sensitivity analysis", "risk-of-bias, study design, recall/follow-up, missing-data flags", "Template review required"],
+  ["Publication bias", "effect size and standard error with adequate study count", "Not ready until synthesis count confirms"],
+];
+
+const genericMethodSentences = [
+  "Eligible studies contributed to quantitative synthesis only when the protocol-defined outcome and extractable denominator or effect-size information were available.",
+  "Primary synthesis followed the prespecified effect measure and random-effects model, with subgroup and sensitivity analyses reported separately.",
+  "Exploratory AI-assisted pattern review was used only to support screening, extraction consistency, or hypothesis generation and did not replace reviewer judgement.",
+];
+
 function readStoredJson<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
   try {
@@ -400,6 +441,178 @@ function initialProtocolDraft(project: MetaStudyProject) {
   };
 }
 
+function isOrchestralPainProject(project: Pick<MetaStudyProject, "id">) {
+  return project.id === "orchestral-prmd-asymmetry";
+}
+
+function overviewStageCopy(project: MetaStudyProject) {
+  if (isOrchestralPainProject(project)) {
+    return {
+      title: "현재 연구 진행상황을 high-impact 구조로 재정렬합니다",
+      detail: "첨부하신 핵심 주제 파일을 기준으로, protocol-first, exposure-first, region-specific, exploratory AI 분석 구조로 정리했습니다.",
+    };
+  }
+
+  return {
+    title: "이 주제의 연구계획과 다음 작업을 분리해 정리합니다",
+    detail: "새로 생성한 주제는 기존 연구의 분류, 검색식, 추출 변수와 섞지 않고 이 주제 전용 protocol, search, screening, extraction, analysis 상태만 사용합니다.",
+  };
+}
+
+function protocolStageCopy(project: MetaStudyProject) {
+  if (isOrchestralPainProject(project)) {
+    return {
+      title: "악기 분류보다 exposure definition을 먼저 고정합니다",
+      detail: "이 단계에서 분류 기준을 잠그면, 결과를 본 뒤 group을 바꿨다는 post hoc grouping 공격을 피할 수 있습니다.",
+      featureHeading: "Biomechanical criteria",
+    };
+  }
+
+  return {
+    title: "연구 질문과 eligibility criteria를 먼저 고정합니다",
+    detail: "이 단계에서는 기존 연구의 문구를 가져오지 않고, 이 주제의 population, exposure/intervention, comparator, outcomes, inclusion/exclusion 기준만 확정합니다.",
+    featureHeading: "Exposure / intervention criteria",
+  };
+}
+
+function searchStageCopy(project: MetaStudyProject) {
+  if (isOrchestralPainProject(project)) {
+    return {
+      title: "업로드 자료 기반 DB별 검색식과 PRISMA 식별 수",
+      detail: "PDF에는 정확한 검색식이 없고, 2026-06-07 스크린샷에만 DB별 검색식과 결과 수가 있습니다. 이 표를 protocol supplement와 PRISMA identification source로 고정합니다.",
+      logTitle: "Search log from uploaded screenshots",
+      logDetail: "각 행은 검색일, DB, 정확 검색식, 결과 수, 제한 조건, export 작업을 보존합니다.",
+      prismaNote: "1,393건은 1,652 - 259 계산값입니다. dedup log 확인 전까지 순수 duplicates라고 단정하지 않습니다.",
+      flags: [
+        "PubMed/Cochrane screenshot에는 명시적 1990-2026 제한이 보이지 않아 supplement에서 확인 필요.",
+        "Cochrane 식은 다른 DB보다 좁고 orchestra/performing artist/다수 악기명이 누락되어 sensitivity flag로 표시.",
+        "Embase/WoS의 horn은 Scopus/PubMed의 french horn보다 넓어 noise 가능성 있음.",
+        "English limit는 PubMed/Embase만 스크린샷에 명확하며 WoS/Scopus/Cochrane은 run log 확인 필요.",
+      ],
+    };
+  }
+
+  return {
+    title: "이 주제의 DB별 검색식과 PRISMA 식별 수를 확정합니다",
+    detail: "AI가 만든 초안 검색식은 검토 대상입니다. 실제 DB별 검색일, 검색식, 제한 조건, 결과 수, export 파일명을 이 주제 전용 search log로 저장합니다.",
+    logTitle: "Search log for this topic",
+    logDetail: "각 행은 이 주제의 database, 검색일, 검색식, 결과 수, 제한 조건, export 작업만 보존합니다.",
+    prismaNote: "검색 실행 전에는 모든 수치를 pending으로 둡니다. 실제 DB export와 deduplication log를 확인한 뒤 PRISMA count를 확정합니다.",
+    flags: [
+      "AI가 변환한 검색식은 DB 문법별로 직접 검토합니다.",
+      "연도, 언어, human/full-text 등 제한 조건은 protocol에 고정한 뒤 실행합니다.",
+      "검색 결과 수는 실제 DB 화면 또는 export log 기준으로만 확정합니다.",
+      "기존 연구의 검색식, 결과 수, exclusion note를 새 주제에 복사하지 않습니다.",
+    ],
+  };
+}
+
+function screeningStageCopy(project: MetaStudyProject) {
+  if (isOrchestralPainProject(project)) {
+    return {
+      title: (activeUploadCount: number) => `Excel 표준 workbook 기준으로 ${activeUploadCount}개 full-text PDF/Word 파일만 처리합니다`,
+      detail: "Summary/Search 숫자는 이전 PDF 값을 기준으로 유지하고, 실제 업로드 대상은 Core_Comparative_Obs 18개, Core_InstrumentSpecific 36개, Manual_FullText_Check 18개입니다.",
+      queueDetail: "이 표는 업로드가 필요한 3개 sheet만 active queue로 취급합니다. 나머지 Excel sheet는 audit/support/exclusion 용도입니다.",
+    };
+  }
+
+  return {
+    title: (activeUploadCount: number) => `이 주제의 full-text 후보 ${activeUploadCount}개를 별도 queue로 관리합니다`,
+    detail: "새 주제의 screening queue는 기존 연구의 Excel sheet나 exclusion 기준을 가져오지 않습니다. protocol에서 확정한 기준으로만 include/exclude/maybe를 기록합니다.",
+    queueDetail: "이 표는 이 주제에 속한 screening/full-text 후보만 표시합니다. 기존 연구의 sheet count와 decision rule은 섞지 않습니다.",
+  };
+}
+
+function workbookStageCopy(project: MetaStudyProject) {
+  if (isOrchestralPainProject(project)) {
+    return {
+      title: "업로드 대상은 3개 sheet, 나머지는 audit/support로 고정",
+      rule: "Summary의 초기 검색/PRISMA 숫자는 이전 PDF 값을 기준으로 유지합니다. 실제 full-text PDF/Word 확인 중 탈락이 생기면 아래 current/included/excluded 값을 직접 수정하고 CSV로 남깁니다.",
+    };
+  }
+
+  return {
+    title: "이 주제 전용 workbook queue를 사용합니다",
+    rule: "새 주제의 full-text 파일과 추출 행만 이 board에 입력합니다. 다른 연구의 Summary, sheet count, include/exclude 결과는 사용하지 않습니다.",
+  };
+}
+
+function extractionStageCopy(project: MetaStudyProject) {
+  if (isOrchestralPainProject(project)) {
+    return {
+      title: "PDF의 6개 extraction 블록을 실제 CSV 템플릿과 검증기로 고정합니다",
+      detail: "숫자가 있으면 원 논문 table, figure, supplement에서 denominator와 numerator를 그대로 입력하고, n/total이 없으면 quantitative synthesis에 넣지 않습니다.",
+      placeholder: `${project.extractionColumns.slice(0, 8).join(",")},...\nS001,Smith,2024,Korea,cross-sectional,120,118,orchestra sample,...`,
+    };
+  }
+
+  return {
+    title: "이 주제의 extraction schema와 CSV 검증 기준을 확정합니다",
+    detail: "정량 합성에 필요한 denominator, effect size, uncertainty, risk-of-bias 필드를 먼저 고정합니다. 기존 연구의 변수명은 이 주제에 필요한 경우에만 수동으로 채택합니다.",
+    placeholder: `${project.extractionColumns.slice(0, 8).join(",")},...\nS001,Smith,2024,Korea,cross-sectional,120,eligible sample,...`,
+  };
+}
+
+function analysisStageCopy(project: MetaStudyProject) {
+  if (isOrchestralPainProject(project)) {
+    return {
+      title: "Primary는 prevalence MA, secondary는 network meta-regression입니다",
+      detail: "전통적 치료 NMA처럼 보이면 위험하므로 observational exposure comparison임을 Methods에서 분명히 합니다.",
+    };
+  }
+
+  return {
+    title: "이 주제의 primary synthesis와 sensitivity analysis를 분리합니다",
+    detail: "Protocol에서 확정한 outcome과 effect measure를 기준으로 분석합니다. 기존 연구의 분석 구조나 결과 해석을 새 주제에 자동 적용하지 않습니다.",
+  };
+}
+
+function manuscriptStageCopy(project: MetaStudyProject) {
+  if (isOrchestralPainProject(project)) {
+    return {
+      title: "Figure와 Methods 문장을 먼저 고정하면 원고 작성 속도가 빨라집니다",
+      detail: "high-impact journal은 novelty보다도 method reproducibility와 limitation 방어를 강하게 봅니다.",
+    };
+  }
+
+  return {
+    title: "이 주제 전용 Methods와 output list를 작성합니다",
+    detail: "Manuscript output은 이 주제의 protocol, search log, extraction schema, analysis plan에서만 생성합니다.",
+  };
+}
+
+function referencesStageCopy(project: MetaStudyProject) {
+  if (isOrchestralPainProject(project)) {
+    return {
+      detail: "PRISMA, Cochrane, PRMD 고전 논문, violin/viola biomechanics, posture review를 protocol 근거로 연결합니다.",
+    };
+  }
+
+  return {
+    detail: "PRISMA, Cochrane Handbook, 그리고 이 주제에 직접 관련된 핵심 근거만 연결합니다. 기존 연구의 reference는 자동으로 섞지 않습니다.",
+  };
+}
+
+function screeningRulesForProject(project: MetaStudyProject) {
+  return isOrchestralPainProject(project) ? screeningRules : genericScreeningRules;
+}
+
+function fullTextExclusionReasonsForProject(project: MetaStudyProject) {
+  return isOrchestralPainProject(project) ? fullTextExclusionReasons : genericFullTextExclusionReasons;
+}
+
+function analysisSafeguardsForProject(project: MetaStudyProject) {
+  return isOrchestralPainProject(project) ? analysisSafeguards : genericAnalysisSafeguards;
+}
+
+function analysisReadinessRowsForProject(project: MetaStudyProject) {
+  return isOrchestralPainProject(project) ? analysisReadinessRows : genericAnalysisReadinessRows;
+}
+
+function methodSentencesForProject(project: MetaStudyProject) {
+  return isOrchestralPainProject(project) ? methodSentences : genericMethodSentences;
+}
+
 function databaseSearchUrl(database: string, query: string, pubMedUrl?: string) {
   const normalized = database.toLowerCase();
   if (normalized.includes("pubmed")) return pubMedUrl || buildPubMedSearchUrl(query);
@@ -646,12 +859,14 @@ function ProjectWorkspace({
 }
 
 function OverviewStage({ project, pubMedUrl }: { project: MetaStudyProject; pubMedUrl: string }) {
+  const copy = overviewStageCopy(project);
+
   return (
     <div className="grid gap-5">
       <StageHeader
         eyebrow="Overview"
-        title="현재 연구 진행상황을 high-impact 구조로 재정렬합니다"
-        detail="첨부하신 핵심 주제 파일을 기준으로, protocol-first, exposure-first, region-specific, exploratory AI 분석 구조로 정리했습니다."
+        title={copy.title}
+        detail={copy.detail}
       />
       <div className="rounded-md border border-emerald-200 bg-emerald-50 p-4">
         <p className="text-sm font-semibold text-emerald-800">Novelty statement</p>
@@ -688,6 +903,7 @@ function OverviewStage({ project, pubMedUrl }: { project: MetaStudyProject; pubM
 
 function ProtocolStage({ project }: { project: MetaStudyProject }) {
   const storageKey = `${protocolDraftStorageKey}:${project.id}`;
+  const copy = protocolStageCopy(project);
   const [protocolPaste, setProtocolPaste] = useState("");
   const [savedAt, setSavedAt] = useState("");
   const [draft, setDraft] = useState(() => readStoredJson(storageKey, initialProtocolDraft(project)));
@@ -721,8 +937,8 @@ function ProtocolStage({ project }: { project: MetaStudyProject }) {
     <div className="grid gap-5">
       <StageHeader
         eyebrow="PRISMA Protocol"
-        title="악기 분류보다 exposure definition을 먼저 고정합니다"
-        detail="이 단계에서 분류 기준을 잠그면, 결과를 본 뒤 group을 바꿨다는 post hoc grouping 공격을 피할 수 있습니다."
+        title={copy.title}
+        detail={copy.detail}
       />
       <div className="grid gap-3 lg:grid-cols-4">
         <Metric label="Population" value={draft.population} />
@@ -807,7 +1023,7 @@ function ProtocolStage({ project }: { project: MetaStudyProject }) {
         ))}
       </div>
       <section>
-        <h3 className="text-base font-semibold text-zinc-950">Biomechanical criteria</h3>
+        <h3 className="text-base font-semibold text-zinc-950">{copy.featureHeading}</h3>
         <div className="mt-3 grid gap-2 lg:grid-cols-2">
           {project.exposureFeatures.map((item) => (
             <div key={item.feature} className="rounded-md border border-zinc-200 bg-zinc-50 p-3">
@@ -833,6 +1049,7 @@ function SearchStage({
 }) {
   type SearchImportRow = { resultCount: string; exportFile: string; notes: string; completedAt: string };
   const storageKey = `${searchImportStorageKey}:${project.id}`;
+  const copy = searchStageCopy(project);
   const [importRows, setImportRows] = useState(() => readStoredJson<Record<string, SearchImportRow>>(storageKey, {}));
   const [importSavedAt, setImportSavedAt] = useState("");
 
@@ -880,8 +1097,8 @@ function SearchStage({
     <div className="grid gap-5">
       <StageHeader
         eyebrow="Search Design"
-        title="업로드 자료 기반 DB별 검색식과 PRISMA 식별 수"
-        detail="PDF에는 정확한 검색식이 없고, 2026-06-07 스크린샷에만 DB별 검색식과 결과 수가 있습니다. 이 표를 protocol supplement와 PRISMA identification source로 고정합니다."
+        title={copy.title}
+        detail={copy.detail}
       />
       <div className="grid gap-3 lg:grid-cols-5">
         <Metric label="Records identified" value={totalSearchResults(project).toLocaleString()} />
@@ -893,9 +1110,9 @@ function SearchStage({
       <section className="rounded-md border border-zinc-200">
         <div className="flex flex-col gap-3 border-b border-zinc-200 bg-zinc-50 p-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <p className="text-sm font-semibold text-zinc-950">Search log from uploaded screenshots</p>
+            <p className="text-sm font-semibold text-zinc-950">{copy.logTitle}</p>
             <p className="mt-1 text-xs leading-5 text-zinc-500">
-              각 행은 검색일, DB, 정확 검색식, 결과 수, 제한 조건, export 작업을 보존합니다.
+              {copy.logDetail}
             </p>
           </div>
           <button
@@ -1069,7 +1286,7 @@ function SearchStage({
           <div>
             <p className="text-sm font-semibold text-zinc-950">PRISMA 2020 identification table</p>
             <p className="mt-1 text-xs leading-5 text-zinc-500">
-              1,393건은 1,652 - 259 계산값입니다. dedup log 확인 전까지 순수 duplicates라고 단정하지 않습니다.
+              {copy.prismaNote}
             </p>
           </div>
           <button
@@ -1112,10 +1329,9 @@ function SearchStage({
       <div className="rounded-md border border-amber-200 bg-amber-50 p-4">
         <p className="text-sm font-semibold text-amber-900">Search consistency flags</p>
         <div className="mt-2 grid gap-2 text-sm leading-6 text-amber-900 lg:grid-cols-2">
-          <p>PubMed/Cochrane screenshot에는 명시적 1990-2026 제한이 보이지 않아 supplement에서 확인 필요.</p>
-          <p>Cochrane 식은 다른 DB보다 좁고 orchestra/performing artist/다수 악기명이 누락되어 sensitivity flag로 표시.</p>
-          <p>Embase/WoS의 horn은 Scopus/PubMed의 french horn보다 넓어 noise 가능성 있음.</p>
-          <p>English limit는 PubMed/Embase만 스크린샷에 명확하며 WoS/Scopus/Cochrane은 run log 확인 필요.</p>
+          {copy.flags.map((flag) => (
+            <p key={flag}>{flag}</p>
+          ))}
         </div>
       </div>
     </div>
@@ -1124,20 +1340,21 @@ function SearchStage({
 
 function ScreeningStage({ project }: { project: MetaStudyProject }) {
   const activeUploadCount = activeFullTextUploadCount(project);
+  const copy = screeningStageCopy(project);
 
   return (
     <div className="grid gap-5">
       <StageHeader
         eyebrow="Screening"
-        title={`Excel 표준 workbook 기준으로 ${activeUploadCount}개 full-text PDF/Word 파일만 처리합니다`}
-        detail="Summary/Search 숫자는 이전 PDF 값을 기준으로 유지하고, 실제 업로드 대상은 Core_Comparative_Obs 18개, Core_InstrumentSpecific 36개, Manual_FullText_Check 18개입니다."
+        title={copy.title(activeUploadCount)}
+        detail={copy.detail}
       />
       <WorkbookFullTextBoard project={project} />
       <section className="rounded-md border border-zinc-200">
         <div className="flex flex-col gap-3 border-b border-zinc-200 bg-zinc-50 p-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-sm font-semibold text-zinc-950">Full-text triage queue</p>
-            <p className="mt-1 text-xs leading-5 text-zinc-500">이 표는 업로드가 필요한 3개 sheet만 active queue로 취급합니다. 나머지 Excel sheet는 audit/support/exclusion 용도입니다.</p>
+            <p className="mt-1 text-xs leading-5 text-zinc-500">{copy.queueDetail}</p>
           </div>
           <button
             type="button"
@@ -1179,10 +1396,10 @@ function ScreeningStage({ project }: { project: MetaStudyProject }) {
       </section>
       <div className="grid gap-3 lg:grid-cols-2">
         <Checklist title="Two-reviewer decision fields" items={screeningDecisionColumns} />
-        <Checklist title="Fixed full-text exclusion reasons" items={fullTextExclusionReasons} />
+        <Checklist title="Fixed full-text exclusion reasons" items={fullTextExclusionReasonsForProject(project)} />
       </div>
       <div className="grid gap-3 lg:grid-cols-2">
-        {screeningRules.map(([title, detail]) => (
+        {screeningRulesForProject(project).map(([title, detail]) => (
           <CheckCard key={title} title={title} detail={detail} />
         ))}
       </div>
@@ -1208,6 +1425,7 @@ type WorkbookBoardState = Record<
 
 function WorkbookFullTextBoard({ project }: { project: MetaStudyProject }) {
   const [board, setBoard] = useState<WorkbookBoardState>(() => loadWorkbookBoardState(project));
+  const copy = workbookStageCopy(project);
   const activeSheets = project.workbookSheets.filter((sheet) => sheet.uploadRequired);
   const inactiveSheets = project.workbookSheets.filter((sheet) => !sheet.uploadRequired);
 
@@ -1297,11 +1515,11 @@ function WorkbookFullTextBoard({ project }: { project: MetaStudyProject }) {
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <p className="text-sm font-semibold text-emerald-900">Excel workbook standard workflow</p>
-          <h3 className="mt-1 text-lg font-semibold text-zinc-950">업로드 대상은 3개 sheet, 나머지는 audit/support로 고정</h3>
+          <h3 className="mt-1 text-lg font-semibold text-zinc-950">{copy.title}</h3>
           <details className="mt-3 max-w-4xl rounded-md border border-emerald-200 bg-white/80 px-3 py-2">
             <summary className="cursor-pointer text-sm font-semibold text-emerald-900">Workbook rule</summary>
             <p className="mt-2 text-sm leading-6 text-zinc-700">
-            Summary의 초기 검색/PRISMA 숫자는 이전 PDF 값을 기준으로 유지합니다. 실제 full-text PDF/Word 확인 중 탈락이 생기면 아래 current/included/excluded 값을 직접 수정하고 CSV로 남깁니다.
+            {copy.rule}
             </p>
           </details>
         </div>
@@ -1458,14 +1676,15 @@ function EditableCount({ value, onChange }: { value: string; onChange: (value: s
 
 function ExtractionStage({ project }: { project: MetaStudyProject }) {
   const [csvText, setCsvText] = useState("");
+  const copy = extractionStageCopy(project);
   const validation = useMemo(() => validateExtractionCsv(csvText, project.extractionColumns), [csvText, project.extractionColumns]);
 
   return (
     <div className="grid gap-5">
       <StageHeader
         eyebrow="Extraction"
-        title="PDF의 6개 extraction 블록을 실제 CSV 템플릿과 검증기로 고정합니다"
-        detail="숫자가 있으면 원 논문 table, figure, supplement에서 denominator와 numerator를 그대로 입력하고, n/total이 없으면 quantitative synthesis에 넣지 않습니다."
+        title={copy.title}
+        detail={copy.detail}
       />
       <button
         type="button"
@@ -1496,7 +1715,7 @@ function ExtractionStage({ project }: { project: MetaStudyProject }) {
             value={csvText}
             onChange={(event) => setCsvText(event.target.value)}
             rows={9}
-            placeholder={`${project.extractionColumns.slice(0, 8).join(",")},...\nS001,Smith,2024,Korea,cross-sectional,120,118,orchestra sample,...`}
+            placeholder={copy.placeholder}
             className="rounded-md border border-emerald-300 bg-white px-3 py-2 text-sm font-normal leading-6 text-zinc-800 outline-none focus:border-emerald-500"
           />
         </label>
@@ -1530,12 +1749,14 @@ function ExtractionStage({ project }: { project: MetaStudyProject }) {
 }
 
 function AnalysisStage({ project }: { project: MetaStudyProject }) {
+  const copy = analysisStageCopy(project);
+
   return (
     <div className="grid gap-5">
       <StageHeader
         eyebrow="Analysis"
-        title="Primary는 prevalence MA, secondary는 network meta-regression입니다"
-        detail="전통적 치료 NMA처럼 보이면 위험하므로 observational exposure comparison임을 Methods에서 분명히 합니다."
+        title={copy.title}
+        detail={copy.detail}
       />
       <div className="grid gap-3">
         {project.analysisLayers.map((layer) => (
@@ -1549,7 +1770,7 @@ function AnalysisStage({ project }: { project: MetaStudyProject }) {
         ))}
       </div>
       <div className="grid gap-3 lg:grid-cols-2">
-        {analysisSafeguards.map(([title, detail]) => (
+        {analysisSafeguardsForProject(project).map(([title, detail]) => (
           <CheckCard key={title} title={title} detail={detail} />
         ))}
       </div>
@@ -1557,7 +1778,7 @@ function AnalysisStage({ project }: { project: MetaStudyProject }) {
         <div className="border-b border-zinc-200 bg-zinc-50 p-4">
           <p className="text-sm font-semibold text-zinc-950">Analysis readiness dashboard</p>
           <p className="mt-1 text-xs leading-5 text-zinc-500">
-            현재는 extraction 전이므로 모든 정량 분석은 pending입니다. 각 outcome의 n/total이 들어오면 prevalence MA와 laterality 분석 가능 여부를 확인합니다.
+            현재는 extraction 전이므로 모든 정량 분석은 pending입니다. 이 주제의 primary/secondary outcome에 필요한 필드가 들어오면 분석 가능 여부를 확인합니다.
           </p>
         </div>
         <div className="overflow-x-auto">
@@ -1570,7 +1791,7 @@ function AnalysisStage({ project }: { project: MetaStudyProject }) {
               </tr>
             </thead>
             <tbody>
-              {analysisReadinessRows.map(([outcome, required, status]) => (
+              {analysisReadinessRowsForProject(project).map(([outcome, required, status]) => (
                 <tr key={outcome}>
                   <td className="border-b border-zinc-100 px-4 py-3 font-semibold text-zinc-950">{outcome}</td>
                   <td className="border-b border-zinc-100 px-4 py-3 text-sm leading-6 text-zinc-600">{required}</td>
@@ -1586,12 +1807,14 @@ function AnalysisStage({ project }: { project: MetaStudyProject }) {
 }
 
 function ManuscriptStage({ project }: { project: MetaStudyProject }) {
+  const copy = manuscriptStageCopy(project);
+
   return (
     <div className="grid gap-5">
       <StageHeader
         eyebrow="Manuscript"
-        title="Figure와 Methods 문장을 먼저 고정하면 원고 작성 속도가 빨라집니다"
-        detail="high-impact journal은 novelty보다도 method reproducibility와 limitation 방어를 강하게 봅니다."
+        title={copy.title}
+        detail={copy.detail}
       />
       <div className="grid gap-2 lg:grid-cols-2">
         {project.manuscriptOutputs.map((output) => (
@@ -1603,7 +1826,7 @@ function ManuscriptStage({ project }: { project: MetaStudyProject }) {
       <section className="rounded-md border border-emerald-200 bg-emerald-50 p-4">
         <p className="text-sm font-semibold text-emerald-800">Methods-ready sentences</p>
         <div className="mt-3 grid gap-2">
-          {methodSentences.map((sentence) => (
+          {methodSentencesForProject(project).map((sentence) => (
             <p key={sentence} className="rounded-md bg-white p-3 text-sm leading-6 text-zinc-700">
               {sentence}
             </p>
@@ -1879,12 +2102,14 @@ function ValidationList({
 }
 
 function ReferencesStage({ project }: { project: MetaStudyProject }) {
+  const copy = referencesStageCopy(project);
+
   return (
     <div className="grid gap-5">
       <StageHeader
         eyebrow="References"
         title="핵심 근거는 클릭해서 직접 확인할 수 있게 둡니다"
-        detail="PRISMA, Cochrane, PRMD 고전 논문, violin/viola biomechanics, posture review를 protocol 근거로 연결합니다."
+        detail={copy.detail}
       />
       <div className="grid gap-3">
         {project.references.map((reference) => (

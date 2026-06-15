@@ -20,6 +20,54 @@ C:\Users\HyunJK\Documents\GitHub\meta.wiregene.com
 - 작업 시작 전 `git -C C:\Users\HyunJK\Documents\GitHub\meta.wiregene.com status --short`와 `git -C C:\Users\HyunJK\Documents\GitHub\meta.wiregene.com pull --ff-only origin main`을 확인한다.
 - 작업 종료 전 lint/typecheck/build, `backup.md` 업데이트, commit/push, Synology 작업스케줄러 명령 확인을 수행한다.
 
+## 2026-06-15 New topic study-isolation fix
+
+사용자 지적:
+
+```text
+새로 생성한 주제의 PRISMA protocol에 "악기 분류보다 exposure definition을 먼저 고정합니다"라는 엉뚱한 문자가 있습니다. 기존 주제와 믹스되어 진행하면 절대로 안됩니다
+```
+
+원인:
+
+- `ProtocolStage`의 header title/detail이 기존 Study 1(오케스트라/악기 비대칭 PRMD) 전용 문구로 하드코딩되어 있었다.
+- Search, Screening, Extraction, Analysis, Manuscript, References에도 일부 Study 1 전용 설명 문구와 예시가 하드코딩되어 새로 생성한 user project에 노출될 위험이 있었다.
+
+변경:
+
+- `src/components/MetaStudyWorkspace.tsx`
+  - `isOrchestralPainProject()` 분기를 추가해 `orchestral-prmd-asymmetry`일 때만 기존 Study 1 전용 문구를 사용한다.
+  - 신규/사용자 생성 project는 generic systematic-review copy만 사용한다.
+  - Protocol title은 신규 주제에서 `연구 질문과 eligibility criteria를 먼저 고정합니다`로 표시된다.
+  - Protocol feature heading은 신규 주제에서 `Exposure / intervention criteria`로 표시된다.
+  - Search/Screening/Workbook/Extraction/Analysis/Manuscript/References stage도 신규 주제용 generic copy로 분리했다.
+  - 새 주제에서는 기존 연구의 DB count, Excel sheet, PRMD/악기/biomechanics 문구가 자동 표시되지 않도록 했다.
+- `package.json`, `package-lock.json`
+  - app package version `0.1.30` -> `0.1.31`.
+- `src/lib/version.ts`
+  - UI version `Ver 1.65` -> `Ver 1.66 | 2026 copyright by JK Hyun`.
+
+검증:
+
+```text
+npm ci: completed; existing audit warning remains 4 vulnerabilities.
+npx tsc --noEmit: pass.
+npm run lint: pass.
+npm run build: pass.
+Browser verification with WIREGENE_APP_MODE=meta at http://127.0.0.1:3222:
+- Created a new test topic.
+- New Protocol screen showed "연구 질문과 eligibility criteria를 먼저 고정합니다".
+- New Protocol screen did not show "악기 분류보다 exposure definition을 먼저 고정합니다".
+- New Protocol screen did not show "Biomechanical criteria".
+- Search, Screening, Extraction, Analysis, Manuscript, References were checked for old Study 1 phrases; none were found in the new topic flow.
+```
+
+Synology deploy/run command:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 ## 작업 위치
 
 실제 작업 저장소:
