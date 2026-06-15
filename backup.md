@@ -1033,6 +1033,66 @@ Regular Synology deploy/run command after GitHub push:
 git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
 ```
 
+## 2026-06-16 Screening project-folder export storage
+
+User asked where Screening-generated Excel/CSV/data files are saved and requested a folder option or per-project folders.
+
+Current diagnosis:
+
+- Before this change, Screening/Search export buttons were clipboard-only.
+- `Search import log` and workbook board edits were browser `localStorage` only, scoped by project id but not shared across PCs.
+- Full-text analysis history was already server-side in `.data/meta/meta-full-text-history.json` or Google Drive when configured.
+- Draft Excel CSV in the extraction dataset panel was explicitly `Copy draft Excel CSV (not saved)`.
+
+Implemented in the canonical actual app repository:
+
+```text
+C:\Users\HyunJK\Documents\GitHub\meta.wiregene.com
+```
+
+Changed files:
+
+- `src/lib/meta-project-storage.ts`
+- `src/app/api/meta-analysis/projects/[projectId]/files/route.ts`
+- `src/components/MetaStudyWorkspace.tsx`
+- `src/components/MetaExtractionDatasetPanel.tsx`
+- `.env.example`
+- `synology/docker/meta/.env.example`
+- `scripts/synology-start-meta.sh`
+- `SERVICE.md`
+- `package.json`
+- `package-lock.json`
+- `src/lib/version.ts`
+
+Behavior now:
+
+- New API: `/api/meta-analysis/projects/[projectId]/files`.
+- Default app path: `.data/meta/projects/{projectId}/`.
+- Default Synology host path: `/volume1/docker/meta/data/projects/{projectId}/`.
+- Root folder option: `META_PROJECT_STORAGE_ROOT`; default `.data/meta/projects`.
+- Screening tab shows `Project file storage` with app path, Synology host-path hint, saved file count, and file list.
+- Save buttons now exist for search log CSV, search import CSV, PRISMA CSV, workbook board CSV, screening decision header CSV, and draft Excel dataset CSV.
+
+Version:
+
+- Actual app package version: `0.1.32`.
+- Visible UI version: `Ver 1.67 | 2026 copyright by JK Hyun`.
+
+Verification:
+
+- `npx tsc --noEmit`: passed.
+- `npm run lint`: passed.
+- `npm run build`: passed without Turbopack warnings.
+- Browser verification on `http://127.0.0.1:3223` confirmed the Screening storage panel and save buttons.
+- `Save header` created `.data/meta/projects/orchestral-prmd-asymmetry/screening-decision-header.csv`.
+- `Save board` created `.data/meta/projects/orchestral-prmd-asymmetry/workbook-fulltext-board.csv`.
+
+Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 ## 2026-06-14 Meta workflow UX pass for protocol/search/screening verification
 
 Actual working repository:

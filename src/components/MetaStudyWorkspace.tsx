@@ -11,18 +11,20 @@ import {
   FileSpreadsheet,
   FileText,
   FlaskConical,
+  FolderOpen,
   KeyRound,
   ListChecks,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
+  RefreshCw,
   Save,
   Search,
   Target,
   Workflow,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { MetaAnalysisPanel } from "@/components/MetaAnalysisPanel";
 import { MetaAiSettingsPanel } from "@/components/MetaAiSettingsPanel";
@@ -128,6 +130,36 @@ type NewTopicAnalysisPayload = {
   note?: string;
   error?: string;
 };
+
+type ProjectStorageFileSummary = {
+  fileName: string;
+  path: string;
+  bytes: number;
+  updatedAt: string;
+};
+
+type ProjectStorageSummary = {
+  projectId: string;
+  folderName: string;
+  storageRoot: string;
+  projectPath: string;
+  synologyPathHint: string | null;
+  exists: boolean;
+  files: ProjectStorageFileSummary[];
+};
+
+type ProjectFileSaveResponse = {
+  savedFile: ProjectStorageFileSummary & {
+    projectId: string;
+    folderName: string;
+    storageRoot: string;
+    projectPath: string;
+    synologyPathHint: string | null;
+  };
+  storage: ProjectStorageSummary;
+};
+
+const projectFileSavedEventName = "wiregene-meta-project-file-saved";
 
 const analysisReadinessRows = [
   ["Overall PRMD prevalence", "현재 61-column template에는 없음; 필요 시 overall_PRMD_n/total 추가", "Template extension candidate"],
@@ -1115,14 +1147,22 @@ function SearchStage({
               {copy.logDetail}
             </p>
           </div>
-          <button
+          <div className="flex flex-wrap gap-2">
+            <button
             type="button"
             onClick={() => void navigator.clipboard?.writeText(searchLogCsv(project))}
             className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-sm font-semibold text-zinc-700 transition hover:border-emerald-300 hover:bg-emerald-50"
           >
             <ClipboardList className="h-4 w-4" aria-hidden />
             search log CSV 복사
-          </button>
+            </button>
+            <ProjectFileSaveButton
+              projectId={project.id}
+              fileName="search-log.csv"
+              contents={() => searchLogCsv(project)}
+              label="Save CSV"
+            />
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[940px] border-collapse text-left text-sm">
@@ -1205,6 +1245,12 @@ function SearchStage({
               <FileSpreadsheet className="h-4 w-4" aria-hidden />
               Import log CSV 복사
             </button>
+            <ProjectFileSaveButton
+              projectId={project.id}
+              fileName="search-import-log.csv"
+              contents={() => searchImportCsv()}
+              label="Save import CSV"
+            />
           </div>
         </div>
         <div className="mt-4 overflow-x-auto rounded-md border border-emerald-200 bg-white">
@@ -1289,14 +1335,22 @@ function SearchStage({
               {copy.prismaNote}
             </p>
           </div>
-          <button
+          <div className="flex flex-wrap gap-2">
+            <button
             type="button"
             onClick={() => void navigator.clipboard?.writeText(prismaCsv(project))}
             className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-sm font-semibold text-zinc-700 transition hover:border-emerald-300 hover:bg-emerald-50"
           >
             <FileSpreadsheet className="h-4 w-4" aria-hidden />
             PRISMA CSV 복사
-          </button>
+            </button>
+            <ProjectFileSaveButton
+              projectId={project.id}
+              fileName="prisma-identification.csv"
+              contents={() => prismaCsv(project)}
+              label="Save PRISMA"
+            />
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[760px] border-collapse text-left text-sm">
@@ -1349,6 +1403,7 @@ function ScreeningStage({ project }: { project: MetaStudyProject }) {
         title={copy.title(activeUploadCount)}
         detail={copy.detail}
       />
+      <ProjectStoragePanel project={project} />
       <WorkbookFullTextBoard project={project} />
       <section className="rounded-md border border-zinc-200">
         <div className="flex flex-col gap-3 border-b border-zinc-200 bg-zinc-50 p-4 lg:flex-row lg:items-center lg:justify-between">
@@ -1356,14 +1411,22 @@ function ScreeningStage({ project }: { project: MetaStudyProject }) {
             <p className="text-sm font-semibold text-zinc-950">Full-text triage queue</p>
             <p className="mt-1 text-xs leading-5 text-zinc-500">{copy.queueDetail}</p>
           </div>
-          <button
+          <div className="flex flex-wrap gap-2">
+            <button
             type="button"
             onClick={() => void navigator.clipboard?.writeText(screeningDecisionColumns.join(","))}
             className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-sm font-semibold text-zinc-700 transition hover:border-emerald-300 hover:bg-emerald-50"
           >
             <FileSpreadsheet className="h-4 w-4" aria-hidden />
             screening CSV header 복사
-          </button>
+            </button>
+            <ProjectFileSaveButton
+              projectId={project.id}
+              fileName="screening-decision-header.csv"
+              contents={() => screeningDecisionColumns.join(",")}
+              label="Save header"
+            />
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[820px] border-collapse text-left text-sm">
@@ -1408,7 +1471,182 @@ function ScreeningStage({ project }: { project: MetaStudyProject }) {
         focus="screening"
         worksheetOptions={fullTextWorksheetOptions(project)}
       />
-      <MetaExtractionDatasetPanel extractionSections={project.extractionSections} />
+      <MetaExtractionDatasetPanel extractionSections={project.extractionSections} projectId={project.id} />
+    </div>
+  );
+}
+
+function ProjectStoragePanel({ project }: { project: MetaStudyProject }) {
+  const [storage, setStorage] = useState<ProjectStorageSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const refreshStorage = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      setStorage(await loadProjectStorage(project.id));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Project storage could not be loaded.");
+    } finally {
+      setLoading(false);
+    }
+  }, [project.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    loadProjectStorage(project.id)
+      .then((nextStorage) => {
+        if (cancelled) return;
+        setStorage(nextStorage);
+        setError("");
+      })
+      .catch((caught) => {
+        if (!cancelled) setError(caught instanceof Error ? caught.message : "Project storage could not be loaded.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    function handleProjectFileSaved(event: Event) {
+      const detail = (event as CustomEvent<{ projectId?: string }>).detail;
+      if (detail?.projectId === project.id) void refreshStorage();
+    }
+
+    window.addEventListener(projectFileSavedEventName, handleProjectFileSaved);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(projectFileSavedEventName, handleProjectFileSaved);
+    };
+  }, [project.id, refreshStorage]);
+
+  const files = storage?.files ?? [];
+
+  return (
+    <section className="rounded-md border border-sky-200 bg-sky-50 p-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-sky-900">Project file storage</p>
+          <h3 className="mt-1 text-lg font-semibold text-zinc-950">Screening CSV/data folder</h3>
+          <p className="mt-2 max-w-4xl text-sm leading-6 text-zinc-700">
+            Clipboard exports are not files until they are saved here. Each project uses its own server folder.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => void refreshStorage()}
+          disabled={loading}
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-sky-300 bg-white px-3 text-sm font-semibold text-sky-800 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} aria-hidden />
+          Refresh
+        </button>
+      </div>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-3">
+        <Metric label="Project folder" value={storage?.folderName ?? "..."} />
+        <Metric label="Saved files" value={loading ? "..." : files.length.toLocaleString()} />
+        <Metric label="Storage mode" value="Synology/local folder" />
+      </div>
+
+      <div className="mt-4 grid gap-2 rounded-md border border-sky-200 bg-white p-3 text-xs leading-5 text-zinc-600">
+        <p>
+          <span className="font-semibold text-zinc-950">App path:</span>{" "}
+          <span className="break-all">{storage?.projectPath ?? "Loading..."}</span>
+        </p>
+        {storage?.synologyPathHint ? (
+          <p>
+            <span className="font-semibold text-zinc-950">Synology host path:</span>{" "}
+            <span className="break-all">{storage.synologyPathHint}</span>
+          </p>
+        ) : null}
+        <p>
+          <span className="font-semibold text-zinc-950">Root option:</span>{" "}
+          <span className="break-all">META_PROJECT_STORAGE_ROOT</span>
+        </p>
+      </div>
+
+      {error ? (
+        <p className="mt-3 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-900">
+          {error}
+        </p>
+      ) : null}
+
+      {files.length ? (
+        <div className="mt-4 overflow-x-auto rounded-md border border-sky-200 bg-white">
+          <table className="w-full min-w-[720px] border-collapse text-left text-sm">
+            <thead className="bg-sky-50 text-xs uppercase text-sky-900">
+              <tr>
+                <th className="border-b border-sky-200 px-3 py-3">File</th>
+                <th className="border-b border-sky-200 px-3 py-3">Bytes</th>
+                <th className="border-b border-sky-200 px-3 py-3">Updated</th>
+                <th className="border-b border-sky-200 px-3 py-3">Path</th>
+              </tr>
+            </thead>
+            <tbody>
+              {files.map((file) => (
+                <tr key={file.path}>
+                  <td className="border-b border-zinc-100 px-3 py-3 font-semibold text-zinc-950">{file.fileName}</td>
+                  <td className="border-b border-zinc-100 px-3 py-3 text-zinc-700">{file.bytes.toLocaleString()}</td>
+                  <td className="border-b border-zinc-100 px-3 py-3 text-zinc-700">{new Date(file.updatedAt).toLocaleString("ko-KR")}</td>
+                  <td className="border-b border-zinc-100 px-3 py-3 text-xs leading-5 text-zinc-500">
+                    <span className="break-all">{file.path}</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className="mt-3 rounded-md border border-sky-200 bg-white p-3 text-sm leading-6 text-zinc-600">
+          No project files have been saved yet.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function ProjectFileSaveButton({
+  projectId,
+  fileName,
+  contents,
+  label,
+}: {
+  projectId: string;
+  fileName: string;
+  contents: string | (() => string);
+  label: string;
+}) {
+  const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [error, setError] = useState("");
+
+  async function saveFile() {
+    setStatus("saving");
+    setError("");
+    try {
+      await saveProjectTextFile(projectId, fileName, typeof contents === "function" ? contents() : contents);
+      setStatus("saved");
+      window.dispatchEvent(new CustomEvent(projectFileSavedEventName, { detail: { projectId } }));
+      window.setTimeout(() => setStatus("idle"), 2500);
+    } catch (caught) {
+      setStatus("error");
+      setError(caught instanceof Error ? caught.message : "Project file could not be saved.");
+    }
+  }
+
+  return (
+    <div className="grid gap-1">
+      <button
+        type="button"
+        onClick={() => void saveFile()}
+        disabled={status === "saving"}
+        className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-sky-300 bg-white px-3 text-sm font-semibold text-sky-800 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {status === "saved" ? <CheckCircle2 className="h-4 w-4" aria-hidden /> : <FolderOpen className="h-4 w-4" aria-hidden />}
+        {status === "saving" ? "Saving..." : status === "saved" ? "Saved" : label}
+      </button>
+      {error ? <p className="max-w-60 text-xs font-semibold text-rose-700">{error}</p> : null}
     </div>
   );
 }
@@ -1532,6 +1770,12 @@ function WorkbookFullTextBoard({ project }: { project: MetaStudyProject }) {
             <FileSpreadsheet className="h-4 w-4" aria-hidden />
             board CSV 복사
           </button>
+          <ProjectFileSaveButton
+            projectId={project.id}
+            fileName="workbook-fulltext-board.csv"
+            contents={() => workbookBoardCsv()}
+            label="Save board"
+          />
           <button
             type="button"
             onClick={resetBoard}
@@ -1913,6 +2157,35 @@ function csvRows(rows: string[][]) {
         .join(","),
     )
     .join("\n");
+}
+
+async function loadProjectStorage(projectId: string) {
+  const response = await fetch(`/api/meta-analysis/projects/${encodeURIComponent(projectId)}/files`, {
+    cache: "no-store",
+  });
+  const payload = (await response.json().catch(() => ({}))) as {
+    storage?: ProjectStorageSummary;
+    error?: string;
+  };
+  if (!response.ok || !payload.storage) {
+    throw new Error(payload.error || "Project storage could not be loaded.");
+  }
+  return payload.storage;
+}
+
+async function saveProjectTextFile(projectId: string, fileName: string, contents: string) {
+  const response = await fetch(`/api/meta-analysis/projects/${encodeURIComponent(projectId)}/files`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ fileName, contents }),
+  });
+  const payload = (await response.json().catch(() => ({}))) as Partial<ProjectFileSaveResponse> & {
+    error?: string;
+  };
+  if (!response.ok || !payload.savedFile || !payload.storage) {
+    throw new Error(payload.error || "Project file could not be saved.");
+  }
+  return payload as ProjectFileSaveResponse;
 }
 
 function StatusBadge({ status }: { status: "locked" | "working" | "pending" }) {

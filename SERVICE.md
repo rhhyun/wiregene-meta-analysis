@@ -81,3 +81,23 @@ and reviewer verification fields. On Vercel, the history storage uses Google
 Drive automatically when Google Drive credentials are configured, or it can be
 forced with `META_FULL_TEXT_HISTORY_STORAGE_BACKEND=google-drive`. The default
 Drive file is `meta-full-text-history.json`.
+
+## Meta Project File Storage
+
+Screening/search CSV exports are not written as files until the in-app
+`Save ...` buttons are clicked. Saved project files are written by the Next.js
+server under:
+
+```txt
+.data/meta/projects/{projectId}/
+```
+
+In the Synology Docker package this path is bind-mounted to:
+
+```txt
+/volume1/docker/meta/data/projects/{projectId}/
+```
+
+Set `META_PROJECT_STORAGE_ROOT` only to a writable path visible inside the
+container. The default `.data/meta/projects` is recommended for Synology because
+it stays inside the existing `/volume1/docker/meta/data` runtime volume.
