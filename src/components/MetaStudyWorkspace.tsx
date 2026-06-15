@@ -107,6 +107,27 @@ const newTopicDraftStorageKey = "wiregene-meta-new-topic-draft-v1";
 const protocolDraftStorageKey = "wiregene-meta-protocol-draft-v1";
 const searchImportStorageKey = "wiregene-meta-search-import-log-v1";
 
+type NewTopicDraft = {
+  title: string;
+  researchQuestion: string;
+  population: string;
+  exposure: string;
+  outcomes: string;
+  databases: string;
+  eligibility: string;
+  searchBlocks: string;
+  extractionPlan: string;
+};
+
+type NewTopicAnalysisPayload = {
+  ok?: boolean;
+  model?: string | null;
+  draft?: Partial<NewTopicDraft>;
+  needsUserReview?: string[];
+  note?: string;
+  error?: string;
+};
+
 const analysisReadinessRows = [
   ["Overall PRMD prevalence", "현재 61-column template에는 없음; 필요 시 overall_PRMD_n/total 추가", "Template extension candidate"],
   ["Neck prevalence", "neck_n + neck_total by mapped_asymmetry_group", "Primary region outcome"],
@@ -1644,8 +1665,12 @@ function NewTopicWorkspace() {
   const starterQuery = "(Population terms) AND (Exposure or intervention terms) AND (Outcome terms)";
   const [sourceText, setSourceText] = useState("");
   const [savedAt, setSavedAt] = useState("");
-  const [draft, setDraft] = useState(() =>
-    readStoredJson(newTopicDraftStorageKey, {
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisNotice, setAnalysisNotice] = useState("");
+  const [analysisError, setAnalysisError] = useState("");
+  const [reviewItems, setReviewItems] = useState<string[]>([]);
+  const [draft, setDraft] = useState<NewTopicDraft>(() =>
+    readStoredJson<NewTopicDraft>(newTopicDraftStorageKey, {
       title: "",
       researchQuestion: "",
       population: "",
@@ -1664,7 +1689,10 @@ function NewTopicWorkspace() {
 
   function saveNewTopicDraft() {
     const nextSavedAt = new Date().toISOString();
-    window.localStorage.setItem(newTopicDraftStorageKey, JSON.stringify({ ...draft, sourceText, savedAt: nextSavedAt }));
+    window.localStorage.setItem(
+      newTopicDraftStorageKey,
+      JSON.stringify({ ...draft, sourceText, needsUserReview: reviewItems, savedAt: nextSavedAt }),
+    );
     setSavedAt(nextSavedAt);
   }
 
@@ -1675,56 +1703,107 @@ function NewTopicWorkspace() {
     sourceText || "(paste the research idea here)",
   ].join("\n");
 
+  async function analyzeNewTopic() {
+    const input = sourceText.trim();
+    if (input.length < 20) {
+      setAnalysisError("구상내용을 20자 이상 붙여넣은 뒤 AI 분석을 실행하세요.");
+      return;
+    }
+
+    setIsAnalyzing(true);
+    setAnalysisError("");
+    setAnalysisNotice("");
+    setReviewItems([]);
+
+    try {
+      const response = await fetch("/api/meta-analysis/study-plan/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceText: input }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as NewTopicAnalysisPayload;
+      if (!response.ok) throw new Error(payload.error || "AI 분석 요청이 실패했습니다.");
+
+      setDraft((current) => ({
+        ...current,
+        ...Object.fromEntries(
+          Object.entries(payload.draft ?? {}).filter(([, value]) => typeof value === "string"),
+        ),
+      }));
+      setReviewItems(payload.needsUserReview ?? []);
+      setAnalysisNotice(
+        payload.model
+          ? `AI 분석 완료: ${payload.model} 결과를 항목별 draft에 반영했습니다.`
+          : `자동 parsing 완료: ${payload.note ?? "규칙 기반 분석 결과를 항목별 draft에 반영했습니다."}`,
+      );
+    } catch (caught) {
+      setAnalysisError(caught instanceof Error ? caught.message : "AI 분석 중 오류가 발생했습니다.");
+    } finally {
+      setIsAnalyzing(false);
+    }
+  }
+
   return (
     <div className="grid gap-5">
       <section className="rounded-lg border border-zinc-200 bg-white p-5">
         <StageHeader
           eyebrow="New meta-analysis topic"
-          title="신규 주제는 PRISMA 검색 디자인부터 시작합니다"
-          detail="새 연구를 클릭하면 바로 주제 질문, inclusion/exclusion, 검색 블록, extraction schema를 잠그는 순서로 진행합니다."
+          title="구상내용을 AI로 분석해 연구계획 draft로 정리합니다"
+          detail="신규 주제는 복사 버튼이 아니라 AI 분석으로 시작합니다. 붙여넣은 내용을 parsing한 뒤 연구자가 항목별로 수정하고 확정합니다."
         />
       </section>
       <section className="rounded-lg border border-zinc-200 bg-white p-5">
         <div className="grid gap-3 lg:grid-cols-3">
-          <Metric label="1. Question" value="PICO/PEO, review type, target journal을 먼저 정의" />
-          <Metric label="2. Protocol" value="eligibility, outcome hierarchy, risk of bias, synthesis plan 고정" />
-          <Metric label="3. Search" value="PubMed/Scopus/WoS/Embase/Cochrane 검색식과 기간 전략 작성" />
+          <Metric label="1. Paste" value="구상내용, 검색식, DB 결과 수, 계획 변경사항을 그대로 붙여넣기" />
+          <Metric label="2. AI analysis" value="AI가 제목, 질문, PECO, 검색, screening, extraction, 분석계획으로 parsing" />
+          <Metric label="3. Review" value="사용자가 항목별로 수정하고 확정한 뒤 문서와 site draft 생성" />
         </div>
         <section className="mt-5 rounded-md border border-emerald-200 bg-emerald-50 p-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <p className="text-sm font-semibold text-emerald-900">AI-planned topic draft</p>
+              <p className="text-sm font-semibold text-emerald-900">AI 분석 기반 신규 주제 draft</p>
               <p className="mt-1 text-sm leading-6 text-zinc-700">
-                ChatGPT/Gemini에서 구상한 내용을 붙여 넣고, 연구자가 제목, 질문, 검색/추출 계획을 수정한 뒤 저장합니다.
+                구상내용을 붙여넣고 `AI 분석 시작`을 누르면, 시스템이 연구계획 항목으로 자동 정리합니다. 결과는 저장 전 반드시 수동 수정·확정합니다.
               </p>
               {savedAt ? <p className="mt-2 text-xs font-semibold text-emerald-800">저장완료: {new Date(savedAt).toLocaleString("ko-KR")}</p> : null}
             </div>
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={saveNewTopicDraft}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-3 text-sm font-semibold text-white transition hover:bg-emerald-800"
+                onClick={() => void analyzeNewTopic()}
+                disabled={isAnalyzing || sourceText.trim().length < 20}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
               >
-                <Save className="h-4 w-4" aria-hidden />
-                Topic draft 저장
+                <Search className="h-4 w-4" aria-hidden />
+                {isAnalyzing ? "AI 분석 중" : "AI 분석 시작"}
               </button>
               <button
                 type="button"
-                onClick={() => void navigator.clipboard?.writeText(planningPrompt)}
+                onClick={saveNewTopicDraft}
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-emerald-300 bg-white px-3 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100"
               >
-                <ClipboardList className="h-4 w-4" aria-hidden />
-                AI planning prompt 복사
+                <Save className="h-4 w-4" aria-hidden />
+                수정 내용 저장
               </button>
             </div>
           </div>
+          {analysisNotice ? (
+            <p className="mt-3 rounded-md border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold text-emerald-800">
+              {analysisNotice}
+            </p>
+          ) : null}
+          {analysisError ? (
+            <p className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
+              {analysisError}
+            </p>
+          ) : null}
           <label className="mt-4 grid gap-2 text-sm font-semibold text-zinc-700">
-            ChatGPT/Gemini 구상 내용 붙여넣기
+            구상내용 붙여넣기
             <textarea
               value={sourceText}
               onChange={(event) => setSourceText(event.target.value)}
               rows={6}
-              placeholder="연구 아이디어, PICO/PEO, 검색식, inclusion/exclusion, 추출 parameter, 분석계획을 그대로 붙여 넣으세요."
+              placeholder="연구 아이디어, 검색식, database 결과 수, PDF 계획서 내용, 포함/제외 기준, 추출 변수, 분석 방향, 일정 등을 그대로 붙여넣으세요."
               className="rounded-md border border-emerald-300 bg-white px-3 py-2 text-sm font-normal leading-6 text-zinc-800 outline-none focus:border-emerald-500"
             />
           </label>
@@ -1758,20 +1837,59 @@ function NewTopicWorkspace() {
               </label>
             ))}
           </div>
+          {reviewItems.length > 0 ? (
+            <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3">
+              <p className="text-sm font-semibold text-amber-900">AI 분석 후 확인 필요</p>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-6 text-amber-900">
+                {reviewItems.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          <details className="mt-4 rounded-md border border-emerald-200 bg-white p-3">
+            <summary className="cursor-pointer text-sm font-semibold text-emerald-900">
+              고급 옵션: 외부 검토 prompt / 검색식 예시
+            </summary>
+            <div className="mt-3 grid gap-3 lg:grid-cols-2">
+              <div>
+                <p className="text-sm font-semibold text-zinc-800">외부 검토용 prompt</p>
+                <p className="mt-1 text-sm leading-6 text-zinc-600">
+                  API 장애나 공동저자 검토가 필요할 때만 사용합니다. 신규 주제의 기본 흐름은 `AI 분석 시작`입니다.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void navigator.clipboard?.writeText(planningPrompt)}
+                  className="mt-3 inline-flex h-10 items-center justify-center gap-2 rounded-md border border-emerald-300 bg-white px-3 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100"
+                >
+                  <ClipboardList className="h-4 w-4" aria-hidden />
+                  외부 검토 prompt 내보내기
+                </button>
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-zinc-800">검색식 구조 예시</p>
+                <pre className="mt-2 rounded-md bg-zinc-50 p-3 text-sm text-zinc-700">{starterQuery}</pre>
+                <button
+                  type="button"
+                  onClick={() => void navigator.clipboard?.writeText(starterQuery)}
+                  className="mt-3 inline-flex h-10 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-50"
+                >
+                  <ClipboardList className="h-4 w-4" aria-hidden />
+                  검색식 예시 복사
+                </button>
+              </div>
+            </div>
+          </details>
         </section>
         <div className="mt-5 grid gap-3 lg:grid-cols-2">
           <Checklist title="PRISMA start locks" items={newTopicLocks} />
-          <div className="rounded-md border border-emerald-200 bg-emerald-50 p-4">
-            <p className="text-sm font-semibold text-emerald-800">Starter query skeleton</p>
-            <pre className="mt-3 rounded-md bg-white p-3 text-sm text-zinc-700">{starterQuery}</pre>
-            <button
-              type="button"
-              onClick={() => void navigator.clipboard?.writeText(starterQuery)}
-              className="mt-3 inline-flex h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-3 text-sm font-semibold text-white transition hover:bg-emerald-800"
-            >
-              <ClipboardList className="h-4 w-4" aria-hidden />
-              skeleton 복사
-            </button>
+          <div className="rounded-md border border-zinc-200 bg-white p-4">
+            <p className="text-sm font-semibold text-zinc-950">확정 전 검토 기준</p>
+            <ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-6 text-zinc-600">
+              <li>사용자가 직접 제공한 검색 결과 수와 검색식은 AI가 임의로 바꾸면 안 됩니다.</li>
+              <li>AI 추론값은 PI가 확인한 뒤 `수정 내용 저장`으로 확정합니다.</li>
+              <li>확정 후에만 protocol, extraction template, schedule, site draft로 넘깁니다.</li>
+            </ul>
           </div>
         </div>
       </section>

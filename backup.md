@@ -10,6 +10,12 @@
 C:\Users\rhhyu\Documents\GitHub\wiregene-meta-analysis
 ```
 
+현재 PC 작업 저장소:
+
+```text
+C:\Users\HyunJK\Documents\Playground\research-briefing-platform\wiregene-meta-analysis
+```
+
 원격 저장소:
 
 ```text
@@ -21,6 +27,59 @@ https://github.com/rhhyun/wiregene-meta-analysis.git
 - `C:\Users\rhhyu\Documents\Meta.wiregene.com`은 안내용 폴더이며 실제 Meta 소스는 위 GitHub 폴더에 있다.
 - 작업이 끝나면 GitHub에 자동 commit/push한다.
 - Synology 자동 배포를 실행하지 못했거나 확인하지 못하면 마지막에 작업 스케줄러 명령을 남긴다.
+
+## 2026-06-15 New topic AI analysis UI actual content fix
+
+사용자 지적:
+
+```text
+버전이 문제가 아니라 내용이 안바뀌었습니다
+```
+
+원인:
+
+- 앞선 변경은 `C:\Users\HyunJK\Documents\Meta.wiregene.com`의 문서/spec 중심으로 이루어졌다.
+- 실제 화면에 보이는 `AI planning prompt 복사`와 `skeleton 복사`는 최신 앱 소스인 `C:\Users\HyunJK\Documents\Playground\research-briefing-platform\wiregene-meta-analysis\src\components\MetaStudyWorkspace.tsx`에 남아 있었다.
+
+변경 내용:
+
+- `src/components/MetaStudyWorkspace.tsx`
+  - 신규 주제 화면의 primary action을 `AI 분석 시작`으로 변경.
+  - 구상내용 textarea label을 `구상내용 붙여넣기`로 변경.
+  - `AI planning prompt 복사` 버튼을 첫 화면 main action에서 제거.
+  - `skeleton 복사` 버튼을 제거하고 `고급 옵션: 외부 검토 prompt / 검색식 예시` 안의 `검색식 예시 복사`로 이동.
+  - `AI 분석 시작` 클릭 시 `/api/meta-analysis/study-plan/analyze`를 호출해 항목별 draft를 자동 채우도록 연결.
+  - AI 분석 후 확인 필요 항목을 화면에 표시.
+- `src/app/api/meta-analysis/study-plan/analyze/route.ts`
+  - 신규 API route 추가.
+  - OpenAI key가 있으면 OpenAI로 연구계획 JSON을 생성.
+  - OpenAI key가 없거나 실패하면 규칙 기반 fallback parser로 제목, 질문, population, exposure, outcomes, DB count, eligibility, search block, extraction plan을 채움.
+- `package.json`, `package-lock.json`
+  - package version `0.1.28` -> `0.1.29`.
+- `src/lib/version.ts`
+  - UI label `Ver 1.63` -> `Ver 1.64 | 2026 copyright by JK Hyun`.
+
+검증:
+
+```text
+npm install: completed; existing dependency audit reports 4 vulnerabilities.
+npm run lint: pass.
+npx tsc --noEmit: pass.
+npm run build: pass.
+Build route list includes /api/meta-analysis/study-plan/analyze.
+Static code check confirms no visible "AI planning prompt 복사" or "skeleton 복사" main button remains in MetaStudyWorkspace.tsx.
+```
+
+제한:
+
+- 이 Codex 세션에서는 Windows background process 생성 권한 문제로 local dev server browser verification을 완료하지 못했다.
+- Build는 성공했으므로 배포 가능한 코드 상태는 확인됐다.
+
+Synology deploy/run command:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
 
 ## 2026-06-12 Synology 명령 정정
 

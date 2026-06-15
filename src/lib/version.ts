@@ -3,7 +3,7 @@ import type { ResearchReport } from "./types";
 const INITIAL_BRIEFING_VERSION = "0.1";
 const COPYRIGHT_NOTICE = "2026 copyright by JK Hyun";
 
-export const BRIEFING_VERSION = "1.63";
+export const BRIEFING_VERSION = "1.64";
 export const BRIEFING_VERSION_LABEL = formatVersionLabel(BRIEFING_VERSION);
 
 function formatVersionLabel(version: string) {
