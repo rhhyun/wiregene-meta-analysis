@@ -2,18 +2,36 @@
 
 작성일: 2026-06-12
 
+## Canonical workspace rule
+
+2026-06-15부터 Codex와 사용자는 아래 폴더만 `meta.wiregene.com` 실제 앱 작업 기준으로 사용한다.
+
+```text
+C:\Users\HyunJK\Documents\GitHub\meta.wiregene.com
+```
+
+규칙:
+
+- 앞으로 실제 코드 수정, 빌드, 커밋, push는 반드시 `C:\Users\HyunJK\Documents\GitHub\meta.wiregene.com`에서만 한다.
+- `C:\Users\HyunJK\Documents\Playground\research-briefing-platform\wiregene-meta-analysis`는 이전 임시 작업 폴더이며 새 작업 기준으로 사용하지 않는다.
+- `C:\Users\HyunJK\Documents\GitHub\wiregene-meta-analysis`는 오래된 복사본이며 새 작업 기준으로 사용하지 않는다.
+- `C:\Users\HyunJK\Documents\Meta.wiregene.com`은 문서/기획/handoff workspace이며 실제 Next.js 앱 소스 기준이 아니다.
+- 헷갈릴 경우 `src/lib/version.ts`가 `BRIEFING_VERSION = "1.65"` 이상인지 먼저 확인한다.
+- 작업 시작 전 `git -C C:\Users\HyunJK\Documents\GitHub\meta.wiregene.com status --short`와 `git -C C:\Users\HyunJK\Documents\GitHub\meta.wiregene.com pull --ff-only origin main`을 확인한다.
+- 작업 종료 전 lint/typecheck/build, `backup.md` 업데이트, commit/push, Synology 작업스케줄러 명령 확인을 수행한다.
+
 ## 작업 위치
 
 실제 작업 저장소:
 
 ```text
-C:\Users\rhhyu\Documents\GitHub\wiregene-meta-analysis
+C:\Users\HyunJK\Documents\GitHub\meta.wiregene.com
 ```
 
 현재 PC 작업 저장소:
 
 ```text
-C:\Users\HyunJK\Documents\Playground\research-briefing-platform\wiregene-meta-analysis
+C:\Users\HyunJK\Documents\GitHub\meta.wiregene.com
 ```
 
 원격 저장소:
@@ -24,7 +42,7 @@ https://github.com/rhhyun/wiregene-meta-analysis.git
 
 주의:
 
-- `C:\Users\rhhyu\Documents\Meta.wiregene.com`은 안내용 폴더이며 실제 Meta 소스는 위 GitHub 폴더에 있다.
+- `C:\Users\HyunJK\Documents\Meta.wiregene.com`은 문서/기획/handoff 폴더이며 실제 Meta 앱 소스는 위 canonical GitHub 폴더에 있다.
 - 작업이 끝나면 GitHub에 자동 commit/push한다.
 - Synology 자동 배포를 실행하지 못했거나 확인하지 못하면 마지막에 작업 스케줄러 명령을 남긴다.
 
@@ -162,7 +180,7 @@ git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin
 
 - 사용자가 `Ver 1.64`를 본 이유는 새 코드가 실행/배포 서버에 반영되지 않았기 때문이다.
 - 반드시 이 repo의 변경사항을 GitHub에 push한 뒤 Synology에서 pull/restart 해야 한다.
-- 확인해야 할 실제 source of truth는 `C:\Users\HyunJK\Documents\Playground\research-briefing-platform\wiregene-meta-analysis`다.
+- 2026-06-15 후속 정리로 실제 source of truth는 `C:\Users\HyunJK\Documents\GitHub\meta.wiregene.com`으로 이동 및 고정했다.
 
 Required deploy sequence:
 
