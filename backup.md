@@ -170,6 +170,13 @@ Required deploy sequence:
 git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
 ```
 
+GitHub update:
+
+```text
+Committed and pushed to origin/main:
+0f33326 Fix meta new topic AI project flow
+```
+
 ## 2026-06-12 Synology 명령 정정
 
 사용자 오류 보고:
