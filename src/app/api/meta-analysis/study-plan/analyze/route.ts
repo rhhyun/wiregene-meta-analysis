@@ -169,6 +169,9 @@ Task:
 - Analyze and parse the user's free-form research idea into editable project fields.
 - Preserve exact database names, search strings, and result counts provided by the user.
 - Do not invent missing counts. Mark them as needing user review.
+- If search strings are provided, keep them separated by database with labels like "PubMed query:", "Embase query:", "Scopus query:", "Web of Science query:", and "Cochrane query:".
+- Never put explanatory text such as "Core search concept", "draft search", "optional supplementary block", or instructions inside an executable query.
+- Do not reuse a PubMed query for Embase, Scopus, Web of Science, or Cochrane. If a database-specific executable query is missing, say that it requires user review instead of fabricating it.
 - The user will manually edit and approve the draft before saving.
 
 Return only JSON with this shape:

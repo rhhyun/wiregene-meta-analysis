@@ -110,6 +110,7 @@ const newTopicDraftStorageKey = "wiregene-meta-new-topic-draft-v1";
 const userMetaProjectsStorageKey = "wiregene-meta-user-study-projects-v1";
 const protocolDraftStorageKey = "wiregene-meta-protocol-draft-v1";
 const searchImportStorageKey = "wiregene-meta-search-import-log-v1";
+const searchQueryOverrideStorageKey = "wiregene-meta-search-query-overrides-v1";
 
 type NewTopicDraft = {
   title: string;
@@ -758,41 +759,46 @@ function projectSearchQueryForDatabase(project: MetaStudyProject, database: stri
     [runQuery, ...project.searchBlocks.map((block) => block.query)].filter(Boolean),
     database,
   );
-  if (labeledQuery) return databaseSpecificQuery(database, labeledQuery);
+  if (labeledQuery) return normalizeDatabaseSpecificQuery(database, labeledQuery);
 
   const cleanedRunQuery = cleanSearchQueryText(runQuery);
-  if (looksExecutableSearchQuery(cleanedRunQuery) && !hasOtherDatabaseLabel(cleanedRunQuery, database)) {
-    return databaseSpecificQuery(database, cleanedRunQuery);
+  if (
+    isPubMedDatabase(database) &&
+    looksExecutableSearchQuery(cleanedRunQuery) &&
+    !hasOtherDatabaseLabel(cleanedRunQuery, database)
+  ) {
+    return normalizeDatabaseSpecificQuery(database, cleanedRunQuery);
   }
   const base = project.searchBlocks
     .map((block) => cleanSearchQueryText(block.query))
     .filter(Boolean)
     .map((query) => `(${query})`)
     .join(" AND ");
-  return databaseSpecificQuery(database, base);
+  return isPubMedDatabase(database) ? normalizeDatabaseSpecificQuery(database, base) : "";
 }
 
-function databaseSpecificQuery(database: string, base: string) {
+function normalizeDatabaseSpecificQuery(database: string, base: string) {
   const normalized = database.toLowerCase();
-  if (!base.trim()) return "";
+  const cleaned = removeSupplementarySearchBlocks(base);
+  if (!cleaned.trim()) return "";
   if (normalized.includes("scopus")) {
-    if (/TITLE-ABS-KEY\s*\(/i.test(base)) return base;
-    return `TITLE-ABS-KEY(${normalizeCrossDatabaseQuery(base)})`;
+    if (/TITLE-ABS-KEY\s*\(/i.test(cleaned)) return cleaned;
+    return "";
   }
   if (normalized.includes("web of science")) {
-    if (/\bTS\s*=/i.test(base)) return base;
-    return `TS=(${normalizeCrossDatabaseQuery(base)})`;
+    if (/\bTS\s*=/i.test(cleaned)) return cleaned;
+    return "";
   }
   if (normalized.includes("embase")) {
-    if (/:ti,ab|\[english\]\/lim|\/exp/i.test(base)) return base;
-    return `${normalizeCrossDatabaseQuery(base)}\nAND [english]/lim`;
+    if (/:ti,ab|\[english\]\/lim|\/exp/i.test(cleaned)) return cleaned;
+    return "";
   }
-  if (normalized.includes("cochrane")) return base;
-  return base;
+  if (normalized.includes("cochrane")) return cleaned;
+  return cleaned;
 }
 
 function cleanSearchQueryText(value: string) {
-  return value
+  return removeSupplementarySearchBlocks(value)
     .replace(/\r\n/g, "\n")
     .split("\n")
     .map((line) =>
@@ -814,14 +820,16 @@ function looksExecutableSearchQuery(value: string) {
   return /\b(AND|OR|NOT)\b|["()[\]*]/i.test(value);
 }
 
-function normalizeCrossDatabaseQuery(value: string) {
+function removeSupplementarySearchBlocks(value: string) {
   return value
-    .replace(/\[[^\]]*(?:Title\/Abstract|tiab|MeSH Terms|Mesh|Language)[^\]]*\]/gi, "")
-    .replace(/\benglish\s*(?:\[Language\])?/gi, "")
-    .replace(/NOT\s*\(\s*animals\s*\[MeSH Terms\]\s*NOT\s*humans\s*\[MeSH Terms\]\s*\)/gi, "")
-    .replace(/\s+/g, " ")
-    .replace(/\(\s+\)/g, "")
+    .replace(/\r\n/g, "\n")
+    .split(/\n(?=\s*(?:optional|supplementary|ai-specific|sensitivity)\b)/i)[0]
+    .replace(/\s*Optional\s+(?:AI-specific\s+)?supplementary\s+block\s*:[\s\S]*$/i, "")
     .trim();
+}
+
+function isPubMedDatabase(database: string) {
+  return database.toLowerCase().includes("pubmed");
 }
 
 function databaseAliases(database: string) {
@@ -1497,9 +1505,14 @@ function SearchStage({
 }) {
   type SearchImportRow = { resultCount: string; exportFile: string; notes: string; completedAt: string };
   const storageKey = `${searchImportStorageKey}:${project.id}`;
+  const queryOverrideStorageKey = `${searchQueryOverrideStorageKey}:${project.id}`;
   const copy = searchStageCopy(project);
   const [importRows, setImportRows] = useState(() => readStoredJson<Record<string, SearchImportRow>>(storageKey, {}));
   const [importSavedAt, setImportSavedAt] = useState("");
+  const [queryOverrides, setQueryOverrides] = useState(() =>
+    readStoredJson<Record<string, string>>(queryOverrideStorageKey, {}),
+  );
+  const [querySavedAt, setQuerySavedAt] = useState("");
   const [uploadSummary, setUploadSummary] = useState<SearchUploadSummary | null>(null);
   const [uploadError, setUploadError] = useState("");
 
@@ -1527,6 +1540,16 @@ function SearchStage({
     window.localStorage.setItem(storageKey, JSON.stringify(nextRows));
     setImportRows(nextRows);
     setImportSavedAt(completedAt);
+  }
+
+  function updateQueryOverride(database: string, value: string) {
+    setQueryOverrides((current) => ({ ...current, [database]: value }));
+  }
+
+  function saveQueryOverrides() {
+    const nextSavedAt = new Date().toISOString();
+    window.localStorage.setItem(queryOverrideStorageKey, JSON.stringify(queryOverrides));
+    setQuerySavedAt(nextSavedAt);
   }
 
   function searchImportCsv() {
@@ -1608,7 +1631,7 @@ function SearchStage({
           <div className="flex flex-wrap gap-2">
             <button
             type="button"
-            onClick={() => void navigator.clipboard?.writeText(searchLogCsv(project))}
+            onClick={() => void navigator.clipboard?.writeText(searchLogCsv(project, queryOverrides))}
             className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-sm font-semibold text-zinc-700 transition hover:border-emerald-300 hover:bg-emerald-50"
           >
             <ClipboardList className="h-4 w-4" aria-hidden />
@@ -1617,11 +1640,24 @@ function SearchStage({
             <ProjectFileSaveButton
               projectId={project.id}
               fileName="search-log.csv"
-              contents={() => searchLogCsv(project)}
+              contents={() => searchLogCsv(project, queryOverrides)}
               label="Save CSV"
             />
+            <button
+              type="button"
+              onClick={saveQueryOverrides}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-3 text-sm font-semibold text-white transition hover:bg-emerald-800"
+            >
+              <Save className="h-4 w-4" aria-hidden />
+              DB queries 저장
+            </button>
           </div>
         </div>
+        {querySavedAt ? (
+          <p className="border-b border-zinc-200 bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-800">
+            DB query 저장완료: {new Date(querySavedAt).toLocaleString("ko-KR")}
+          </p>
+        ) : null}
         <div className="overflow-x-auto">
           <table className="w-full min-w-[940px] border-collapse text-left text-sm">
             <thead className="bg-white text-xs uppercase text-zinc-500">
@@ -1636,8 +1672,12 @@ function SearchStage({
             </thead>
             <tbody>
               {project.searchRuns.map((run) => {
-                const searchQuery = projectSearchQueryForDatabase(project, run.database, run.query);
+                const overrideQuery = queryOverrides[run.database] ?? "";
+                const searchQuery = overrideQuery.trim()
+                  ? cleanSearchQueryText(overrideQuery)
+                  : projectSearchQueryForDatabase(project, run.database, run.query);
                 const runUrl = databaseSearchUrl(run.database, searchQuery, pubMedUrl);
+                const queryIssue = searchQuery ? "" : "DB-specific executable query required. Generic/PubMed draft text is not copied into this database.";
                 return (
                 <tr key={run.database}>
                   <td className="border-b border-zinc-100 px-4 py-3 font-semibold text-zinc-950">{run.database}</td>
@@ -1661,17 +1701,35 @@ function SearchStage({
                         Open
                       </a>
                     ) : null}
-                    <button
-                      type="button"
-                      onClick={() => void navigator.clipboard?.writeText(searchQuery)}
-                      className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-zinc-300 px-2 text-xs font-semibold text-zinc-700 transition hover:border-emerald-300 hover:bg-emerald-50"
-                    >
-                      <ClipboardList className="h-3.5 w-3.5" aria-hidden />
-                      복사
-                    </button>
-                    <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap rounded-md bg-zinc-50 p-2 text-[11px] leading-4 text-zinc-700">
-                      {searchQuery}
-                    </pre>
+                    {searchQuery ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => void navigator.clipboard?.writeText(searchQuery)}
+                          className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-zinc-300 px-2 text-xs font-semibold text-zinc-700 transition hover:border-emerald-300 hover:bg-emerald-50"
+                        >
+                          <ClipboardList className="h-3.5 w-3.5" aria-hidden />
+                          복사
+                        </button>
+                        <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap rounded-md bg-zinc-50 p-2 text-[11px] leading-4 text-zinc-700">
+                          {searchQuery}
+                        </pre>
+                      </>
+                    ) : (
+                      <p className="rounded-md border border-amber-200 bg-amber-50 px-2 py-2 text-xs font-semibold leading-5 text-amber-900">
+                        {queryIssue}
+                      </p>
+                    )}
+                    <label className="mt-2 grid gap-1 text-[11px] font-semibold uppercase text-zinc-500">
+                      DB-specific query override
+                      <textarea
+                        value={overrideQuery}
+                        onChange={(event) => updateQueryOverride(run.database, event.target.value)}
+                        rows={3}
+                        placeholder={`${run.database} 전용 검색식을 여기에 붙여넣고 DB queries 저장`}
+                        className="rounded-md border border-zinc-300 bg-white px-2 py-2 text-xs font-normal normal-case leading-5 text-zinc-800 outline-none focus:border-emerald-500"
+                      />
+                    </label>
                   </td>
                 </tr>
                 );
@@ -2658,7 +2716,7 @@ function prismaCount(project: MetaStudyProject, step: string) {
   return row?.count === null || row?.count === undefined ? "TBD" : row.count.toLocaleString();
 }
 
-function searchLogCsv(project: MetaStudyProject) {
+function searchLogCsv(project: MetaStudyProject, queryOverrides: Record<string, string> = {}) {
   return csvRows([
     ["database", "searched_at", "label", "result_count", "limits", "source", "export_action", "query"],
     ...project.searchRuns.map((run) => [
@@ -2669,7 +2727,9 @@ function searchLogCsv(project: MetaStudyProject) {
       run.limits,
       run.source,
       run.exportAction,
-      projectSearchQueryForDatabase(project, run.database, run.query),
+      queryOverrides[run.database]?.trim()
+        ? cleanSearchQueryText(queryOverrides[run.database])
+        : projectSearchQueryForDatabase(project, run.database, run.query),
     ]),
   ]);
 }
