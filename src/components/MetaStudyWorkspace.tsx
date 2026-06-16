@@ -144,11 +144,13 @@ type ProjectStorageFileSummary = {
   path: string;
   bytes: number;
   updatedAt: string;
+  webViewLink?: string;
 };
 
 type ProjectStorageSummary = {
   projectId: string;
   folderName: string;
+  storageBackend: "local-json" | "google-drive";
   storageRoot: string;
   projectPath: string;
   synologyPathHint: string | null;
@@ -163,8 +165,25 @@ type ProjectFileSaveResponse = {
     storageRoot: string;
     projectPath: string;
     synologyPathHint: string | null;
+    storageBackend: "local-json" | "google-drive";
   };
   storage: ProjectStorageSummary;
+};
+
+type ProjectWorkspaceState = {
+  updatedAt?: string;
+  protocolDraft?: unknown;
+  searchImportRows?: unknown;
+  queryOverrides?: unknown;
+  selectedDatabases?: unknown;
+  workbookBoard?: unknown;
+};
+
+type ProjectWorkspaceStateResponse = {
+  ok?: boolean;
+  state?: ProjectWorkspaceState;
+  storage?: ProjectStorageSummary;
+  error?: string;
 };
 
 type UserMetaProjectsResponse = {
@@ -253,6 +272,15 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
 function readStoredRecord<T>(key: string): Record<string, T> {
   const value = readStoredJson<unknown>(key, {});
   return isPlainRecord(value) ? (value as Record<string, T>) : {};
+}
+
+function recordFromUnknown<T>(value: unknown): Record<string, T> {
+  return isPlainRecord(value) ? (value as Record<string, T>) : {};
+}
+
+function stringRecordFromUnknown(value: unknown): Record<string, string> {
+  if (!isPlainRecord(value)) return {};
+  return Object.fromEntries(Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
 }
 
 function normalizeTitle(value: string, fallback: string) {
@@ -1603,16 +1631,45 @@ function ProtocolStage({ project }: { project: MetaStudyProject }) {
   const [protocolPaste, setProtocolPaste] = useState("");
   const [savedAt, setSavedAt] = useState("");
   const [parseNotice, setParseNotice] = useState("");
+  const [sharedStateNotice, setSharedStateNotice] = useState("");
+  const [sharedStateError, setSharedStateError] = useState("");
   const [draft, setDraft] = useState(() => readStoredJson(storageKey, initialProtocolDraft(project)));
+
+  useEffect(() => {
+    let cancelled = false;
+
+    loadProjectWorkspaceState(project.id)
+      .then((state) => {
+        if (cancelled || !isPlainRecord(state.protocolDraft)) return;
+        const nextDraft = { ...initialProtocolDraft(project), ...(state.protocolDraft as Partial<ProtocolDraft>) };
+        setDraft(nextDraft);
+        window.localStorage.setItem(storageKey, JSON.stringify(nextDraft));
+        setSharedStateNotice(state.updatedAt ? `Shared state loaded: ${new Date(state.updatedAt).toLocaleString("ko-KR")}` : "Shared state loaded.");
+      })
+      .catch((caught) => {
+        if (!cancelled) setSharedStateError(caught instanceof Error ? caught.message : "Shared protocol state could not be loaded.");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [project, project.id, storageKey]);
 
   function updateProtocolField(field: keyof typeof draft, value: string) {
     setDraft((current) => ({ ...current, [field]: value }));
   }
 
-  function saveProtocolDraft() {
+  async function saveProtocolDraft() {
     const nextSavedAt = new Date().toISOString();
     window.localStorage.setItem(storageKey, JSON.stringify(draft));
     setSavedAt(nextSavedAt);
+    setSharedStateError("");
+    try {
+      await saveProjectWorkspaceState(project.id, { protocolDraft: draft });
+      setSharedStateNotice(`Shared state saved: ${new Date(nextSavedAt).toLocaleString("ko-KR")}`);
+    } catch (caught) {
+      setSharedStateError(caught instanceof Error ? caught.message : "Shared protocol state could not be saved.");
+    }
   }
 
   function parseProtocolPaste() {
@@ -1696,7 +1753,7 @@ function ProtocolStage({ project }: { project: MetaStudyProject }) {
             </button>
             <button
               type="button"
-              onClick={saveProtocolDraft}
+              onClick={() => void saveProtocolDraft()}
               className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-3 text-sm font-semibold text-white transition hover:bg-emerald-800"
             >
               <Save className="h-4 w-4" aria-hidden />
@@ -1715,6 +1772,16 @@ function ProtocolStage({ project }: { project: MetaStudyProject }) {
         {parseNotice ? (
           <p className="mt-3 rounded-md border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold text-emerald-800">
             {parseNotice}
+          </p>
+        ) : null}
+        {sharedStateNotice ? (
+          <p className="mt-3 rounded-md border border-sky-200 bg-white px-3 py-2 text-xs font-semibold text-sky-800">
+            {sharedStateNotice}
+          </p>
+        ) : null}
+        {sharedStateError ? (
+          <p className="mt-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-800">
+            {sharedStateError}
           </p>
         ) : null}
         <details className="mt-4 rounded-md border border-emerald-200 bg-white p-3">
@@ -1812,6 +1879,8 @@ function SearchStage({
   const [querySavedAt, setQuerySavedAt] = useState("");
   const [uploadSummary, setUploadSummary] = useState<SearchUploadSummary | null>(null);
   const [uploadError, setUploadError] = useState("");
+  const [sharedStateNotice, setSharedStateNotice] = useState("");
+  const [sharedStateError, setSharedStateError] = useState("");
   const [selectedDatabases, setSelectedDatabases] = useState<CanonicalSearchDatabase[]>(() =>
     normalizeDatabaseSelection(readStoredJson<unknown>(databaseSelectionKey, null), selectedSearchDatabasesForProject(project)),
   );
@@ -1820,6 +1889,59 @@ function SearchStage({
     [project, selectedDatabases],
   );
   const selectedSearchResultCount = searchRuns.reduce((total, run) => total + run.resultCount, 0);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    loadProjectWorkspaceState(project.id)
+      .then((state) => {
+        if (cancelled) return;
+        const nextImportRows = recordFromUnknown<SearchImportRow>(state.searchImportRows);
+        const nextQueryOverrides = stringRecordFromUnknown(state.queryOverrides);
+        const nextSelectedDatabases = normalizeDatabaseSelection(state.selectedDatabases, selectedSearchDatabasesForProject(project));
+        let loaded = false;
+
+        if (Object.keys(nextImportRows).length > 0) {
+          setImportRows(nextImportRows);
+          window.localStorage.setItem(storageKey, JSON.stringify(nextImportRows));
+          loaded = true;
+        }
+
+        if (Object.keys(nextQueryOverrides).length > 0) {
+          setQueryOverrides(nextQueryOverrides);
+          window.localStorage.setItem(queryOverrideKey, JSON.stringify(nextQueryOverrides));
+          loaded = true;
+        }
+
+        if (Array.isArray(state.selectedDatabases)) {
+          setSelectedDatabases(nextSelectedDatabases);
+          window.localStorage.setItem(databaseSelectionKey, JSON.stringify(nextSelectedDatabases));
+          loaded = true;
+        }
+
+        if (loaded) {
+          setSharedStateNotice(state.updatedAt ? `Shared search state loaded: ${new Date(state.updatedAt).toLocaleString("ko-KR")}` : "Shared search state loaded.");
+        }
+      })
+      .catch((caught) => {
+        if (!cancelled) setSharedStateError(caught instanceof Error ? caught.message : "Shared search state could not be loaded.");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [databaseSelectionKey, project, project.id, queryOverrideKey, storageKey]);
+
+  function persistSearchWorkspaceState(patch: ProjectWorkspaceState, savedAt: string) {
+    setSharedStateError("");
+    void saveProjectWorkspaceState(project.id, patch)
+      .then(() => {
+        setSharedStateNotice(`Shared search state saved: ${new Date(savedAt).toLocaleString("ko-KR")}`);
+      })
+      .catch((caught) => {
+        setSharedStateError(caught instanceof Error ? caught.message : "Shared search state could not be saved.");
+      });
+  }
 
   function updateImportRow(database: string, field: "resultCount" | "exportFile" | "notes", value: string) {
     setImportRows((current) => {
@@ -1845,6 +1967,7 @@ function SearchStage({
     window.localStorage.setItem(storageKey, JSON.stringify(nextRows));
     setImportRows(nextRows);
     setImportSavedAt(completedAt);
+    persistSearchWorkspaceState({ searchImportRows: nextRows }, completedAt);
   }
 
   function updateQueryOverride(database: string, value: string) {
@@ -1855,6 +1978,7 @@ function SearchStage({
     const nextSavedAt = new Date().toISOString();
     window.localStorage.setItem(queryOverrideKey, JSON.stringify(queryOverrides));
     setQuerySavedAt(nextSavedAt);
+    persistSearchWorkspaceState({ queryOverrides }, nextSavedAt);
   }
 
   function toggleDatabaseSelection(database: CanonicalSearchDatabase) {
@@ -1864,6 +1988,7 @@ function SearchStage({
         : canonicalSearchDatabases.filter((item) => item === database || current.includes(item));
       const normalizedSelection = nextSelection.length > 0 ? nextSelection : [...defaultSelectedSearchDatabases];
       window.localStorage.setItem(databaseSelectionKey, JSON.stringify(normalizedSelection));
+      persistSearchWorkspaceState({ selectedDatabases: normalizedSelection }, new Date().toISOString());
       return normalizedSelection;
     });
   }
@@ -1877,6 +2002,7 @@ function SearchStage({
     window.localStorage.setItem(queryOverrideKey, JSON.stringify(nextOverrides));
     setQueryOverrides(nextOverrides);
     setQuerySavedAt(nextSavedAt);
+    persistSearchWorkspaceState({ queryOverrides: nextOverrides, selectedDatabases }, nextSavedAt);
   }
 
   function searchImportCsv() {
@@ -1983,6 +2109,16 @@ function SearchStage({
         <p className="mt-3 text-xs leading-5 text-emerald-900">
           PubMed and Cochrane can open with the query in the URL. Embase, Scopus, and Web of Science open the advanced search page; use Copy for the query text.
         </p>
+        {sharedStateNotice ? (
+          <p className="mt-3 rounded-md border border-sky-200 bg-white px-3 py-2 text-xs font-semibold text-sky-800">
+            {sharedStateNotice}
+          </p>
+        ) : null}
+        {sharedStateError ? (
+          <p className="mt-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-800">
+            {sharedStateError}
+          </p>
+        ) : null}
       </section>
       <section className="rounded-md border border-zinc-200">
         <div className="flex flex-col gap-3 border-b border-zinc-200 bg-zinc-50 p-4 lg:flex-row lg:items-center lg:justify-between">
@@ -2531,7 +2667,7 @@ function ProjectStoragePanel({ project }: { project: MetaStudyProject }) {
       <div className="mt-4 grid gap-3 lg:grid-cols-3">
         <Metric label="Project folder" value={storage?.folderName ?? "..."} />
         <Metric label="Saved files" value={loading ? "..." : files.length.toLocaleString()} />
-        <Metric label="Storage mode" value="Synology/local folder" />
+        <Metric label="Storage mode" value={storage?.storageBackend === "google-drive" ? "Google Drive" : "Synology/local folder"} />
       </div>
 
       <div className="mt-4 grid gap-2 rounded-md border border-sky-200 bg-white p-3 text-xs leading-5 text-zinc-600">
@@ -2547,7 +2683,9 @@ function ProjectStoragePanel({ project }: { project: MetaStudyProject }) {
         ) : null}
         <p>
           <span className="font-semibold text-zinc-950">Root option:</span>{" "}
-          <span className="break-all">META_PROJECT_STORAGE_ROOT</span>
+          <span className="break-all">
+            {storage?.storageBackend === "google-drive" ? "META_PROJECT_STORAGE_BACKEND=google-drive, META_PROJECT_DRIVE_PREFIX" : "META_PROJECT_STORAGE_ROOT"}
+          </span>
         </p>
       </div>
 
@@ -2566,6 +2704,7 @@ function ProjectStoragePanel({ project }: { project: MetaStudyProject }) {
                 <th className="border-b border-sky-200 px-3 py-3">Bytes</th>
                 <th className="border-b border-sky-200 px-3 py-3">Updated</th>
                 <th className="border-b border-sky-200 px-3 py-3">Path</th>
+                <th className="border-b border-sky-200 px-3 py-3">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -2576,6 +2715,15 @@ function ProjectStoragePanel({ project }: { project: MetaStudyProject }) {
                   <td className="border-b border-zinc-100 px-3 py-3 text-zinc-700">{new Date(file.updatedAt).toLocaleString("ko-KR")}</td>
                   <td className="border-b border-zinc-100 px-3 py-3 text-xs leading-5 text-zinc-500">
                     <span className="break-all">{file.path}</span>
+                  </td>
+                  <td className="border-b border-zinc-100 px-3 py-3">
+                    <a
+                      href={`/api/meta-analysis/projects/${encodeURIComponent(project.id)}/files/${encodeURIComponent(file.fileName)}`}
+                      className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-sky-300 px-2 text-xs font-semibold text-sky-800 transition hover:bg-sky-50"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+                      Download
+                    </a>
                   </td>
                 </tr>
               ))}
@@ -2647,6 +2795,8 @@ type WorkbookBoardState = Record<
 
 function WorkbookFullTextBoard({ project }: { project: MetaStudyProject }) {
   const [board, setBoard] = useState<WorkbookBoardState>(() => loadWorkbookBoardState(project));
+  const [sharedStateNotice, setSharedStateNotice] = useState("");
+  const [sharedStateError, setSharedStateError] = useState("");
   const copy = workbookStageCopy(project);
   const activeSheets = project.workbookSheets.filter((sheet) => sheet.uploadRequired);
   const inactiveSheets = project.workbookSheets.filter((sheet) => !sheet.uploadRequired);
@@ -2654,6 +2804,27 @@ function WorkbookFullTextBoard({ project }: { project: MetaStudyProject }) {
   useEffect(() => {
     window.localStorage.setItem(`${workbookBoardStorageKey}:${project.id}`, JSON.stringify(board));
   }, [board, project.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    loadProjectWorkspaceState(project.id)
+      .then((state) => {
+        if (cancelled || !isPlainRecord(state.workbookBoard)) return;
+        const initial = initialWorkbookBoardState(project.workbookSheets);
+        const nextBoard = { ...initial, ...recordFromUnknown<WorkbookBoardState[string]>(state.workbookBoard) };
+        setBoard(nextBoard);
+        window.localStorage.setItem(`${workbookBoardStorageKey}:${project.id}`, JSON.stringify(nextBoard));
+        setSharedStateNotice(state.updatedAt ? `Shared board loaded: ${new Date(state.updatedAt).toLocaleString("ko-KR")}` : "Shared board loaded.");
+      })
+      .catch((caught) => {
+        if (!cancelled) setSharedStateError(caught instanceof Error ? caught.message : "Shared board state could not be loaded.");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [project, project.id]);
 
   const rows = activeSheets.map((sheet) => {
     const state = board[sheet.sheetName] ?? initialWorkbookSheetState(sheet);
@@ -2688,6 +2859,17 @@ function WorkbookFullTextBoard({ project }: { project: MetaStudyProject }) {
 
   function resetBoard() {
     setBoard(initialWorkbookBoardState(project.workbookSheets));
+  }
+
+  async function saveSharedBoardState() {
+    const savedAt = new Date().toISOString();
+    setSharedStateError("");
+    try {
+      await saveProjectWorkspaceState(project.id, { workbookBoard: board });
+      setSharedStateNotice(`Shared board saved: ${new Date(savedAt).toLocaleString("ko-KR")}`);
+    } catch (caught) {
+      setSharedStateError(caught instanceof Error ? caught.message : "Shared board state could not be saved.");
+    }
   }
 
   function workbookBoardCsv() {
@@ -2762,6 +2944,14 @@ function WorkbookFullTextBoard({ project }: { project: MetaStudyProject }) {
           />
           <button
             type="button"
+            onClick={() => void saveSharedBoardState()}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-sky-300 bg-white px-3 text-sm font-semibold text-sky-800 transition hover:bg-sky-100"
+          >
+            <Save className="h-4 w-4" aria-hidden />
+            Save shared state
+          </button>
+          <button
+            type="button"
             onClick={resetBoard}
             className="inline-flex h-10 items-center justify-center rounded-md border border-emerald-300 bg-white px-3 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100"
           >
@@ -2769,6 +2959,17 @@ function WorkbookFullTextBoard({ project }: { project: MetaStudyProject }) {
           </button>
         </div>
       </div>
+
+      {sharedStateNotice ? (
+        <p className="mt-3 rounded-md border border-sky-200 bg-white px-3 py-2 text-xs font-semibold text-sky-800">
+          {sharedStateNotice}
+        </p>
+      ) : null}
+      {sharedStateError ? (
+        <p className="mt-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-800">
+          {sharedStateError}
+        </p>
+      ) : null}
 
       <div className="mt-4 grid gap-3 lg:grid-cols-4">
         <Metric label="Active upload files" value={totals.current.toLocaleString()} />
@@ -3180,6 +3381,31 @@ async function saveProjectTextFile(projectId: string, fileName: string, contents
     throw new Error(payload.error || "Project file could not be saved.");
   }
   return payload as ProjectFileSaveResponse;
+}
+
+async function loadProjectWorkspaceState(projectId: string) {
+  const response = await fetch(`/api/meta-analysis/projects/${encodeURIComponent(projectId)}/state`, {
+    cache: "no-store",
+  });
+  const payload = (await response.json().catch(() => ({}))) as ProjectWorkspaceStateResponse;
+  if (!response.ok || !payload.state) {
+    throw new Error(payload.error || "Project workspace state could not be loaded.");
+  }
+  return payload.state;
+}
+
+async function saveProjectWorkspaceState(projectId: string, patch: ProjectWorkspaceState) {
+  const response = await fetch(`/api/meta-analysis/projects/${encodeURIComponent(projectId)}/state`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  const payload = (await response.json().catch(() => ({}))) as ProjectWorkspaceStateResponse;
+  if (!response.ok || !payload.state) {
+    throw new Error(payload.error || "Project workspace state could not be saved.");
+  }
+  window.dispatchEvent(new CustomEvent(projectFileSavedEventName, { detail: { projectId } }));
+  return payload.state;
 }
 
 function StatusBadge({ status }: { status: "locked" | "working" | "pending" }) {

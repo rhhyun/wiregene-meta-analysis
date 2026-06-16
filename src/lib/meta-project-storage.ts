@@ -3,26 +3,33 @@ import { promises as fs } from "fs";
 import path from "path";
 import { getGoogleDriveAuthMode } from "./google-drive-config";
 import {
+  listTextFilesFromGoogleDriveByNamePrefix,
   readTextFileFromGoogleDrive,
   writeTextFileToGoogleDrive,
 } from "./google-drive-storage";
 
 const defaultProjectStorageRoot = ".data/meta/projects";
+const defaultProjectDrivePrefix = "meta-projects";
 const defaultUserProjectsFile = ".data/meta/user-study-projects.json";
 const defaultUserProjectsDriveFileName = "meta-user-study-projects.json";
+const projectWorkspaceStateFileName = "project-workspace-state.json";
 const maxProjectTextFileBytes = 25 * 1024 * 1024;
 const allowedTextFileExtensions = new Set([".csv", ".json", ".md", ".txt", ".tsv"]);
+
+type MetaProjectStorageBackend = "local-json" | "google-drive";
 
 export type MetaProjectFileSummary = {
   fileName: string;
   path: string;
   bytes: number;
   updatedAt: string;
+  webViewLink?: string;
 };
 
 export type MetaProjectStorageSummary = {
   projectId: string;
   folderName: string;
+  storageBackend: MetaProjectStorageBackend;
   storageRoot: string;
   projectPath: string;
   synologyPathHint: string | null;
@@ -36,6 +43,16 @@ export type MetaProjectSavedFile = MetaProjectFileSummary & {
   storageRoot: string;
   projectPath: string;
   synologyPathHint: string | null;
+  storageBackend: MetaProjectStorageBackend;
+};
+
+export type MetaProjectWorkspaceState = {
+  updatedAt?: string;
+  protocolDraft?: unknown;
+  searchImportRows?: unknown;
+  queryOverrides?: unknown;
+  selectedDatabases?: unknown;
+  workbookBoard?: unknown;
 };
 
 type UserProjectFile = {
@@ -81,16 +98,24 @@ export function getMetaUserProjectsStorageSummary(): MetaUserProjectsStorageSumm
 
 export async function getMetaProjectStorageSummary(projectId: string): Promise<MetaProjectStorageSummary> {
   const folderName = safeProjectFolder(projectId);
-  const storageRoot = projectStorageRoot();
-  const projectPath = path.join(/*turbopackIgnore: true*/ storageRoot, folderName);
-  const files = await listProjectFiles(projectPath);
+  const storageBackend = projectFileStorageBackend();
+  const storageRoot = projectStorageRootForBackend(storageBackend);
+  const projectPath =
+    storageBackend === "google-drive"
+      ? `${storageRoot}/${folderName}`
+      : path.join(/*turbopackIgnore: true*/ storageRoot, folderName);
+  const files =
+    storageBackend === "google-drive"
+      ? await listGoogleDriveProjectFiles(folderName)
+      : await listLocalProjectFiles(projectPath);
 
   return {
     projectId,
     folderName,
+    storageBackend,
     storageRoot,
     projectPath,
-    synologyPathHint: synologyProjectPathHint(folderName),
+    synologyPathHint: storageBackend === "google-drive" ? null : synologyProjectPathHint(folderName),
     exists: files !== null,
     files: files ?? [],
   };
@@ -102,16 +127,41 @@ export async function saveMetaProjectTextFile(input: {
   contents: string;
 }): Promise<MetaProjectSavedFile> {
   const folderName = safeProjectFolder(input.projectId);
-  const storageRoot = projectStorageRoot();
-  const projectPath = path.join(/*turbopackIgnore: true*/ storageRoot, folderName);
+  const storageBackend = projectFileStorageBackend();
+  const storageRoot = projectStorageRootForBackend(storageBackend);
+  const projectPath =
+    storageBackend === "google-drive"
+      ? `${storageRoot}/${folderName}`
+      : path.join(/*turbopackIgnore: true*/ storageRoot, folderName);
   const fileName = safeProjectFileName(input.fileName);
-  const targetPath = path.join(/*turbopackIgnore: true*/ projectPath, fileName);
+  const targetPath =
+    storageBackend === "google-drive"
+      ? `google-drive:${projectDriveFileName(folderName, fileName)}`
+      : path.join(/*turbopackIgnore: true*/ projectPath, fileName);
   const byteLength = Buffer.byteLength(input.contents, "utf8");
+  const contents = input.contents.endsWith("\n") ? input.contents : `${input.contents}\n`;
 
   if (byteLength > maxProjectTextFileBytes) {
     throw new Error(
       `Project export is too large (${byteLength.toLocaleString()} bytes). The current project file API supports text exports up to ${maxProjectTextFileBytes.toLocaleString()} bytes.`,
     );
+  }
+
+  if (storageBackend === "google-drive") {
+    ensureGoogleDriveProjectStorageConfigured("write");
+    await writeTextFileToGoogleDrive(projectDriveFileName(folderName, fileName), contents);
+    return {
+      projectId: input.projectId,
+      folderName,
+      storageRoot,
+      projectPath,
+      synologyPathHint: null,
+      storageBackend,
+      fileName,
+      path: targetPath,
+      bytes: Buffer.byteLength(contents, "utf8"),
+      updatedAt: new Date().toISOString(),
+    };
   }
 
   if (isServerlessRuntime()) {
@@ -121,7 +171,7 @@ export async function saveMetaProjectTextFile(input: {
   }
 
   await fs.mkdir(projectPath, { recursive: true });
-  await writeTextFileAtomically(targetPath, input.contents.endsWith("\n") ? input.contents : `${input.contents}\n`);
+  await writeTextFileAtomically(targetPath, contents);
 
   const stats = await fs.stat(targetPath);
   return {
@@ -130,6 +180,7 @@ export async function saveMetaProjectTextFile(input: {
     storageRoot,
     projectPath,
     synologyPathHint: synologyProjectPathHint(folderName),
+    storageBackend,
     fileName,
     path: targetPath,
     bytes: stats.size,
@@ -137,9 +188,89 @@ export async function saveMetaProjectTextFile(input: {
   };
 }
 
+export async function readMetaProjectTextFile(projectId: string, fileName: string) {
+  const folderName = safeProjectFolder(projectId);
+  const safeFileName = safeProjectFileName(fileName);
+  const storageBackend = projectFileStorageBackend();
+  if (storageBackend === "google-drive") {
+    ensureGoogleDriveProjectStorageConfigured("read");
+    return readTextFileFromGoogleDrive(projectDriveFileName(folderName, safeFileName));
+  }
+
+  try {
+    return await fs.readFile(path.join(/*turbopackIgnore: true*/ projectStorageRoot(), folderName, safeFileName), "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+export async function readMetaProjectWorkspaceState(projectId: string): Promise<MetaProjectWorkspaceState> {
+  const raw = await readMetaProjectTextFile(projectId, projectWorkspaceStateFileName);
+  if (!raw) return {};
+
+  try {
+    return normalizeProjectWorkspaceState(JSON.parse(raw));
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      await backupCorruptProjectWorkspaceState(projectId, raw, error);
+      return {};
+    }
+    throw error;
+  }
+}
+
+export async function writeMetaProjectWorkspaceState(
+  projectId: string,
+  patch: MetaProjectWorkspaceState,
+  options: { merge?: boolean } = {},
+) {
+  const current = options.merge === false ? {} : await readMetaProjectWorkspaceState(projectId);
+  const next = normalizeProjectWorkspaceState({
+    ...current,
+    ...normalizeProjectWorkspaceState(patch),
+    updatedAt: new Date().toISOString(),
+  });
+  await saveMetaProjectTextFile({
+    projectId,
+    fileName: projectWorkspaceStateFileName,
+    contents: JSON.stringify(next, null, 2),
+  });
+  return next;
+}
+
 function projectStorageRoot() {
   const configured = process.env.META_PROJECT_STORAGE_ROOT?.trim() || defaultProjectStorageRoot;
   return path.resolve(/*turbopackIgnore: true*/ process.cwd(), configured);
+}
+
+function projectStorageRootForBackend(storageBackend: MetaProjectStorageBackend) {
+  return storageBackend === "google-drive" ? `google-drive:${projectDrivePrefix()}` : projectStorageRoot();
+}
+
+function projectFileStorageBackend(): MetaProjectStorageBackend {
+  const configured = process.env.META_PROJECT_STORAGE_BACKEND?.trim().toLowerCase();
+  if (configured === "local-json" || configured === "google-drive") return configured;
+
+  const inherited = (process.env.REPORT_STORAGE_BACKEND ?? "").trim().toLowerCase();
+  if (inherited === "local-json" || inherited === "google-drive") return inherited;
+
+  if (isServerlessRuntime() && getGoogleDriveAuthMode()) return "google-drive";
+  return "local-json";
+}
+
+function projectDrivePrefix() {
+  return (process.env.META_PROJECT_DRIVE_PREFIX?.trim() || defaultProjectDrivePrefix)
+    .replace(/[/\\]+/g, "-")
+    .replace(/^-+|-+$/g, "") || defaultProjectDrivePrefix;
+}
+
+function projectDriveFileName(folderName: string, fileName: string) {
+  return `${projectDrivePrefix()}__${folderName}__${fileName}`;
+}
+
+function projectDriveFilePrefix(folderName: string) {
+  return `${projectDrivePrefix()}__${folderName}__`;
 }
 
 function userProjectsFilePath() {
@@ -238,6 +369,17 @@ function ensureGoogleDriveUserProjectsStorageConfigured(operation: "read" | "wri
   );
 }
 
+function ensureGoogleDriveProjectStorageConfigured(operation: "read" | "write") {
+  if (getGoogleDriveAuthMode()) return;
+  throw new Error(
+    [
+      `Meta project storage ${operation} failed because Google Drive is not configured.`,
+      "Set META_PROJECT_STORAGE_BACKEND=google-drive with GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET, and GOOGLE_DRIVE_REFRESH_TOKEN.",
+      "For service-account storage, set GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON with GOOGLE_DRIVE_FOLDER_ID.",
+    ].join(" "),
+  );
+}
+
 function dedupeProjects<T extends { id?: string }>(projects: T[]) {
   const seen = new Set<string>();
   const deduped: T[] = [];
@@ -269,7 +411,22 @@ function safeProjectFileName(fileName: string) {
   return baseName;
 }
 
-async function listProjectFiles(projectPath: string) {
+async function listGoogleDriveProjectFiles(folderName: string) {
+  ensureGoogleDriveProjectStorageConfigured("read");
+  const prefix = projectDriveFilePrefix(folderName);
+  const files = await listTextFilesFromGoogleDriveByNamePrefix(prefix);
+  return files
+    .filter((file) => file.name.startsWith(prefix))
+    .map((file) => ({
+      fileName: file.name.slice(prefix.length),
+      path: `google-drive:${file.name}`,
+      bytes: Number(file.size ?? 0),
+      updatedAt: file.modifiedTime ?? new Date().toISOString(),
+      webViewLink: file.webViewLink,
+    }));
+}
+
+async function listLocalProjectFiles(projectPath: string) {
   let entries: Dirent<string>[];
   try {
     entries = await fs.readdir(projectPath, { withFileTypes: true });
@@ -294,6 +451,32 @@ async function listProjectFiles(projectPath: string) {
   );
 
   return files.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+}
+
+async function backupCorruptProjectWorkspaceState(projectId: string, raw: string, parseError: SyntaxError) {
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  try {
+    await saveMetaProjectTextFile({
+      projectId,
+      fileName: `project-workspace-state.corrupt-${stamp}.json`,
+      contents: raw,
+    });
+  } catch (error) {
+    throw new Error(`Meta project workspace state backup failed: ${error instanceof Error ? error.message : String(error)}; cause: ${parseError.message}`);
+  }
+}
+
+function normalizeProjectWorkspaceState(value: unknown): MetaProjectWorkspaceState {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const record = value as Record<string, unknown>;
+  const state: MetaProjectWorkspaceState = {};
+  if (typeof record.updatedAt === "string") state.updatedAt = record.updatedAt;
+  if (record.protocolDraft !== undefined) state.protocolDraft = record.protocolDraft;
+  if (record.searchImportRows !== undefined) state.searchImportRows = record.searchImportRows;
+  if (record.queryOverrides !== undefined) state.queryOverrides = record.queryOverrides;
+  if (record.selectedDatabases !== undefined) state.selectedDatabases = record.selectedDatabases;
+  if (record.workbookBoard !== undefined) state.workbookBoard = record.workbookBoard;
+  return state;
 }
 
 async function writeTextFileAtomically(targetPath: string, contents: string) {

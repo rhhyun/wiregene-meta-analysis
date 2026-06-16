@@ -20,6 +20,65 @@ C:\Users\HyunJK\Documents\GitHub\meta.wiregene.com
 - 작업 시작 전 `git -C C:\Users\HyunJK\Documents\GitHub\meta.wiregene.com status --short`와 `git -C C:\Users\HyunJK\Documents\GitHub\meta.wiregene.com pull --ff-only origin main`을 확인한다.
 - 작업 종료 전 lint/typecheck/build, `backup.md` 업데이트, commit/push, Synology 작업스케줄러 명령 확인을 수행한다.
 
+## 2026-06-17 v1.72 Shared project workspace-state storage
+
+User clarification:
+
+- Having the same study list is not enough. Each study's internal work state must also be stored in one external/shared project storage layer.
+- Other PCs must be able to open, edit, save, and download the same project state/files.
+- `search.wiregene.com` and `omni.wiregene.com` should be able to discover meta-analysis projects and connect search/research-topic/working-state data.
+- Meta-analysis projects often connect to real-data or hybrid papers, so stable project-level and record-level join keys are required.
+
+Changes made:
+
+- UI version `Ver 1.71` -> `Ver 1.72`.
+- Package version `0.1.36` -> `0.1.37`.
+- Added project workspace state API:
+  - `GET/PATCH/PUT /api/meta-analysis/projects/{projectId}/state`
+  - shared state file: `project-workspace-state.json`
+- Added project text file download API:
+  - `GET /api/meta-analysis/projects/{projectId}/files/{fileName}`
+- Added cross-site manifest API:
+  - `GET /api/meta-analysis/workspace/manifest`
+- Added project file/state Google Drive backend:
+  - `META_PROJECT_STORAGE_BACKEND=local-json|google-drive`
+  - `META_PROJECT_DRIVE_PREFIX=meta-projects`
+- Kept study-list registry storage separate:
+  - `META_USER_PROJECTS_STORAGE_BACKEND=local-json|google-drive`
+- `ProtocolStage` now loads/saves `protocolDraft` through shared project state.
+- `SearchStage` now loads/saves `selectedDatabases`, `queryOverrides`, and `searchImportRows` through shared project state.
+- `WorkbookFullTextBoard` now has `Save shared state` for `workbookBoard`.
+- Project storage panel now shows local vs Google Drive backend and gives download links.
+
+Recommended multi-PC / Vercel / cross-site env:
+
+```text
+META_USER_PROJECTS_STORAGE_BACKEND=google-drive
+META_USER_PROJECTS_DRIVE_FILENAME=meta-user-study-projects.json
+META_PROJECT_STORAGE_BACKEND=google-drive
+META_PROJECT_DRIVE_PREFIX=meta-projects
+GOOGLE_DRIVE_CLIENT_ID=<oauth-client-id>
+GOOGLE_DRIVE_CLIENT_SECRET=<oauth-client-secret>
+GOOGLE_DRIVE_REFRESH_TOKEN=<oauth-refresh-token>
+GOOGLE_DRIVE_FOLDER_ID=<target-folder-id>
+```
+
+Verification:
+
+```text
+npx tsc --noEmit: pass.
+npm run lint: pass.
+npm run build: pass.
+Browser verification at http://127.0.0.1:3227: Ver 1.72 displayed in Meta workspace.
+API verification: manifest OK, state PATCH/GET OK, omni consumer listed, file download route returned 200 OK.
+```
+
+Synology deploy/run command:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 ## 2026-06-16 v1.70 Study title and Search Design workflow fix
 
 User-reported problems from another PC at UI v1.69:

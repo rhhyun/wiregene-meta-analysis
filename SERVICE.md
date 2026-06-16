@@ -84,9 +84,9 @@ Drive file is `meta-full-text-history.json`.
 
 ## Meta Project File Storage
 
-Screening/search CSV exports are not written as files until the in-app
-`Save ...` buttons are clicked. Saved project files are written by the Next.js
-server under:
+Screening/search CSV exports and each study's shared workspace state are not
+written as files until the in-app `Save ...` or shared-state buttons are
+clicked. Saved project files are written by the Next.js server under:
 
 ```txt
 .data/meta/projects/{projectId}/
@@ -101,6 +101,30 @@ In the Synology Docker package this path is bind-mounted to:
 Set `META_PROJECT_STORAGE_ROOT` only to a writable path visible inside the
 container. The default `.data/meta/projects` is recommended for Synology because
 it stays inside the existing `/volume1/docker/meta/data` runtime volume.
+
+For multi-PC editing, Vercel/serverless use, or cross-service integration with
+`search.wiregene.com` / `omni.wiregene.com`, configure:
+
+```txt
+META_PROJECT_STORAGE_BACKEND=google-drive
+META_PROJECT_DRIVE_PREFIX=meta-projects
+```
+
+with Google Drive credentials. The project state is saved as
+`project-workspace-state.json` under the project storage backend. It currently
+contains PRISMA protocol draft fields, selected search databases, database query
+overrides, search import rows, and the screening workbook board. Text exports
+can be downloaded through:
+
+```txt
+/api/meta-analysis/projects/{projectId}/files/{fileName}
+```
+
+Other Wiregene services can discover available studies and endpoints through:
+
+```txt
+/api/meta-analysis/workspace/manifest
+```
 
 ## Shared Meta Study List Storage
 

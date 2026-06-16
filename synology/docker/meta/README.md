@@ -73,6 +73,24 @@ Drive automatically when Google Drive credentials are configured, or it can be
 forced with `META_FULL_TEXT_HISTORY_STORAGE_BACKEND=google-drive`. The default
 Drive file is `meta-full-text-history.json`.
 
+For multi-PC meta-analysis project editing, keep the study registry and the
+project workspace state in shared storage. Synology local storage is acceptable
+for one NAS-backed internal deployment. For cross-PC/Vercel/cross-site sharing
+with `search.wiregene.com` or `omni.wiregene.com`, set Google Drive storage in
+`/volume1/docker/meta/.env`:
+
+```sh
+META_USER_PROJECTS_STORAGE_BACKEND=google-drive
+META_USER_PROJECTS_DRIVE_FILENAME=meta-user-study-projects.json
+META_PROJECT_STORAGE_BACKEND=google-drive
+META_PROJECT_DRIVE_PREFIX=meta-projects
+```
+
+The per-study shared state file is `project-workspace-state.json`; it stores the
+protocol draft, selected databases, DB query overrides, search import rows, and
+screening workbook board. Other services can discover project endpoints at
+`/api/meta-analysis/workspace/manifest`.
+
 If port `3001` is already used, the script prints the running container that
 owns the port and stops before changing anything. If that old container should
 be replaced by Meta, rerun:
