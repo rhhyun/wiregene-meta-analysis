@@ -38,6 +38,7 @@ import {
   metaStudyStages,
   projectFinalPubMedQuery,
   type MetaStudyProject,
+  type MetaSearchRun,
   type MetaStudyStage,
   type MetaWorkbookSheet,
 } from "@/lib/meta-projects";
@@ -111,6 +112,11 @@ const userMetaProjectsStorageKey = "wiregene-meta-user-study-projects-v1";
 const protocolDraftStorageKey = "wiregene-meta-protocol-draft-v1";
 const searchImportStorageKey = "wiregene-meta-search-import-log-v1";
 const searchQueryOverrideStorageKey = "wiregene-meta-search-query-overrides-v1";
+const searchDatabaseSelectionStorageKey = "wiregene-meta-search-database-selection-v1";
+
+const canonicalSearchDatabases = ["PubMed", "Embase", "Scopus", "Web of Science", "Cochrane"] as const;
+type CanonicalSearchDatabase = (typeof canonicalSearchDatabases)[number];
+const defaultSelectedSearchDatabases: CanonicalSearchDatabase[] = ["PubMed"];
 
 type NewTopicDraft = {
   title: string;
@@ -245,6 +251,138 @@ function readStoredRecord<T>(key: string): Record<string, T> {
   return isPlainRecord(value) ? (value as Record<string, T>) : {};
 }
 
+function normalizeTitle(value: string, fallback: string) {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  return repairKnownFullTitle(normalized || fallback);
+}
+
+function repairKnownFullTitle(value: string) {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (/evidence-informed prediction of preventable post-traumatic disability/i.test(normalized)) {
+    return "Evidence-informed prediction of preventable post-traumatic disability";
+  }
+  return normalized;
+}
+
+function menuLabelFromTitle(value: string) {
+  const normalized = normalizeTitle(value, "Untitled meta-analysis topic").replace(/\s*\.\.\.$/, "");
+  if (/post[-\s]?traumatic disability|preventable post[-\s]?traumatic/i.test(normalized)) {
+    return "Post-traumatic disability";
+  }
+  if (/musician|instrumentalist|orchestra|prmd|playing-related/i.test(normalized)) {
+    return "Musician PRMD pain";
+  }
+
+  const boilerplate =
+    /\b(systematic|review|meta-analysis|metaanalysis|protocol|study|studies|evidence-informed|prediction|preventable|among|for|of|and|the|a|an|in|on|with|using|based)\b/i;
+  const words = normalized
+    .split(/\s+/)
+    .map((word) => word.replace(/^[^\w]+|[^\w]+$/g, ""))
+    .filter((word) => word && !boilerplate.test(word))
+    .slice(0, 5);
+  return words.length > 0 ? words.join(" ") : normalized.split(/\s+/).slice(0, 5).join(" ");
+}
+
+function projectFullTitle(project: Pick<MetaStudyProject, "title" | "shortTitle">) {
+  return normalizeTitle(project.title || project.shortTitle, "Untitled meta-analysis topic");
+}
+
+function projectMenuLabel(project: Pick<MetaStudyProject, "title" | "shortTitle">) {
+  const fullTitle = projectFullTitle(project);
+  const storedShortTitle = normalizeTitle(project.shortTitle || "", "");
+  if (storedShortTitle && !storedShortTitle.includes("...") && storedShortTitle !== fullTitle) {
+    return menuLabelFromTitle(storedShortTitle);
+  }
+  return menuLabelFromTitle(fullTitle);
+}
+
+function canonicalDatabaseName(value: string): CanonicalSearchDatabase | null {
+  const normalized = value.toLowerCase().replace(/[()[\]{}]/g, " ");
+  if (/\b(pubmed|puvmed|medline)\b/.test(normalized)) return "PubMed";
+  if (/\bembase\b/.test(normalized)) return "Embase";
+  if (/\bscopus\b/.test(normalized)) return "Scopus";
+  if (/\b(web\s*of\s*science|wos)\b/.test(normalized)) return "Web of Science";
+  if (/\b(cochrane|central)\b/.test(normalized)) return "Cochrane";
+  return null;
+}
+
+function normalizeDatabaseDisplayName(value: string, fallback: CanonicalSearchDatabase = "PubMed") {
+  return canonicalDatabaseName(value) ?? fallback;
+}
+
+function dedupeDatabases(databases: string[]) {
+  const selected: CanonicalSearchDatabase[] = [];
+  for (const database of databases) {
+    const canonicalDatabase = canonicalDatabaseName(database);
+    if (canonicalDatabase && !selected.includes(canonicalDatabase)) selected.push(canonicalDatabase);
+  }
+  return selected;
+}
+
+function normalizeDatabaseSelection(value: unknown, fallback: CanonicalSearchDatabase[] = defaultSelectedSearchDatabases) {
+  const selected = Array.isArray(value) ? dedupeDatabases(value.filter((item): item is string => typeof item === "string")) : [];
+  return selected.length > 0 ? selected : [...fallback];
+}
+
+function sanitizeSearchRun(run: MetaSearchRun, searchedAt = new Date().toISOString().slice(0, 10)): MetaSearchRun {
+  const database = normalizeDatabaseDisplayName(run.database);
+  return {
+    database,
+    searchedAt: run.searchedAt || searchedAt,
+    label: run.label || "Search draft",
+    query: run.query || "",
+    resultCount: Number.isFinite(run.resultCount) ? run.resultCount : 0,
+    limits: run.limits || "Confirm database syntax, date, language, and filters.",
+    source: run.source || "User-saved topic",
+    exportAction: run.exportAction || "Run search and export RIS/NBIB/CSV.",
+  };
+}
+
+function sanitizeSearchRuns(searchRuns: MetaSearchRun[]) {
+  const searchedAt = new Date().toISOString().slice(0, 10);
+  const byDatabase = new Map<CanonicalSearchDatabase, MetaSearchRun>();
+  for (const run of searchRuns) {
+    const database = canonicalDatabaseName(run.database);
+    if (!database || byDatabase.has(database)) continue;
+    byDatabase.set(database, sanitizeSearchRun({ ...run, database }, searchedAt));
+  }
+  return canonicalSearchDatabases.flatMap((database) => {
+    const run = byDatabase.get(database);
+    return run ? [run] : [];
+  });
+}
+
+function selectedSearchDatabasesForProject(project: MetaStudyProject) {
+  const meaningfulRuns = (Array.isArray(project.searchRuns) ? project.searchRuns : []).filter(
+    (run) => run.resultCount > 0 || Boolean(run.query?.trim()),
+  );
+  const selected = dedupeDatabases(meaningfulRuns.map((run) => run.database));
+  if (selected.length > 0) return selected;
+  return isOrchestralPainProject(project) ? [...canonicalSearchDatabases] : [...defaultSelectedSearchDatabases];
+}
+
+function searchRunDraftForDatabase(project: MetaStudyProject, database: CanonicalSearchDatabase): MetaSearchRun {
+  return {
+    database,
+    searchedAt: new Date().toISOString().slice(0, 10),
+    label: "Researcher-selected search draft",
+    query: projectSearchQueryForDatabase(project, database),
+    resultCount: 0,
+    limits: "Confirm database syntax, date, language, and filters.",
+    source: "Generated after database selection",
+    exportAction: "Run exact search, export RIS/CSV/NBIB, and update external result count.",
+  };
+}
+
+function searchRunsForDatabases(project: MetaStudyProject, selectedDatabases: CanonicalSearchDatabase[]) {
+  const byDatabase = new Map<CanonicalSearchDatabase, MetaSearchRun>();
+  for (const run of sanitizeSearchRuns(Array.isArray(project.searchRuns) ? project.searchRuns : [])) {
+    const database = canonicalDatabaseName(run.database);
+    if (database) byDatabase.set(database, run);
+  }
+  return selectedDatabases.map((database) => byDatabase.get(database) ?? searchRunDraftForDatabase(project, database));
+}
+
 function sanitizeMetaStudyProject(project: MetaStudyProject | null | undefined): MetaStudyProject | null {
   if (!project?.id) return null;
   const fallback = metaStudyProjects[0];
@@ -253,12 +391,13 @@ function sanitizeMetaStudyProject(project: MetaStudyProject | null | undefined):
   const prismaRows = Array.isArray(project.prismaRows) ? project.prismaRows : [];
   const workbookSheets = Array.isArray(project.workbookSheets) ? project.workbookSheets : [];
   const analysisLayers = Array.isArray(project.analysisLayers) ? project.analysisLayers : [];
+  const title = normalizeTitle(project.title || project.shortTitle, fallback.title);
 
   return {
     ...fallback,
     ...project,
-    shortTitle: project.shortTitle || project.title || fallback.shortTitle,
-    title: project.title || project.shortTitle || fallback.title,
+    shortTitle: projectMenuLabel({ title, shortTitle: project.shortTitle || "" }),
+    title,
     status: project.status || "Protocol and PRISMA search design",
     progress: Number.isFinite(project.progress) ? project.progress : 0,
     sourcePath: project.sourcePath || "User-saved meta-analysis topic",
@@ -271,28 +410,7 @@ function sanitizeMetaStudyProject(project: MetaStudyProject | null | undefined):
       searchBlocks.length > 0
         ? searchBlocks
         : [{ label: "Search query needed", role: "Draft search", query: project.researchQuestion || "" }],
-    searchRuns:
-      searchRuns.length > 0
-        ? searchRuns.map((run) => ({
-            database: run.database || "PubMed",
-            searchedAt: run.searchedAt || new Date().toISOString().slice(0, 10),
-            label: run.label || "Search draft",
-            query: run.query || "",
-            resultCount: Number.isFinite(run.resultCount) ? run.resultCount : 0,
-            limits: run.limits || "Confirm database syntax, date, language, and filters.",
-            source: run.source || "User-saved topic",
-            exportAction: run.exportAction || "Run search and export RIS/NBIB/CSV.",
-          }))
-        : ["PubMed", "Scopus", "Web of Science", "Embase", "Cochrane"].map((database) => ({
-            database,
-            searchedAt: new Date().toISOString().slice(0, 10),
-            label: "Search draft",
-            query: "",
-            resultCount: 0,
-            limits: "Confirm database syntax, date, language, and filters.",
-            source: "Recovered from saved topic without search log",
-            exportAction: "Run search and export RIS/NBIB/CSV.",
-          })),
+    searchRuns: sanitizeSearchRuns(searchRuns),
     prismaRows,
     screeningQueue: Array.isArray(project.screeningQueue) ? project.screeningQueue : [],
     workbookSheets,
@@ -343,24 +461,30 @@ function splitDraftList(value: string, fallback: string[] = []) {
 }
 
 function parseDatabaseDraft(value: string) {
-  const fallback = ["PubMed", "Scopus", "Web of Science", "Embase", "Cochrane"];
-  return splitDraftList(value, fallback).map((item) => {
+  const byDatabase = new Map<CanonicalSearchDatabase, number>();
+  for (const item of splitDraftList(value, defaultSelectedSearchDatabases)) {
     const countMatch = item.match(/\b(\d{1,7})\b/);
-    const database =
+    const databaseText =
       item
         .replace(/\b\d{1,7}\b/g, "")
         .replace(/\b(results?|records?|hits?)\b/gi, "")
         .replace(/[()=:.-]+$/g, "")
         .trim() || item.trim();
+    const database = canonicalDatabaseName(databaseText);
+    if (!database) continue;
     const resultCount = countMatch ? Number(countMatch[1]) : 0;
-    return { database, resultCount: Number.isFinite(resultCount) ? resultCount : 0 };
-  });
+    byDatabase.set(database, Number.isFinite(resultCount) ? resultCount : 0);
+  }
+  if (byDatabase.size === 0) byDatabase.set("PubMed", 0);
+  return canonicalSearchDatabases.flatMap((database) =>
+    byDatabase.has(database) ? [{ database, resultCount: byDatabase.get(database) ?? 0 }] : [],
+  );
 }
 
 function createNewTopicProject(draft: NewTopicDraft, sourceText: string, reviewItems: string[]): MetaStudyProject {
   const now = new Date();
   const searchedAt = now.toISOString().slice(0, 10);
-  const title = compactTitle(draft.title, "Untitled meta-analysis topic");
+  const title = normalizeTitle(draft.title, "Untitled meta-analysis topic");
   const databases = parseDatabaseDraft(draft.databases);
   const totalRecords = databases.reduce((total, item) => total + item.resultCount, 0);
   const searchQuery =
@@ -391,7 +515,7 @@ function createNewTopicProject(draft: NewTopicDraft, sourceText: string, reviewI
 
   return {
     id: `user-${now.getTime()}-${slugPart(title)}`,
-    shortTitle: compactTitle(title, "AI parsed topic"),
+    shortTitle: menuLabelFromTitle(title),
     title,
     status: "AI parsed draft - PI review required",
     progress: 12,
@@ -413,7 +537,7 @@ function createNewTopicProject(draft: NewTopicDraft, sourceText: string, reviewI
       database: item.database,
       searchedAt,
       label: "AI parsed search draft",
-      query: projectSearchQueryForDatabase(
+      query: draftSearchQueryForDatabase(
         {
           id: "draft",
           searchBlocks: [{ label: "AI parsed search block", role: "Draft search", query: searchQuery }],
@@ -829,32 +953,50 @@ function methodSentencesForProject(project: MetaStudyProject) {
 }
 
 function projectSearchQueryForDatabase(project: MetaStudyProject, database: string, runQuery = "") {
-  if (isOrchestralPainProject(project)) return orchestralExecutableSearchQuery(database);
+  const databaseName = normalizeDatabaseDisplayName(database);
+  if (isOrchestralPainProject(project)) return orchestralExecutableSearchQuery(databaseName);
   const searchBlocks = Array.isArray(project.searchBlocks) ? project.searchBlocks : [];
   const labeledQuery = findDatabaseLabeledQuery(
     [runQuery, ...searchBlocks.map((block) => block.query)].filter(Boolean),
-    database,
+    databaseName,
   );
-  if (labeledQuery) return normalizeDatabaseSpecificQuery(database, labeledQuery);
+  if (labeledQuery) return normalizeDatabaseSpecificQuery(databaseName, labeledQuery);
 
   const cleanedRunQuery = cleanSearchQueryText(runQuery);
   if (
-    isPubMedDatabase(database) &&
+    isPubMedDatabase(databaseName) &&
     looksExecutableSearchQuery(cleanedRunQuery) &&
-    !hasOtherDatabaseLabel(cleanedRunQuery, database)
+    !hasOtherDatabaseLabel(cleanedRunQuery, databaseName)
   ) {
-    return normalizeDatabaseSpecificQuery(database, cleanedRunQuery);
+    return normalizeDatabaseSpecificQuery(databaseName, cleanedRunQuery);
   }
   const base = searchBlocks
     .map((block) => cleanSearchQueryText(block.query))
     .filter(Boolean)
     .map((query) => `(${query})`)
     .join(" AND ");
-  return isPubMedDatabase(database) ? normalizeDatabaseSpecificQuery(database, base) : "";
+  return isPubMedDatabase(databaseName) ? normalizeDatabaseSpecificQuery(databaseName, base) : "";
+}
+
+function draftSearchQueryForDatabase(project: MetaStudyProject, database: string, runQuery = "") {
+  const databaseName = normalizeDatabaseDisplayName(database);
+  const existingQuery = projectSearchQueryForDatabase(project, databaseName, runQuery);
+  if (existingQuery) return existingQuery;
+
+  const searchBlocks = Array.isArray(project.searchBlocks) ? project.searchBlocks : [];
+  const genericBase =
+    cleanSearchQueryText(runQuery) ||
+    searchBlocks
+      .map((block) => cleanSearchQueryText(block.query))
+      .filter(Boolean)
+      .map((query) => `(${query})`)
+      .join(" AND ") ||
+    projectFinalPubMedQuery(project);
+  return adaptGenericSearchQueryForDatabase(databaseName, genericBase);
 }
 
 function normalizeDatabaseSpecificQuery(database: string, base: string) {
-  const normalized = database.toLowerCase();
+  const normalized = normalizeDatabaseDisplayName(database).toLowerCase();
   const cleaned = removeSupplementarySearchBlocks(base);
   if (!cleaned.trim()) return "";
   if (normalized.includes("scopus")) {
@@ -871,6 +1013,29 @@ function normalizeDatabaseSpecificQuery(database: string, base: string) {
   }
   if (normalized.includes("cochrane")) return cleaned;
   return cleaned;
+}
+
+function adaptGenericSearchQueryForDatabase(database: CanonicalSearchDatabase, query: string) {
+  const cleaned = stripSearchFieldTags(query);
+  if (!looksExecutableSearchQuery(cleaned)) return "";
+  if (database === "PubMed") return normalizeDatabaseSpecificQuery(database, cleaned);
+  if (database === "Embase") return normalizeDatabaseSpecificQuery(database, `(${cleaned}):ti,ab AND [english]/lim`);
+  if (database === "Scopus") return normalizeDatabaseSpecificQuery(database, `TITLE-ABS-KEY(${cleaned})`);
+  if (database === "Web of Science") return normalizeDatabaseSpecificQuery(database, `TS=(${cleaned})`);
+  if (database === "Cochrane") return normalizeDatabaseSpecificQuery(database, cleaned);
+  return "";
+}
+
+function stripSearchFieldTags(value: string) {
+  return cleanSearchQueryText(value)
+    .replace(/\[(?:title\/abstract|tiab|mesh terms?|mesh|all fields)\]/gi, "")
+    .replace(/\bTITLE-ABS-KEY\s*\(/gi, "(")
+    .replace(/\bTS\s*=\s*/gi, "")
+    .replace(/:ti,ab\b/gi, "")
+    .replace(/\[(?:english|humans?)\]\/lim/gi, "")
+    .replace(/\[\d{4}-\d{4}\]\/py/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function cleanSearchQueryText(value: string) {
@@ -905,17 +1070,17 @@ function removeSupplementarySearchBlocks(value: string) {
 }
 
 function isPubMedDatabase(database: string) {
-  return database.toLowerCase().includes("pubmed");
+  return normalizeDatabaseDisplayName(database) === "PubMed";
 }
 
 function databaseAliases(database: string) {
-  const normalized = database.toLowerCase();
-  if (normalized.includes("pubmed")) return ["pubmed", "medline"];
-  if (normalized.includes("scopus")) return ["scopus"];
-  if (normalized.includes("web of science")) return ["web of science", "wos"];
-  if (normalized.includes("embase")) return ["embase"];
-  if (normalized.includes("cochrane")) return ["cochrane", "central"];
-  return [normalized];
+  const normalized = normalizeDatabaseDisplayName(database);
+  if (normalized === "PubMed") return ["pubmed", "puvmed", "medline"];
+  if (normalized === "Embase") return ["embase"];
+  if (normalized === "Scopus") return ["scopus"];
+  if (normalized === "Web of Science") return ["web of science", "wos"];
+  if (normalized === "Cochrane") return ["cochrane", "central"];
+  return [];
 }
 
 function isDatabaseHeading(line: string) {
@@ -926,7 +1091,7 @@ function hasOtherDatabaseLabel(value: string, database: string) {
   const aliases = databaseAliases(database);
   return value
     .split("\n")
-    .some((line) => isDatabaseHeading(line) && !aliases.some((alias) => new RegExp(`^\\s*${alias}\\b`, "i").test(line)));
+    .some((line) => isDatabaseHeading(line) && !aliases.some((alias) => new RegExp(`^\\s*${escapeRegExp(alias)}\\b`, "i").test(line)));
 }
 
 function findDatabaseLabeledQuery(values: string[], database: string) {
@@ -937,7 +1102,7 @@ function findDatabaseLabeledQuery(values: string[], database: string) {
       const line = lines[index];
       const isTargetHeading =
         isDatabaseHeading(line) &&
-        aliases.some((alias) => new RegExp(`^\\s*${alias}\\b`, "i").test(line));
+        aliases.some((alias) => new RegExp(`^\\s*${escapeRegExp(alias)}\\b`, "i").test(line));
       if (!isTargetHeading) continue;
 
       const [, inline = ""] = line.split(/[:：-]\s*/, 2);
@@ -953,6 +1118,10 @@ function findDatabaseLabeledQuery(values: string[], database: string) {
     }
   }
   return "";
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function orchestralExecutableSearchQuery(database: string) {
@@ -996,22 +1165,23 @@ function orchestralExecutableSearchQuery(database: string) {
 }
 
 function databaseSearchUrl(database: string, query: string, pubMedUrl?: string) {
-  const normalized = database.toLowerCase();
-  if (normalized.includes("pubmed")) return query.trim() ? buildPubMedSearchUrl(query) : pubMedUrl || "";
-  if (normalized.includes("cochrane")) {
+  if (!query.trim()) return "";
+  const normalized = normalizeDatabaseDisplayName(database);
+  if (normalized === "PubMed") return buildPubMedSearchUrl(query) || pubMedUrl || "";
+  if (normalized === "Cochrane") {
     return `https://www.cochranelibrary.com/advanced-search?searchBy=6&searchText=${encodeURIComponent(query)}`;
   }
-  if (normalized.includes("scopus")) return "https://www.scopus.com/search/form.uri?display=advanced";
-  if (normalized.includes("web of science")) return "https://www.webofscience.com/wos/woscc/advanced-search";
-  if (normalized.includes("embase")) return "https://www.embase.com/search/quick";
+  if (normalized === "Embase") return "https://www.embase.com/search/advanced";
+  if (normalized === "Scopus") return "https://www.scopus.com/search/form.uri?display=advanced";
+  if (normalized === "Web of Science") return "https://www.webofscience.com/wos/woscc/advanced-search";
   return "";
 }
 
 const searchExportGuidance = [
   ["PubMed", "NBIB or RIS", "Keep PMID, DOI, title, abstract, publication type, year."],
+  ["Embase", "RIS preferred; CSV acceptable", "Keep Embase ID, DOI, PMID if present, Emtree terms, document type."],
   ["Scopus", "RIS preferred; CSV acceptable", "Keep EID, DOI, title, abstract, source title, year, document type."],
   ["Web of Science", "RIS/EndNote or tab-delimited full record", "Keep accession number, DOI, title, abstract, document type."],
-  ["Embase", "RIS preferred; CSV acceptable", "Keep Embase ID, DOI, PMID if present, Emtree terms, document type."],
   ["Cochrane", "RIS", "Keep CENTRAL/review source tag and record type."],
 ];
 
@@ -1223,7 +1393,8 @@ export function MetaStudyWorkspace({
               key={project.id}
               type="button"
               onClick={() => openProject(project)}
-              title={project.shortTitle}
+              title={projectFullTitle(project)}
+              aria-label={projectFullTitle(project)}
               className={`rounded-md border text-left transition ${
                 projectMenuCollapsed ? "flex h-12 items-center justify-center p-0" : "p-3"
               } ${
@@ -1233,7 +1404,7 @@ export function MetaStudyWorkspace({
               }`}
             >
               {projectMenuCollapsed ? <Database className="h-4 w-4 text-emerald-700" aria-hidden /> : null}
-              <span className={projectMenuCollapsed ? "sr-only" : "block text-sm font-semibold leading-5 text-zinc-950"}>{project.shortTitle}</span>
+              <span className={projectMenuCollapsed ? "sr-only" : "block text-sm font-semibold leading-5 text-zinc-950"}>{projectMenuLabel(project)}</span>
               {!projectMenuCollapsed ? <span className="mt-2 block text-xs leading-5 text-zinc-500">{project.status}</span> : null}
               {!projectMenuCollapsed ? (
                 <span className="mt-3 block h-2 overflow-hidden rounded-full bg-zinc-100">
@@ -1309,8 +1480,8 @@ function ProjectWorkspace({
         <div className="grid gap-5 xl:grid-cols-[1fr_20rem]">
           <div>
             <p className="text-sm font-semibold text-emerald-700">Active meta-analysis project</p>
-            <h2 className="mt-1 max-w-4xl text-2xl font-semibold leading-tight tracking-normal text-zinc-950">
-              {project.title}
+            <h2 className="mt-1 max-w-4xl break-words text-2xl font-semibold leading-tight tracking-normal text-zinc-950">
+              {projectFullTitle(project)}
             </h2>
             <p className="mt-3 max-w-4xl text-sm leading-6 text-zinc-600">{project.researchQuestion}</p>
           </div>
@@ -1603,6 +1774,7 @@ function SearchStage({
   type SearchImportRow = { resultCount: string; exportFile: string; notes: string; completedAt: string };
   const storageKey = `${searchImportStorageKey}:${project.id}`;
   const queryOverrideKey = `${searchQueryOverrideStorageKey}:${project.id}`;
+  const databaseSelectionKey = `${searchDatabaseSelectionStorageKey}:${project.id}`;
   const copy = searchStageCopy(project);
   const [importRows, setImportRows] = useState<Record<string, SearchImportRow>>(() =>
     readStoredRecord<SearchImportRow>(storageKey),
@@ -1614,7 +1786,14 @@ function SearchStage({
   const [querySavedAt, setQuerySavedAt] = useState("");
   const [uploadSummary, setUploadSummary] = useState<SearchUploadSummary | null>(null);
   const [uploadError, setUploadError] = useState("");
-  const searchRuns = Array.isArray(project.searchRuns) ? project.searchRuns : [];
+  const [selectedDatabases, setSelectedDatabases] = useState<CanonicalSearchDatabase[]>(() =>
+    normalizeDatabaseSelection(readStoredJson<unknown>(databaseSelectionKey, null), selectedSearchDatabasesForProject(project)),
+  );
+  const searchRuns = useMemo(
+    () => searchRunsForDatabases(project, selectedDatabases),
+    [project, selectedDatabases],
+  );
+  const selectedSearchResultCount = searchRuns.reduce((total, run) => total + run.resultCount, 0);
 
   function updateImportRow(database: string, field: "resultCount" | "exportFile" | "notes", value: string) {
     setImportRows((current) => {
@@ -1649,6 +1828,28 @@ function SearchStage({
   function saveQueryOverrides() {
     const nextSavedAt = new Date().toISOString();
     window.localStorage.setItem(queryOverrideKey, JSON.stringify(queryOverrides));
+    setQuerySavedAt(nextSavedAt);
+  }
+
+  function toggleDatabaseSelection(database: CanonicalSearchDatabase) {
+    setSelectedDatabases((current) => {
+      const nextSelection = current.includes(database)
+        ? current.filter((item) => item !== database)
+        : canonicalSearchDatabases.filter((item) => item === database || current.includes(item));
+      const normalizedSelection = nextSelection.length > 0 ? nextSelection : [...defaultSelectedSearchDatabases];
+      window.localStorage.setItem(databaseSelectionKey, JSON.stringify(normalizedSelection));
+      return normalizedSelection;
+    });
+  }
+
+  function generateDraftQueries() {
+    const nextOverrides = { ...queryOverrides };
+    for (const run of searchRuns) {
+      nextOverrides[run.database] = draftSearchQueryForDatabase(project, run.database, run.query || pubMedQuery);
+    }
+    const nextSavedAt = new Date().toISOString();
+    window.localStorage.setItem(queryOverrideKey, JSON.stringify(nextOverrides));
+    setQueryOverrides(nextOverrides);
     setQuerySavedAt(nextSavedAt);
   }
 
@@ -1714,12 +1915,49 @@ function SearchStage({
         detail={copy.detail}
       />
       <div className="grid gap-3 lg:grid-cols-5">
-        <Metric label="Records identified" value={totalSearchResults(project).toLocaleString()} />
+        <Metric label="Records identified" value={selectedSearchResultCount.toLocaleString()} />
         <Metric label="Deduplicated master" value={prismaCount(project, "Records after deduplication")} />
         <Metric label="Abstract text" value={prismaCount(project, "Records with abstract text available")} />
         <Metric label="FT article plan" value={prismaCount(project, "Full-text assessment queue")} />
         <Metric label="Active Excel PDFs" value={activeFullTextUploadCount(project).toLocaleString()} />
       </div>
+      <section className="rounded-md border border-emerald-200 bg-emerald-50 p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-emerald-900">Choose databases before generating queries</p>
+            <p className="mt-1 text-sm leading-6 text-zinc-700">
+              Select only the databases this review will actually search. The app then prepares draft syntax for those databases only.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={generateDraftQueries}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-3 text-sm font-semibold text-white transition hover:bg-emerald-800"
+          >
+            <Workflow className="h-4 w-4" aria-hidden />
+            Generate draft DB queries
+          </button>
+        </div>
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+          {canonicalSearchDatabases.map((database) => (
+            <label
+              key={database}
+              className="flex min-h-11 items-center gap-2 rounded-md border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-800"
+            >
+              <input
+                type="checkbox"
+                checked={selectedDatabases.includes(database)}
+                onChange={() => toggleDatabaseSelection(database)}
+                className="h-4 w-4 accent-emerald-700"
+              />
+              {database}
+            </label>
+          ))}
+        </div>
+        <p className="mt-3 text-xs leading-5 text-emerald-900">
+          PubMed and Cochrane can open with the query in the URL. Embase, Scopus, and Web of Science open the advanced search page; use Copy for the query text.
+        </p>
+      </section>
       <section className="rounded-md border border-zinc-200">
         <div className="flex flex-col gap-3 border-b border-zinc-200 bg-zinc-50 p-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
@@ -1731,7 +1969,7 @@ function SearchStage({
           <div className="flex flex-wrap gap-2">
             <button
             type="button"
-            onClick={() => void navigator.clipboard?.writeText(searchLogCsv(project, queryOverrides))}
+            onClick={() => void navigator.clipboard?.writeText(searchLogCsv(project, queryOverrides, selectedDatabases))}
             className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-sm font-semibold text-zinc-700 transition hover:border-emerald-300 hover:bg-emerald-50"
           >
             <ClipboardList className="h-4 w-4" aria-hidden />
@@ -1740,7 +1978,7 @@ function SearchStage({
             <ProjectFileSaveButton
               projectId={project.id}
               fileName="search-log.csv"
-              contents={() => searchLogCsv(project, queryOverrides)}
+              contents={() => searchLogCsv(project, queryOverrides, selectedDatabases)}
               label="Save CSV"
             />
             <button
@@ -1775,9 +2013,9 @@ function SearchStage({
                 const overrideQuery = queryOverrides[run.database] ?? "";
                 const searchQuery = overrideQuery.trim()
                   ? cleanSearchQueryText(overrideQuery)
-                  : projectSearchQueryForDatabase(project, run.database, run.query);
+                  : draftSearchQueryForDatabase(project, run.database, run.query || pubMedQuery);
                 const runUrl = databaseSearchUrl(run.database, searchQuery, pubMedUrl);
-                const queryIssue = searchQuery ? "" : "DB-specific executable query required. Generic/PubMed draft text is not copied into this database.";
+                const queryIssue = searchQuery ? "" : "Generate a draft query or paste a database-specific query before running this database.";
                 return (
                 <tr key={run.database}>
                   <td className="border-b border-zinc-100 px-4 py-3 font-semibold text-zinc-950">{run.database}</td>
@@ -1826,7 +2064,7 @@ function SearchStage({
                         value={overrideQuery}
                         onChange={(event) => updateQueryOverride(run.database, event.target.value)}
                         rows={3}
-                        placeholder={`${run.database} 전용 검색식을 여기에 붙여넣고 DB queries 저장`}
+                        placeholder={`Paste or edit the ${run.database} query, then save DB queries.`}
                         className="rounded-md border border-zinc-300 bg-white px-2 py-2 text-xs font-normal normal-case leading-5 text-zinc-800 outline-none focus:border-emerald-500"
                       />
                     </label>
@@ -2819,8 +3057,12 @@ function prismaCount(project: MetaStudyProject, step: string) {
   return row?.count === null || row?.count === undefined ? "TBD" : row.count.toLocaleString();
 }
 
-function searchLogCsv(project: MetaStudyProject, queryOverrides: Record<string, string> = {}) {
-  const searchRuns = Array.isArray(project.searchRuns) ? project.searchRuns : [];
+function searchLogCsv(
+  project: MetaStudyProject,
+  queryOverrides: Record<string, string> = {},
+  selectedDatabases = selectedSearchDatabasesForProject(project),
+) {
+  const searchRuns = searchRunsForDatabases(project, selectedDatabases);
   return csvRows([
     ["database", "searched_at", "label", "result_count", "limits", "source", "export_action", "query"],
     ...searchRuns.map((run) => [
@@ -2833,7 +3075,7 @@ function searchLogCsv(project: MetaStudyProject, queryOverrides: Record<string, 
       run.exportAction,
       queryOverrides[run.database]?.trim()
         ? cleanSearchQueryText(queryOverrides[run.database])
-        : projectSearchQueryForDatabase(project, run.database, run.query),
+        : draftSearchQueryForDatabase(project, run.database, run.query),
     ]),
   ]);
 }
@@ -3148,7 +3390,7 @@ function NewTopicWorkspace({ onCreateProject }: { onCreateProject: (project: Met
       population: "",
       exposure: "",
       outcomes: "",
-      databases: "PubMed, Scopus, Web of Science, Embase, Cochrane",
+      databases: "PubMed",
       eligibility: "",
       searchBlocks: starterQuery,
       extractionPlan: "",

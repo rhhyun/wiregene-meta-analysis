@@ -20,6 +20,64 @@ C:\Users\HyunJK\Documents\GitHub\meta.wiregene.com
 - 작업 시작 전 `git -C C:\Users\HyunJK\Documents\GitHub\meta.wiregene.com status --short`와 `git -C C:\Users\HyunJK\Documents\GitHub\meta.wiregene.com pull --ff-only origin main`을 확인한다.
 - 작업 종료 전 lint/typecheck/build, `backup.md` 업데이트, commit/push, Synology 작업스케줄러 명령 확인을 수행한다.
 
+## 2026-06-16 v1.70 Study title and Search Design workflow fix
+
+User-reported problems from another PC at UI v1.69:
+
+- Three studies are in progress, but two study titles are cut in the left menu.
+- `Evidence-informed prediction of preventable post-traumatic disability` still errors when `Search Design` is opened.
+- `Search log for this topic` effectively shows only PubMed, non-PubMed Open links are not useful, and too many DBs are listed before the researcher chooses them.
+- Current AI model setting is `gpt-5-nano`; user asked whether a more suitable API/model should be used.
+
+Changes made in the actual canonical app repo:
+
+- `src/components/MetaStudyWorkspace.tsx`
+  - Split study display title from left-menu label.
+  - Left menu now shows concise labels such as `Post-traumatic disability` or `Musician PRMD pain`.
+  - Main project header uses the full title via `projectFullTitle()` and no longer depends on a truncated `shortTitle`.
+  - New topic creation no longer truncates `title`; only the menu label is shortened.
+  - Added a known repair for the stored title `Evidence-informed prediction of preventable post-traumatic disability`.
+  - Canonical DB list is fixed to PubMed, Embase, Scopus, Web of Science, and Cochrane.
+  - New topics default to PubMed only; the researcher chooses additional DBs in `Search Design`.
+  - Added DB selection state and `Generate draft DB queries`.
+  - Search log, import log, and CSV export now use only the selected DBs.
+  - Added canonical DB normalization for PubMed/PuvMed/MEDLINE, Embase, Scopus, Web of Science/WoS, and Cochrane/CENTRAL.
+  - Fixed the likely Search Design crash by escaping database aliases before building regular expressions.
+  - Non-PubMed DBs now get generated draft syntax from the project query when possible.
+  - Open links are now limited to selected DBs: PubMed/Cochrane open with query URLs; Embase/Scopus/Web of Science open advanced search pages and rely on the Copy query button.
+- `src/lib/version.ts`
+  - UI version `Ver 1.69` -> `Ver 1.70 | 2026 copyright by JK Hyun`.
+- `package.json`, `package-lock.json`
+  - app package version `0.1.34` -> `0.1.35`.
+
+Verification during this work:
+
+```text
+npx tsc --noEmit: pass.
+npm run lint: pass.
+npm run build: pass.
+Browser verification at http://127.0.0.1:3224:
+- Ver 1.70 displayed.
+- Left menu displayed `Post-traumatic disability`; main header displayed full title `Evidence-informed prediction of preventable post-traumatic disability`.
+- Search Design opened without console errors for a project seeded with `PubMed (MEDLINE)`.
+- DB selector showed only PubMed, Embase, Scopus, Web of Science, and Cochrane.
+- Default selected DB was PubMed; after selecting Embase and Scopus, search log/import log showed PubMed, Embase, and Scopus only.
+- `Generate draft DB queries` stored generated PubMed/Embase/Scopus query overrides.
+- Open links resolved to PubMed query URL, Embase advanced search, and Scopus advanced search.
+```
+
+Model/API note:
+
+- The OpenAI API key itself does not change by model. For this app, `gpt-5-nano` is acceptable for low-cost simple parsing, but `gpt-5.4-mini` is the better default for structured study-plan parsing/search-query generation. Use `gpt-5.5` selectively for hard protocol/full-text reasoning where quality is more important than cost.
+
+Synology deploy/run command after push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+No new Synology Task Scheduler job is required for this UI/search fix; use the existing pull/start command after the GitHub push.
+
 ## 2026-06-15 New topic study-isolation fix
 
 사용자 지적:
