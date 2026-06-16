@@ -341,7 +341,14 @@ function createNewTopicProject(draft: NewTopicDraft, sourceText: string, reviewI
       database: item.database,
       searchedAt,
       label: "AI parsed search draft",
-      query: searchQuery,
+      query: projectSearchQueryForDatabase(
+        {
+          id: "draft",
+          searchBlocks: [{ label: "AI parsed search block", role: "Draft search", query: searchQuery }],
+        } as MetaStudyProject,
+        item.database,
+        searchQuery,
+      ),
       resultCount: item.resultCount,
       limits: "Confirm database syntax, year/language limits, and exact run date before protocol lock.",
       source: "New topic AI analysis input",
@@ -747,8 +754,16 @@ function methodSentencesForProject(project: MetaStudyProject) {
 
 function projectSearchQueryForDatabase(project: MetaStudyProject, database: string, runQuery = "") {
   if (isOrchestralPainProject(project)) return orchestralExecutableSearchQuery(database);
+  const labeledQuery = findDatabaseLabeledQuery(
+    [runQuery, ...project.searchBlocks.map((block) => block.query)].filter(Boolean),
+    database,
+  );
+  if (labeledQuery) return databaseSpecificQuery(database, labeledQuery);
+
   const cleanedRunQuery = cleanSearchQueryText(runQuery);
-  if (looksExecutableSearchQuery(cleanedRunQuery)) return databaseSpecificQuery(database, cleanedRunQuery);
+  if (looksExecutableSearchQuery(cleanedRunQuery) && !hasOtherDatabaseLabel(cleanedRunQuery, database)) {
+    return databaseSpecificQuery(database, cleanedRunQuery);
+  }
   const base = project.searchBlocks
     .map((block) => cleanSearchQueryText(block.query))
     .filter(Boolean)
@@ -760,9 +775,18 @@ function projectSearchQueryForDatabase(project: MetaStudyProject, database: stri
 function databaseSpecificQuery(database: string, base: string) {
   const normalized = database.toLowerCase();
   if (!base.trim()) return "";
-  if (normalized.includes("scopus")) return `TITLE-ABS-KEY(${base})`;
-  if (normalized.includes("web of science")) return `TS=(${base})`;
-  if (normalized.includes("embase")) return `${base}\nAND [english]/lim`;
+  if (normalized.includes("scopus")) {
+    if (/TITLE-ABS-KEY\s*\(/i.test(base)) return base;
+    return `TITLE-ABS-KEY(${normalizeCrossDatabaseQuery(base)})`;
+  }
+  if (normalized.includes("web of science")) {
+    if (/\bTS\s*=/i.test(base)) return base;
+    return `TS=(${normalizeCrossDatabaseQuery(base)})`;
+  }
+  if (normalized.includes("embase")) {
+    if (/:ti,ab|\[english\]\/lim|\/exp/i.test(base)) return base;
+    return `${normalizeCrossDatabaseQuery(base)}\nAND [english]/lim`;
+  }
   if (normalized.includes("cochrane")) return base;
   return base;
 }
@@ -774,7 +798,7 @@ function cleanSearchQueryText(value: string) {
     .map((line) =>
       line
         .replace(
-          /^\s*(?:core search concept|search concept|search block|ai parsed search block|draft search|population|exposure|intervention|outcome|condition|database query)\s*[:：-]\s*/i,
+          /^\s*(?:(?:pubmed|medline|scopus|web of science|wos|embase|cochrane|central)\s+)?(?:core search concept|search concept|search block|ai parsed search block|draft search|search|query|strategy|population|exposure|intervention|outcome|condition|database query)\s*[:：-]\s*/i,
           "",
         )
         .trim(),
@@ -786,8 +810,65 @@ function cleanSearchQueryText(value: string) {
 
 function looksExecutableSearchQuery(value: string) {
   if (!value.trim()) return false;
-  if (/core search concept|search concept|write a query|copy this/i.test(value)) return false;
+  if (/core search concept|search concept|write a query|copy this|draft search\s*[:：-]/i.test(value)) return false;
   return /\b(AND|OR|NOT)\b|["()[\]*]/i.test(value);
+}
+
+function normalizeCrossDatabaseQuery(value: string) {
+  return value
+    .replace(/\[[^\]]*(?:Title\/Abstract|tiab|MeSH Terms|Mesh|Language)[^\]]*\]/gi, "")
+    .replace(/\benglish\s*(?:\[Language\])?/gi, "")
+    .replace(/NOT\s*\(\s*animals\s*\[MeSH Terms\]\s*NOT\s*humans\s*\[MeSH Terms\]\s*\)/gi, "")
+    .replace(/\s+/g, " ")
+    .replace(/\(\s+\)/g, "")
+    .trim();
+}
+
+function databaseAliases(database: string) {
+  const normalized = database.toLowerCase();
+  if (normalized.includes("pubmed")) return ["pubmed", "medline"];
+  if (normalized.includes("scopus")) return ["scopus"];
+  if (normalized.includes("web of science")) return ["web of science", "wos"];
+  if (normalized.includes("embase")) return ["embase"];
+  if (normalized.includes("cochrane")) return ["cochrane", "central"];
+  return [normalized];
+}
+
+function isDatabaseHeading(line: string) {
+  return /^\s*(?:pubmed|medline|scopus|web of science|wos|embase|cochrane|central)\b.*(?:search|query|strategy|draft)?\s*[:：-]/i.test(line);
+}
+
+function hasOtherDatabaseLabel(value: string, database: string) {
+  const aliases = databaseAliases(database);
+  return value
+    .split("\n")
+    .some((line) => isDatabaseHeading(line) && !aliases.some((alias) => new RegExp(`^\\s*${alias}\\b`, "i").test(line)));
+}
+
+function findDatabaseLabeledQuery(values: string[], database: string) {
+  const aliases = databaseAliases(database);
+  for (const value of values) {
+    const lines = value.replace(/\r\n/g, "\n").split("\n");
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index];
+      const isTargetHeading =
+        isDatabaseHeading(line) &&
+        aliases.some((alias) => new RegExp(`^\\s*${alias}\\b`, "i").test(line));
+      if (!isTargetHeading) continue;
+
+      const [, inline = ""] = line.split(/[:：-]\s*/, 2);
+      const collected = [inline];
+      for (let cursor = index + 1; cursor < lines.length; cursor += 1) {
+        const nextLine = lines[cursor];
+        if (isDatabaseHeading(nextLine) || /^\s*(?:export|notes?|recommended|count|results?)\b/i.test(nextLine)) break;
+        collected.push(nextLine);
+      }
+
+      const cleaned = cleanSearchQueryText(collected.join("\n"));
+      if (cleaned) return cleaned;
+    }
+  }
+  return "";
 }
 
 function orchestralExecutableSearchQuery(database: string) {
