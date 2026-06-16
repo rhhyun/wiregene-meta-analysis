@@ -1,9 +1,15 @@
 import type { Dirent } from "fs";
 import { promises as fs } from "fs";
 import path from "path";
+import { getGoogleDriveAuthMode } from "./google-drive-config";
+import {
+  readTextFileFromGoogleDrive,
+  writeTextFileToGoogleDrive,
+} from "./google-drive-storage";
 
 const defaultProjectStorageRoot = ".data/meta/projects";
 const defaultUserProjectsFile = ".data/meta/user-study-projects.json";
+const defaultUserProjectsDriveFileName = "meta-user-study-projects.json";
 const maxProjectTextFileBytes = 25 * 1024 * 1024;
 const allowedTextFileExtensions = new Set([".csv", ".json", ".md", ".txt", ".tsv"]);
 
@@ -37,33 +43,40 @@ type UserProjectFile = {
   updatedAt?: string;
 };
 
+type MetaUserProjectsStorageBackend = "local-json" | "google-drive";
+
+export type MetaUserProjectsStorageSummary = {
+  backend: MetaUserProjectsStorageBackend;
+  path: string;
+};
+
 export async function readStoredMetaStudyProjects<T>(): Promise<T[]> {
-  const filePath = userProjectsFilePath();
+  const raw = await readUserProjectsStorageText();
+  if (!raw) return [];
+
   try {
-    const raw = await fs.readFile(filePath, "utf8");
     const parsed = JSON.parse(raw) as Partial<UserProjectFile>;
     return Array.isArray(parsed.projects) ? (parsed.projects as T[]) : [];
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    if (error instanceof SyntaxError) {
+      await backupCorruptUserProjectsFile(raw, error);
+      return [];
+    }
     throw error;
   }
 }
 
 export async function writeStoredMetaStudyProjects<T extends { id?: string }>(projects: T[]): Promise<T[]> {
-  if (isServerlessRuntime()) {
-    throw new Error(
-      "Meta study project storage cannot write to a read-only serverless filesystem. Use the Synology/local Docker deployment or configure a writable project storage backend.",
-    );
-  }
-
   const normalized = dedupeProjects(projects).slice(0, 30);
-  const filePath = userProjectsFilePath();
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-  await writeTextFileAtomically(
-    filePath,
-    JSON.stringify({ updatedAt: new Date().toISOString(), projects: normalized }, null, 2),
-  );
+  await writeUserProjectsStorageText(JSON.stringify({ updatedAt: new Date().toISOString(), projects: normalized }, null, 2));
   return normalized;
+}
+
+export function getMetaUserProjectsStorageSummary(): MetaUserProjectsStorageSummary {
+  return {
+    backend: userProjectsStorageBackend(),
+    path: userProjectsStorageLocation(),
+  };
 }
 
 export async function getMetaProjectStorageSummary(projectId: string): Promise<MetaProjectStorageSummary> {
@@ -132,6 +145,97 @@ function projectStorageRoot() {
 function userProjectsFilePath() {
   const configured = process.env.META_USER_PROJECTS_FILE?.trim() || defaultUserProjectsFile;
   return path.resolve(/*turbopackIgnore: true*/ process.cwd(), configured);
+}
+
+function userProjectsStorageBackend(): MetaUserProjectsStorageBackend {
+  const configured = process.env.META_USER_PROJECTS_STORAGE_BACKEND?.trim().toLowerCase();
+  if (configured === "local-json" || configured === "google-drive") return configured;
+
+  const inherited = (process.env.META_PROJECT_STORAGE_BACKEND ?? process.env.REPORT_STORAGE_BACKEND ?? "").trim().toLowerCase();
+  if (inherited === "local-json" || inherited === "google-drive") return inherited;
+
+  if (isServerlessRuntime() && getGoogleDriveAuthMode()) return "google-drive";
+  return "local-json";
+}
+
+function userProjectsDriveFileName() {
+  return (
+    process.env.META_USER_PROJECTS_DRIVE_FILENAME?.trim() ||
+    path.basename(process.env.META_USER_PROJECTS_FILE?.trim() || defaultUserProjectsFile) ||
+    defaultUserProjectsDriveFileName
+  );
+}
+
+function userProjectsDriveFileId() {
+  return process.env.META_USER_PROJECTS_DRIVE_FILE_ID?.trim() ?? "";
+}
+
+function userProjectsStorageLocation() {
+  return userProjectsStorageBackend() === "google-drive" ? `google-drive:${userProjectsDriveFileName()}` : userProjectsFilePath();
+}
+
+async function readUserProjectsStorageText() {
+  if (userProjectsStorageBackend() === "google-drive") {
+    ensureGoogleDriveUserProjectsStorageConfigured("read");
+    return readTextFileFromGoogleDrive(userProjectsDriveFileName(), userProjectsDriveFileId());
+  }
+
+  try {
+    return await fs.readFile(userProjectsFilePath(), "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+async function writeUserProjectsStorageText(contents: string) {
+  if (userProjectsStorageBackend() === "google-drive") {
+    ensureGoogleDriveUserProjectsStorageConfigured("write");
+    await writeTextFileToGoogleDrive(userProjectsDriveFileName(), contents, userProjectsDriveFileId());
+    return;
+  }
+
+  const filePath = userProjectsFilePath();
+  if (isServerlessRuntime()) {
+    throw new Error(
+      "Meta study project storage cannot write to a read-only serverless filesystem. Set META_USER_PROJECTS_STORAGE_BACKEND=google-drive with Google Drive credentials, or run the app on Synology/local Docker with a writable data volume.",
+    );
+  }
+
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await writeTextFileAtomically(filePath, contents);
+}
+
+async function backupCorruptUserProjectsFile(raw: string, parseError: SyntaxError) {
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  if (userProjectsStorageBackend() === "google-drive") {
+    const backupName = `${userProjectsDriveFileName()}.corrupt-${stamp}`;
+    try {
+      await writeTextFileToGoogleDrive(backupName, raw);
+      return;
+    } catch (error) {
+      throw new Error(`Meta study project storage backup failed: ${error instanceof Error ? error.message : String(error)}; cause: ${parseError.message}`);
+    }
+  }
+
+  const filePath = userProjectsFilePath();
+  const backupPath = `${filePath}.corrupt-${stamp}`;
+  try {
+    await fs.rename(filePath, backupPath);
+  } catch (error) {
+    throw new Error(`Meta study project storage corrupt backup failed: ${error instanceof Error ? error.message : String(error)}; cause: ${parseError.message}`);
+  }
+}
+
+function ensureGoogleDriveUserProjectsStorageConfigured(operation: "read" | "write") {
+  if (getGoogleDriveAuthMode()) return;
+  throw new Error(
+    [
+      `Meta study project storage ${operation} failed because Google Drive is not configured.`,
+      "Set META_USER_PROJECTS_STORAGE_BACKEND=google-drive with GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET, and GOOGLE_DRIVE_REFRESH_TOKEN.",
+      "For service-account storage, set GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON with GOOGLE_DRIVE_FOLDER_ID.",
+    ].join(" "),
+  );
 }
 
 function dedupeProjects<T extends { id?: string }>(projects: T[]) {

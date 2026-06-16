@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import {
+  getMetaUserProjectsStorageSummary,
   readStoredMetaStudyProjects,
   writeStoredMetaStudyProjects,
 } from "@/lib/meta-project-storage";
@@ -20,9 +21,20 @@ const projectsSchema = z.object({
 });
 
 export async function GET() {
-  return NextResponse.json({
-    projects: await readStoredMetaStudyProjects<MetaStudyProject>(),
-  });
+  try {
+    return NextResponse.json({
+      projects: await readStoredMetaStudyProjects<MetaStudyProject>(),
+      storage: getMetaUserProjectsStorageSummary(),
+    });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: error instanceof Error ? error.message : "Meta study projects could not be loaded.",
+        storage: getMetaUserProjectsStorageSummary(),
+      },
+      { status: 500 },
+    );
+  }
 }
 
 export async function PUT(request: Request) {
@@ -34,8 +46,18 @@ export async function PUT(request: Request) {
     );
   }
 
-  const projects = await writeStoredMetaStudyProjects(
-    parsed.data.projects as MetaStudyProject[],
-  );
-  return NextResponse.json({ ok: true, projects });
+  try {
+    const projects = await writeStoredMetaStudyProjects(
+      parsed.data.projects as MetaStudyProject[],
+    );
+    return NextResponse.json({ ok: true, projects, storage: getMetaUserProjectsStorageSummary() });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: error instanceof Error ? error.message : "Meta study projects could not be saved.",
+        storage: getMetaUserProjectsStorageSummary(),
+      },
+      { status: 500 },
+    );
+  }
 }

@@ -76,7 +76,89 @@ Synology deploy/run command after push:
 git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
 ```
 
+Verification:
+
+```text
+npx tsc --noEmit: pass.
+npm run lint: pass.
+npm run build: pass.
+Browser verification at http://127.0.0.1:3225:
+- Ver 1.71 displayed.
+- Left sidebar displayed the study-list storage location notice.
+- /api/meta-analysis/projects GET returned projects plus storage diagnostics.
+- Temporary PUT created one shared project, GET returned count=1, reset PUT returned ok=true.
+- Browser console error log was empty.
+```
+
 No new Synology Task Scheduler job is required for this UI/search fix; use the existing pull/start command after the GitHub push.
+
+## 2026-06-17 v1.71 Shared study-list storage fix
+
+User-reported problem:
+
+- On another PC, `meta.wiregene.com` showed only one built-in study even though three studies had been created previously.
+
+Root cause:
+
+- The previous storage work saved project CSV/export files to project folders and added a server API for the study list.
+- However, the study-list registry still defaulted to local JSON at `.data/meta/user-study-projects.json`.
+- On Synology/local Docker that can be shared if the same server/data volume is used.
+- On Vercel/serverless or a browser-only workflow, new user-created studies can remain in browser `localStorage` or fail server write silently, so another PC sees only the built-in Study 1.
+
+Changes made:
+
+- `src/lib/meta-project-storage.ts`
+  - Added shared user-study-list storage backend support.
+  - New env:
+    - `META_USER_PROJECTS_STORAGE_BACKEND=local-json|google-drive`
+    - `META_USER_PROJECTS_FILE=.data/meta/user-study-projects.json`
+    - `META_USER_PROJECTS_DRIVE_FILENAME=meta-user-study-projects.json`
+    - `META_USER_PROJECTS_DRIVE_FILE_ID=`
+  - On serverless with Google Drive credentials, the study list automatically uses Google Drive if no explicit backend is set.
+  - Google Drive corrupt JSON is backed up before resetting to an empty registry.
+- `src/app/api/meta-analysis/projects/route.ts`
+  - GET/PUT now return storage location diagnostics.
+  - GET/PUT return clear 500 JSON errors instead of falling through silently.
+- `src/components/MetaStudyWorkspace.tsx`
+  - Study-list save/load failures are now shown in the left sidebar.
+  - Successful load/save shows the active storage backend/path.
+  - Existing local browser projects are still merged back to the shared registry when that PC opens the updated app.
+- `.env.example`, `synology/docker/meta/.env.example`, `scripts/synology-start-meta.sh`, `SERVICE.md`
+  - Documented and wired the new shared study-list storage env variables.
+- `src/lib/version.ts`
+  - UI version `Ver 1.70` -> `Ver 1.71 | 2026 copyright by JK Hyun`.
+- `package.json`, `package-lock.json`
+  - app package version `0.1.35` -> `0.1.36`.
+
+Operational note:
+
+- If the two missing studies exist only in one PC's browser localStorage, they cannot be reconstructed from GitHub alone.
+- After v1.71 is deployed and shared storage is configured, open `meta.wiregene.com` once on the PC that still shows all three studies. The app will merge that local list into the shared registry.
+- Then other PCs should reload and see the same study list.
+
+Recommended Vercel/serverless env for multi-PC study list sync:
+
+```text
+META_USER_PROJECTS_STORAGE_BACKEND=google-drive
+META_USER_PROJECTS_DRIVE_FILENAME=meta-user-study-projects.json
+GOOGLE_DRIVE_CLIENT_ID=<oauth-client-id>
+GOOGLE_DRIVE_CLIENT_SECRET=<oauth-client-secret>
+GOOGLE_DRIVE_REFRESH_TOKEN=<oauth-refresh-token>
+GOOGLE_DRIVE_FOLDER_ID=<target-folder-id>
+```
+
+Synology/local Docker can use:
+
+```text
+META_USER_PROJECTS_STORAGE_BACKEND=local-json
+META_USER_PROJECTS_FILE=.data/meta/user-study-projects.json
+```
+
+Synology deploy/run command after push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
 
 ## 2026-06-15 New topic study-isolation fix
 

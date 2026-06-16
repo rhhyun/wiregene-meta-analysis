@@ -170,6 +170,10 @@ type ProjectFileSaveResponse = {
 type UserMetaProjectsResponse = {
   ok?: boolean;
   projects?: MetaStudyProject[];
+  storage?: {
+    backend: "local-json" | "google-drive";
+    path: string;
+  };
   error?: string;
 };
 
@@ -1261,6 +1265,8 @@ export function MetaStudyWorkspace({
   const [stage, setStage] = useState<MetaStudyStage>("overview");
   const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
   const [projectMenuCollapsed, setProjectMenuCollapsed] = useState(false);
+  const [projectSyncNotice, setProjectSyncNotice] = useState("");
+  const [projectSyncError, setProjectSyncError] = useState("");
   const allProjects = useMemo(() => mergeMetaStudyProjects(userProjects, metaStudyProjects), [userProjects]);
 
   const selectedProject = useMemo(
@@ -1270,13 +1276,19 @@ export function MetaStudyWorkspace({
 
   const saveUserProjects = useCallback(async (projects: MetaStudyProject[]) => {
     try {
-      await fetch("/api/meta-analysis/projects", {
+      const response = await fetch("/api/meta-analysis/projects", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projects }),
       });
-    } catch {
-      // Keep the local copy; the next successful load will merge it back.
+      const payload = (await response.json().catch(() => ({}))) as UserMetaProjectsResponse;
+      if (!response.ok) throw new Error(payload.error || "Failed to save meta study projects.");
+      const storageLabel = payload.storage ? `${payload.storage.backend}: ${payload.storage.path}` : "shared storage";
+      setProjectSyncError("");
+      setProjectSyncNotice(`Study list synced to ${storageLabel}.`);
+    } catch (caught) {
+      setProjectSyncNotice("");
+      setProjectSyncError(caught instanceof Error ? caught.message : "Study list could not be synced to shared storage.");
     }
   }, []);
 
@@ -1292,6 +1304,10 @@ export function MetaStudyWorkspace({
         const serverProjects = Array.isArray(payload.projects) ? payload.projects : [];
         if (cancelled) return;
 
+        if (payload.storage) {
+          setProjectSyncNotice(`Study list loaded from ${payload.storage.backend}: ${payload.storage.path}.`);
+          setProjectSyncError("");
+        }
         setUserProjects((current) => {
           const next = mergeMetaStudyProjects(serverProjects, current);
           window.localStorage.setItem(userMetaProjectsStorageKey, JSON.stringify(next));
@@ -1301,8 +1317,8 @@ export function MetaStudyWorkspace({
           if (serverProjects.length < next.length) void saveUserProjects(next);
           return next;
         });
-      } catch {
-        // Local browser drafts still work when server-side storage is unavailable.
+      } catch (caught) {
+        setProjectSyncError(caught instanceof Error ? caught.message : "Shared study list could not be loaded; using this browser only.");
       }
     }
 
@@ -1445,6 +1461,16 @@ export function MetaStudyWorkspace({
             연구별 protocol, search, screening, extraction, analysis를 분리해 저장하고, 기존 검색 시스템은 건드리지 않습니다.
           </p>
         </div>
+        {projectSyncError && !projectMenuCollapsed ? (
+          <div className="mt-3 rounded-md border border-rose-200 bg-rose-50 p-3 text-xs font-semibold leading-5 text-rose-900">
+            Study list sync failed: {projectSyncError}
+          </div>
+        ) : null}
+        {projectSyncNotice && !projectSyncError && !projectMenuCollapsed ? (
+          <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-xs font-semibold leading-5 text-emerald-900">
+            {projectSyncNotice}
+          </div>
+        ) : null}
       </aside>
 
       <section className="min-w-0">

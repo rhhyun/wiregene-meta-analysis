@@ -101,3 +101,17 @@ In the Synology Docker package this path is bind-mounted to:
 Set `META_PROJECT_STORAGE_ROOT` only to a writable path visible inside the
 container. The default `.data/meta/projects` is recommended for Synology because
 it stays inside the existing `/volume1/docker/meta/data` runtime volume.
+
+## Shared Meta Study List Storage
+
+The left-menu study list is a project registry, not a CSV/export file. It is
+stored separately from `META_PROJECT_STORAGE_ROOT`.
+
+- Local/Synology default: `META_USER_PROJECTS_STORAGE_BACKEND=local-json` with
+  `META_USER_PROJECTS_FILE=.data/meta/user-study-projects.json`.
+- Vercel/serverless or multi-PC sharing: set
+  `META_USER_PROJECTS_STORAGE_BACKEND=google-drive` plus Google Drive
+  credentials. The default Drive file name is `meta-user-study-projects.json`.
+- If a study exists only in one browser's localStorage, open that PC once after
+  the shared backend is configured. The app merges the browser list back into
+  the shared project registry.
