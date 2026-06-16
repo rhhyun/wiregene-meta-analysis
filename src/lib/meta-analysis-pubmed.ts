@@ -41,7 +41,7 @@ export function buildSystematicPubMedQuery(blocks: PubMedQueryBlock[] = pubMedSy
     .filter((block) => block.includedInFinal !== false)
     .map((block) => `(${block.query})`)
     .join(" AND ");
-  return `${combinedBlocks} ${pubMedHumanFilter} AND ${pubMedEnglishFilter}`;
+  return `${combinedBlocks} AND ${pubMedHumanFilter} AND ${pubMedEnglishFilter}`;
 }
 
 export function buildPubMedSearchUrl(query: string) {

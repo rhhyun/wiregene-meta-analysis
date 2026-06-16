@@ -32,7 +32,7 @@ import { MetaExtractionDatasetPanel } from "@/components/MetaExtractionDatasetPa
 import { MetaFullTextAssistant } from "@/components/MetaFullTextAssistant";
 import type { CurrentWiregeneUser } from "@/lib/auth-session";
 import { summarizeImportedRecords, type ImportedRecord } from "@/lib/meta-analysis-records";
-import { buildPubMedSearchUrl } from "@/lib/meta-analysis-pubmed";
+import { buildPubMedSearchUrl, buildSystematicPubMedQuery } from "@/lib/meta-analysis-pubmed";
 import {
   metaStudyProjects,
   metaStudyStages,
@@ -746,15 +746,88 @@ function methodSentencesForProject(project: MetaStudyProject) {
 }
 
 function projectSearchQueryForDatabase(project: MetaStudyProject, database: string, runQuery = "") {
-  if (runQuery.trim()) return runQuery.trim();
-  const base = project.searchBlocks.map((block) => `(${block.query})`).join(" AND ");
+  if (isOrchestralPainProject(project)) return orchestralExecutableSearchQuery(database);
+  const cleanedRunQuery = cleanSearchQueryText(runQuery);
+  if (looksExecutableSearchQuery(cleanedRunQuery)) return databaseSpecificQuery(database, cleanedRunQuery);
+  const base = project.searchBlocks
+    .map((block) => cleanSearchQueryText(block.query))
+    .filter(Boolean)
+    .map((query) => `(${query})`)
+    .join(" AND ");
+  return databaseSpecificQuery(database, base);
+}
+
+function databaseSpecificQuery(database: string, base: string) {
   const normalized = database.toLowerCase();
-  if (normalized.includes("pubmed")) return base;
+  if (!base.trim()) return "";
   if (normalized.includes("scopus")) return `TITLE-ABS-KEY(${base})`;
   if (normalized.includes("web of science")) return `TS=(${base})`;
   if (normalized.includes("embase")) return `${base}\nAND [english]/lim`;
   if (normalized.includes("cochrane")) return base;
   return base;
+}
+
+function cleanSearchQueryText(value: string) {
+  return value
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) =>
+      line
+        .replace(
+          /^\s*(?:core search concept|search concept|search block|ai parsed search block|draft search|population|exposure|intervention|outcome|condition|database query)\s*[:：-]\s*/i,
+          "",
+        )
+        .trim(),
+    )
+    .filter((line) => line && !/^use this|^copy this|^notes?:/i.test(line))
+    .join("\n")
+    .trim();
+}
+
+function looksExecutableSearchQuery(value: string) {
+  if (!value.trim()) return false;
+  if (/core search concept|search concept|write a query|copy this/i.test(value)) return false;
+  return /\b(AND|OR|NOT)\b|["()[\]*]/i.test(value);
+}
+
+function orchestralExecutableSearchQuery(database: string) {
+  const normalized = database.toLowerCase();
+  if (normalized.includes("pubmed")) return buildSystematicPubMedQuery();
+  if (normalized.includes("scopus")) {
+    return [
+      'TITLE-ABS-KEY(musician* OR instrumentalist* OR orchestra* OR "performing artist")',
+      'TITLE-ABS-KEY(violin* OR viola* OR cello* OR "double bass" OR contrabass OR flute* OR guitar* OR mandolin* OR clarinet* OR oboe* OR bassoon* OR trumpet* OR trombone* OR "french horn" OR percussion* OR piano* OR harp*)',
+      'TITLE-ABS-KEY(pain OR musculoskeletal OR PRMD OR "playing-related" OR "playing-related musculoskeletal disorder*" OR "performance-related musculoskeletal disorder*" OR overuse OR injury OR disorder* OR "repetitive strain" OR "overuse syndrome")',
+      "PUBYEAR > 1989",
+      'LIMIT-TO(LANGUAGE, "English")',
+    ].join(" AND ");
+  }
+  if (normalized.includes("web of science")) {
+    return [
+      'TS=(musician* OR instrumentalist* OR orchestra* OR "performing artist")',
+      'TS=(violin* OR viola* OR cello* OR "double bass" OR contrabass OR flute* OR guitar* OR mandolin* OR clarinet* OR oboe* OR bassoon* OR trumpet* OR trombone* OR "french horn" OR horn OR percussion* OR piano* OR harp*)',
+      'TS=(pain OR musculoskeletal OR PRMD OR "playing-related" OR "playing-related musculoskeletal disorder*" OR "performance-related musculoskeletal disorder*" OR overuse OR injury OR disorder* OR "repetitive strain" OR "overuse syndrome")',
+      "PY=(1990-2026)",
+    ].join(" AND ");
+  }
+  if (normalized.includes("embase")) {
+    return [
+      "('musician'/exp OR musician*:ti,ab OR instrumentalist*:ti,ab OR orchestra*:ti,ab OR 'performing artist':ti,ab)",
+      "('violin'/exp OR violin*:ti,ab OR viola*:ti,ab OR cello*:ti,ab OR 'double bass':ti,ab OR contrabass:ti,ab OR flute*:ti,ab OR guitar*:ti,ab OR mandolin*:ti,ab OR clarinet*:ti,ab OR oboe*:ti,ab OR bassoon*:ti,ab OR trumpet*:ti,ab OR trombone*:ti,ab OR 'french horn':ti,ab OR horn:ti,ab OR percussion*:ti,ab OR piano*:ti,ab OR harp*:ti,ab)",
+      "('musculoskeletal pain'/exp OR 'musculoskeletal disease'/exp OR pain:ti,ab OR musculoskeletal:ti,ab OR prmd:ti,ab OR 'playing-related':ti,ab OR 'playing-related musculoskeletal disorder*':ti,ab OR 'performance-related musculoskeletal disorder*':ti,ab OR overuse:ti,ab OR injury:ti,ab OR disorder*:ti,ab OR 'repetitive strain':ti,ab OR 'overuse syndrome':ti,ab)",
+      "[english]/lim",
+      "[1990-2026]/py",
+    ].join(" AND ");
+  }
+  if (normalized.includes("cochrane")) {
+    return [
+      '#1 musician* OR instrumentalist* OR orchestra* OR "performing artist"',
+      '#2 violin* OR viola* OR cello* OR "double bass" OR contrabass OR flute* OR guitar* OR mandolin* OR clarinet* OR oboe* OR bassoon* OR trumpet* OR trombone* OR "french horn" OR horn OR percussion* OR piano* OR harp*',
+      '#3 pain OR musculoskeletal OR PRMD OR "playing-related" OR "playing-related musculoskeletal disorder*" OR "performance-related musculoskeletal disorder*" OR overuse OR injury OR disorder* OR "repetitive strain" OR "overuse syndrome"',
+      "#4 #1 AND #2 AND #3",
+    ].join("\n");
+  }
+  return buildSystematicPubMedQuery();
 }
 
 function databaseSearchUrl(database: string, query: string, pubMedUrl?: string) {
