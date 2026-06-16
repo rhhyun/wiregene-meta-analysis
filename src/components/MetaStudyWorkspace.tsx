@@ -31,6 +31,7 @@ import { MetaAiSettingsPanel } from "@/components/MetaAiSettingsPanel";
 import { MetaExtractionDatasetPanel } from "@/components/MetaExtractionDatasetPanel";
 import { MetaFullTextAssistant } from "@/components/MetaFullTextAssistant";
 import type { CurrentWiregeneUser } from "@/lib/auth-session";
+import { summarizeImportedRecords, type ImportedRecord } from "@/lib/meta-analysis-records";
 import { buildPubMedSearchUrl } from "@/lib/meta-analysis-pubmed";
 import {
   metaStudyProjects,
@@ -744,14 +745,97 @@ function methodSentencesForProject(project: MetaStudyProject) {
   return isOrchestralPainProject(project) ? methodSentences : genericMethodSentences;
 }
 
+function projectSearchQueryForDatabase(project: MetaStudyProject, database: string, runQuery = "") {
+  if (runQuery.trim()) return runQuery.trim();
+  const base = project.searchBlocks.map((block) => `(${block.query})`).join(" AND ");
+  const normalized = database.toLowerCase();
+  if (normalized.includes("pubmed")) return base;
+  if (normalized.includes("scopus")) return `TITLE-ABS-KEY(${base})`;
+  if (normalized.includes("web of science")) return `TS=(${base})`;
+  if (normalized.includes("embase")) return `${base}\nAND [english]/lim`;
+  if (normalized.includes("cochrane")) return base;
+  return base;
+}
+
 function databaseSearchUrl(database: string, query: string, pubMedUrl?: string) {
   const normalized = database.toLowerCase();
-  if (normalized.includes("pubmed")) return pubMedUrl || buildPubMedSearchUrl(query);
+  if (normalized.includes("pubmed")) return query.trim() ? buildPubMedSearchUrl(query) : pubMedUrl || "";
+  if (normalized.includes("cochrane")) {
+    return `https://www.cochranelibrary.com/advanced-search?searchBy=6&searchText=${encodeURIComponent(query)}`;
+  }
   if (normalized.includes("scopus")) return "https://www.scopus.com/search/form.uri?display=advanced";
   if (normalized.includes("web of science")) return "https://www.webofscience.com/wos/woscc/advanced-search";
   if (normalized.includes("embase")) return "https://www.embase.com/search/quick";
-  if (normalized.includes("cochrane")) return "https://www.cochranelibrary.com/advanced-search";
   return "";
+}
+
+const searchExportGuidance = [
+  ["PubMed", "NBIB or RIS", "Keep PMID, DOI, title, abstract, publication type, year."],
+  ["Scopus", "RIS preferred; CSV acceptable", "Keep EID, DOI, title, abstract, source title, year, document type."],
+  ["Web of Science", "RIS/EndNote or tab-delimited full record", "Keep accession number, DOI, title, abstract, document type."],
+  ["Embase", "RIS preferred; CSV acceptable", "Keep Embase ID, DOI, PMID if present, Emtree terms, document type."],
+  ["Cochrane", "RIS", "Keep CENTRAL/review source tag and record type."],
+];
+
+type SearchUploadFileSummary = {
+  fileName: string;
+  database: string;
+  rawCount: number;
+  uniqueCount: number;
+  duplicateCount: number;
+};
+
+type SearchUploadSummary = {
+  files: SearchUploadFileSummary[];
+  rawCount: number;
+  uniqueCount: number;
+  duplicateCount: number;
+  mechanicallyExcluded: Array<ImportedRecord & { exclusionReason: string }>;
+  screeningReady: ImportedRecord[];
+};
+
+function inferDatabaseFromFileName(fileName: string) {
+  const normalized = fileName.toLowerCase();
+  if (normalized.includes("pubmed") || normalized.includes("nbib")) return "PubMed";
+  if (normalized.includes("scopus")) return "Scopus";
+  if (normalized.includes("wos") || normalized.includes("web-of-science") || normalized.includes("webofscience")) return "Web of Science";
+  if (normalized.includes("embase")) return "Embase";
+  if (normalized.includes("cochrane") || normalized.includes("central")) return "Cochrane";
+  return "Unknown";
+}
+
+function mechanicalExclusionReason(record: ImportedRecord) {
+  const text = `${record.title}\n${record.raw}`.toLowerCase();
+  const rules: Array<[RegExp, string]> = [
+    [/\b(review|systematic review|meta-analysis|scoping review|narrative review)\b/, "review/meta-analysis"],
+    [/\b(letter|editorial|comment|commentary|reply)\b/, "letter/editorial/comment"],
+    [/\b(conference abstract|meeting abstract|conference paper|abstract only)\b/, "conference abstract"],
+    [/\b(book chapter|chapter)\b/, "book chapter"],
+    [/\b(case report)\b/, "case report"],
+    [/\b(protocol)\b/, "protocol"],
+  ];
+  return rules.find(([pattern]) => pattern.test(text))?.[1] ?? "";
+}
+
+function searchUploadMasterCsv(summary: SearchUploadSummary | null) {
+  if (!summary) return "";
+  return csvRows([
+    ["status", "exclusion_reason", "dedup_key", "title", "raw_record"],
+    ...summary.screeningReady.map((record) => [
+      "screening_ready",
+      "",
+      record.key,
+      record.title,
+      record.raw,
+    ]),
+    ...summary.mechanicallyExcluded.map((record) => [
+      "mechanically_excluded",
+      record.exclusionReason,
+      record.key,
+      record.title,
+      record.raw,
+    ]),
+  ]);
 }
 
 export function MetaStudyWorkspace({
@@ -1262,6 +1346,8 @@ function SearchStage({
   const copy = searchStageCopy(project);
   const [importRows, setImportRows] = useState(() => readStoredJson<Record<string, SearchImportRow>>(storageKey, {}));
   const [importSavedAt, setImportSavedAt] = useState("");
+  const [uploadSummary, setUploadSummary] = useState<SearchUploadSummary | null>(null);
+  const [uploadError, setUploadError] = useState("");
 
   function updateImportRow(database: string, field: "resultCount" | "exportFile" | "notes", value: string) {
     setImportRows((current) => {
@@ -1301,6 +1387,46 @@ function SearchStage({
         importRows[run.database]?.completedAt ?? "",
       ]),
     ]);
+  }
+
+  async function handleSearchExportUpload(files: FileList | null) {
+    const selectedFiles = Array.from(files ?? []);
+    if (selectedFiles.length === 0) return;
+
+    setUploadError("");
+    try {
+      const fileTexts = await Promise.all(
+        selectedFiles.map(async (file) => ({
+          file,
+          text: await file.text(),
+        })),
+      );
+      const filesSummary = fileTexts.map(({ file, text }) => {
+        const summary = summarizeImportedRecords(text);
+        return {
+          fileName: file.name,
+          database: inferDatabaseFromFileName(file.name),
+          rawCount: summary.rawCount,
+          uniqueCount: summary.uniqueCount,
+          duplicateCount: summary.duplicateCount,
+        };
+      });
+      const combined = summarizeImportedRecords(fileTexts.map(({ text }) => text).join("\n\n"));
+      const mechanicallyExcluded = combined.uniqueRecords
+        .map((record) => ({ ...record, exclusionReason: mechanicalExclusionReason(record) }))
+        .filter((record) => record.exclusionReason);
+      const excludedKeys = new Set(mechanicallyExcluded.map((record) => record.key));
+      setUploadSummary({
+        files: filesSummary,
+        rawCount: combined.rawCount,
+        uniqueCount: combined.uniqueCount,
+        duplicateCount: combined.duplicateCount,
+        mechanicallyExcluded,
+        screeningReady: combined.uniqueRecords.filter((record) => !excludedKeys.has(record.key)),
+      });
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : "Search export files could not be read.");
+    }
   }
 
   return (
@@ -1356,7 +1482,8 @@ function SearchStage({
             </thead>
             <tbody>
               {project.searchRuns.map((run) => {
-                const runUrl = databaseSearchUrl(run.database, run.query, pubMedUrl);
+                const searchQuery = projectSearchQueryForDatabase(project, run.database, run.query);
+                const runUrl = databaseSearchUrl(run.database, searchQuery, pubMedUrl);
                 return (
                 <tr key={run.database}>
                   <td className="border-b border-zinc-100 px-4 py-3 font-semibold text-zinc-950">{run.database}</td>
@@ -1382,12 +1509,15 @@ function SearchStage({
                     ) : null}
                     <button
                       type="button"
-                      onClick={() => void navigator.clipboard?.writeText(run.query)}
+                      onClick={() => void navigator.clipboard?.writeText(searchQuery)}
                       className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-zinc-300 px-2 text-xs font-semibold text-zinc-700 transition hover:border-emerald-300 hover:bg-emerald-50"
                     >
                       <ClipboardList className="h-3.5 w-3.5" aria-hidden />
                       복사
                     </button>
+                    <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap rounded-md bg-zinc-50 p-2 text-[11px] leading-4 text-zinc-700">
+                      {searchQuery}
+                    </pre>
                   </td>
                 </tr>
                 );
@@ -1477,6 +1607,106 @@ function SearchStage({
             </tbody>
           </table>
         </div>
+      </section>
+
+      <section className="rounded-md border border-zinc-200 bg-white p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-zinc-950">Search export upload and mechanical cleanup</p>
+            <p className="mt-1 text-sm leading-6 text-zinc-600">
+              Preferred input is RIS for all databases. PubMed NBIB, BibTeX, CSV/TSV, and plain TXT are accepted as fallback. The app normalizes records, deduplicates by DOI/PMID/title, and flags review, letter, editorial, conference abstract, book chapter, case report, and protocol records before title/abstract screening.
+            </p>
+          </div>
+          <label className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-md bg-emerald-700 px-3 text-sm font-semibold text-white transition hover:bg-emerald-800">
+            <FolderOpen className="h-4 w-4" aria-hidden />
+            Upload exports
+            <input
+              type="file"
+              multiple
+              accept=".ris,.nbib,.txt,.csv,.tsv,.bib,.ciw"
+              onChange={(event) => void handleSearchExportUpload(event.target.files)}
+              className="sr-only"
+            />
+          </label>
+        </div>
+        <div className="mt-4 grid gap-3 lg:grid-cols-5">
+          {searchExportGuidance.map(([database, format, note]) => (
+            <div key={database} className="rounded-md border border-zinc-200 bg-zinc-50 p-3">
+              <p className="text-sm font-semibold text-zinc-950">{database}</p>
+              <p className="mt-1 text-xs font-semibold text-emerald-700">{format}</p>
+              <p className="mt-2 text-xs leading-5 text-zinc-600">{note}</p>
+            </div>
+          ))}
+        </div>
+        {uploadError ? (
+          <p className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
+            {uploadError}
+          </p>
+        ) : null}
+        {uploadSummary ? (
+          <div className="mt-4 grid gap-4">
+            <div className="grid gap-3 lg:grid-cols-4">
+              <Metric label="Uploaded raw records" value={uploadSummary.rawCount.toLocaleString()} />
+              <Metric label="Unique after dedup" value={uploadSummary.uniqueCount.toLocaleString()} />
+              <Metric label="Duplicates removed" value={uploadSummary.duplicateCount.toLocaleString()} />
+              <Metric label="Screening ready" value={uploadSummary.screeningReady.length.toLocaleString()} />
+            </div>
+            <div className="overflow-x-auto rounded-md border border-zinc-200">
+              <table className="w-full min-w-[760px] border-collapse text-left text-sm">
+                <thead className="bg-zinc-50 text-xs uppercase text-zinc-500">
+                  <tr>
+                    <th className="border-b border-zinc-200 px-3 py-3">File</th>
+                    <th className="border-b border-zinc-200 px-3 py-3">Database</th>
+                    <th className="border-b border-zinc-200 px-3 py-3">Raw</th>
+                    <th className="border-b border-zinc-200 px-3 py-3">Unique in file</th>
+                    <th className="border-b border-zinc-200 px-3 py-3">Duplicate in file</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {uploadSummary.files.map((file) => (
+                    <tr key={file.fileName}>
+                      <td className="border-b border-zinc-100 px-3 py-3 font-semibold text-zinc-950">{file.fileName}</td>
+                      <td className="border-b border-zinc-100 px-3 py-3 text-zinc-700">{file.database}</td>
+                      <td className="border-b border-zinc-100 px-3 py-3 text-zinc-700">{file.rawCount.toLocaleString()}</td>
+                      <td className="border-b border-zinc-100 px-3 py-3 text-zinc-700">{file.uniqueCount.toLocaleString()}</td>
+                      <td className="border-b border-zinc-100 px-3 py-3 text-zinc-700">{file.duplicateCount.toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void navigator.clipboard?.writeText(searchUploadMasterCsv(uploadSummary))}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-sm font-semibold text-zinc-700 transition hover:border-emerald-300 hover:bg-emerald-50"
+              >
+                <ClipboardList className="h-4 w-4" aria-hidden />
+                Master CSV copy
+              </button>
+              <ProjectFileSaveButton
+                projectId={project.id}
+                fileName="search-master-after-dedup-and-mechanical-filter.csv"
+                contents={() => searchUploadMasterCsv(uploadSummary)}
+                label="Save master CSV"
+              />
+            </div>
+            {uploadSummary.mechanicallyExcluded.length > 0 ? (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
+                <p className="text-sm font-semibold text-amber-900">
+                  Mechanically excluded candidates: {uploadSummary.mechanicallyExcluded.length.toLocaleString()}
+                </p>
+                <ul className="mt-2 grid gap-1 text-xs leading-5 text-amber-900">
+                  {uploadSummary.mechanicallyExcluded.slice(0, 8).map((record) => (
+                    <li key={record.key}>
+                      {record.exclusionReason}: {record.title}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </section>
 
       <section className="grid gap-4 rounded-md border border-emerald-200 bg-emerald-50 p-4 xl:grid-cols-[1fr_16rem]">
@@ -2285,7 +2515,7 @@ function searchLogCsv(project: MetaStudyProject) {
       run.limits,
       run.source,
       run.exportAction,
-      run.query,
+      projectSearchQueryForDatabase(project, run.database, run.query),
     ]),
   ]);
 }

@@ -47,6 +47,11 @@ function splitImportedRecords(text: string) {
     return risBlocks.map((block) => block.trim()).filter(Boolean);
   }
 
+  const nbibBlocks = trimmed.match(/(?:^|\n)PMID-\s+[\s\S]*?(?=\nPMID-\s+|$)/g);
+  if (nbibBlocks?.length) {
+    return nbibBlocks.map((block) => block.trim()).filter(Boolean);
+  }
+
   const bibtexBlocks = trimmed.match(/@\w+\s*{[\s\S]*?(?=\n@\w+\s*{|$)/g);
   if (bibtexBlocks?.length) {
     return bibtexBlocks.map((block) => block.trim()).filter(Boolean);
@@ -75,7 +80,7 @@ function parseImportedRecord(block: string, index: number): ImportedRecord {
 
 function findField(block: string, tags: string[]) {
   for (const tag of tags) {
-    const risMatch = block.match(new RegExp(`^${escapeRegex(tag)}\\s+-\\s*(.+)$`, "im"));
+    const risMatch = block.match(new RegExp(`^${escapeRegex(tag)}\\s*-\\s*(.+)$`, "im"));
     if (risMatch?.[1]) return risMatch[1].trim();
 
     const assignmentMatch = block.match(new RegExp(`${escapeRegex(tag)}\\s*=\\s*[{\"]([^}\"]+)`, "i"));
