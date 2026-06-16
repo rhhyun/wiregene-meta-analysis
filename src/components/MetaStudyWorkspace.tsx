@@ -490,6 +490,88 @@ function initialProtocolDraft(project: MetaStudyProject) {
   };
 }
 
+type ProtocolDraft = ReturnType<typeof initialProtocolDraft>;
+
+const protocolSectionPatterns: Array<{ field: keyof ProtocolDraft; pattern: string }> = [
+  { field: "population", pattern: "populations?|participants?|patients?|study population|pico\\s+population" },
+  { field: "exposure", pattern: "exposures?|interventions?|predictors?|risk factors?|index test|peo\\s+exposure|pico\\s+intervention" },
+  { field: "comparator", pattern: "comparators?|comparisons?|controls?|subgroups?|reference group" },
+  { field: "outcomes", pattern: "outcomes?|endpoints?|primary outcomes?|secondary outcomes?|outcome hierarchy" },
+  { field: "eligibility", pattern: "eligibility|inclusion(?: criteria)?|included studies|study criteria" },
+  { field: "exclusion", pattern: "exclusion(?: criteria| rule| reasons?)?|excluded studies" },
+  { field: "synthesis", pattern: "synthesis(?: plan)?|analysis(?: plan)?|statistical analysis|meta-analysis|modeling plan" },
+];
+
+function cleanProtocolSection(value: string) {
+  return value
+    .replace(/\r/g, "")
+    .split("\n")
+    .map((line) => line.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, "").trim())
+    .filter(Boolean)
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function protocolSentences(value: string) {
+  return value
+    .replace(/\s+/g, " ")
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+}
+
+function findProtocolSectionMatches(text: string) {
+  const matches: Array<{ field: keyof ProtocolDraft; index: number; contentStart: number }> = [];
+
+  for (const section of protocolSectionPatterns) {
+    const regex = new RegExp(
+      `(?:^|\\n)\\s*(?:#{1,6}\\s*)?(?:${section.pattern})\\s*(?:\\([^\\n)]*\\))?\\s*[:：\\-]\\s*`,
+      "gi",
+    );
+    for (const match of text.matchAll(regex)) {
+      matches.push({
+        field: section.field,
+        index: match.index ?? 0,
+        contentStart: (match.index ?? 0) + match[0].length,
+      });
+    }
+  }
+
+  return matches.sort((left, right) => left.index - right.index);
+}
+
+function parseProtocolDraftText(text: string, current: ProtocolDraft): ProtocolDraft {
+  const normalized = text.replace(/\r\n/g, "\n").trim();
+  const parsed: Partial<ProtocolDraft> = {};
+  const matches = findProtocolSectionMatches(normalized);
+
+  matches.forEach((match, index) => {
+    if (parsed[match.field]) return;
+    const next = matches[index + 1];
+    const raw = normalized.slice(match.contentStart, next?.index ?? normalized.length);
+    const cleaned = cleanProtocolSection(raw);
+    if (cleaned) parsed[match.field] = cleaned;
+  });
+
+  const sentences = protocolSentences(normalized);
+  const fillFromSentence = (field: keyof ProtocolDraft, patterns: RegExp[]) => {
+    if (parsed[field]) return;
+    const selected = sentences.filter((sentence) => patterns.some((pattern) => pattern.test(sentence))).slice(0, 3);
+    if (selected.length > 0) parsed[field] = selected.join(" ");
+  };
+
+  fillFromSentence("population", [/\bamong\b/i, /\bpatients?\b/i, /\bparticipants?\b/i, /\bcohort\b/i]);
+  fillFromSentence("exposure", [/\bpredictors?\b/i, /\bexposures?\b/i, /\binterventions?\b/i, /\brisk factors?\b/i]);
+  fillFromSentence("comparator", [/\bcomparators?\b/i, /\bcontrols?\b/i, /\bsubgroups?\b/i, /\bcontrast\b/i]);
+  fillFromSentence("outcomes", [/\boutcomes?\b/i, /\bendpoints?\b/i, /\bprimary\b/i, /\bsecondary\b/i]);
+  fillFromSentence("eligibility", [/\beligib/i, /\binclusion\b/i, /\bincluded\b/i]);
+  fillFromSentence("exclusion", [/\bexclusion\b/i, /\bexcluded\b/i, /\bexclude\b/i]);
+  fillFromSentence("synthesis", [/\bsynthesis\b/i, /\bmeta-analysis\b/i, /\brandom-effects\b/i, /\bmodel\b/i, /\bvalidation\b/i]);
+
+  return { ...current, ...parsed };
+}
+
 function isOrchestralPainProject(project: Pick<MetaStudyProject, "id">) {
   return project.id === "orchestral-prmd-asymmetry";
 }
@@ -1000,6 +1082,7 @@ function ProtocolStage({ project }: { project: MetaStudyProject }) {
   const copy = protocolStageCopy(project);
   const [protocolPaste, setProtocolPaste] = useState("");
   const [savedAt, setSavedAt] = useState("");
+  const [parseNotice, setParseNotice] = useState("");
   const [draft, setDraft] = useState(() => readStoredJson(storageKey, initialProtocolDraft(project)));
 
   function updateProtocolField(field: keyof typeof draft, value: string) {
@@ -1010,6 +1093,25 @@ function ProtocolStage({ project }: { project: MetaStudyProject }) {
     const nextSavedAt = new Date().toISOString();
     window.localStorage.setItem(storageKey, JSON.stringify(draft));
     setSavedAt(nextSavedAt);
+  }
+
+  function parseProtocolPaste() {
+    const input = protocolPaste.trim();
+    if (input.length < 20) {
+      setParseNotice("붙여넣은 protocol 초안이 너무 짧습니다. PICO/PEO, eligibility, synthesis 문장을 포함해 주세요.");
+      return;
+    }
+
+    const nextDraft = parseProtocolDraftText(input, draft);
+    const changedFields = (Object.keys(nextDraft) as Array<keyof ProtocolDraft>).filter(
+      (field) => nextDraft[field] !== draft[field],
+    );
+    setDraft(nextDraft);
+    setParseNotice(
+      changedFields.length > 0
+        ? `자동 parsing 완료: ${changedFields.join(", ")} 항목을 갱신했습니다.`
+        : "자동 parsing을 실행했지만 새로 갱신할 항목을 찾지 못했습니다. 아래 항목을 직접 수정해 주세요.",
+    );
   }
 
   const protocolPrompt = [
@@ -1052,6 +1154,15 @@ function ProtocolStage({ project }: { project: MetaStudyProject }) {
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
+              onClick={parseProtocolPaste}
+              disabled={protocolPaste.trim().length < 20}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-emerald-300 bg-white px-3 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:border-zinc-200 disabled:bg-zinc-100 disabled:text-zinc-400"
+            >
+              <Workflow className="h-4 w-4" aria-hidden />
+              붙여넣은 초안 자동 parsing
+            </button>
+            <button
+              type="button"
               onClick={saveProtocolDraft}
               className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-3 text-sm font-semibold text-white transition hover:bg-emerald-800"
             >
@@ -1064,10 +1175,15 @@ function ProtocolStage({ project }: { project: MetaStudyProject }) {
               className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-emerald-300 bg-white px-3 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100"
             >
               <ClipboardList className="h-4 w-4" aria-hidden />
-              AI 검토 prompt 복사
+              외부 AI 검토 prompt 복사
             </button>
           </div>
         </div>
+        {parseNotice ? (
+          <p className="mt-3 rounded-md border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold text-emerald-800">
+            {parseNotice}
+          </p>
+        ) : null}
         <label className="mt-4 grid gap-2 text-sm font-semibold text-zinc-700">
           AI protocol draft 붙여넣기
           <textarea
