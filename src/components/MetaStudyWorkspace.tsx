@@ -236,13 +236,75 @@ function readStoredJson<T>(key: string, fallback: T): T {
   }
 }
 
+function sanitizeMetaStudyProject(project: MetaStudyProject | null | undefined): MetaStudyProject | null {
+  if (!project?.id) return null;
+  const fallback = metaStudyProjects[0];
+  const searchBlocks = Array.isArray(project.searchBlocks) ? project.searchBlocks : [];
+  const searchRuns = Array.isArray(project.searchRuns) ? project.searchRuns : [];
+  const prismaRows = Array.isArray(project.prismaRows) ? project.prismaRows : [];
+  const workbookSheets = Array.isArray(project.workbookSheets) ? project.workbookSheets : [];
+  const analysisLayers = Array.isArray(project.analysisLayers) ? project.analysisLayers : [];
+
+  return {
+    ...fallback,
+    ...project,
+    shortTitle: project.shortTitle || project.title || fallback.shortTitle,
+    title: project.title || project.shortTitle || fallback.title,
+    status: project.status || "Protocol and PRISMA search design",
+    progress: Number.isFinite(project.progress) ? project.progress : 0,
+    sourcePath: project.sourcePath || "User-saved meta-analysis topic",
+    researchQuestion: project.researchQuestion || "Research question needs PI confirmation.",
+    novelty: project.novelty || "Confirm novelty before protocol lock.",
+    targetJournals: Array.isArray(project.targetJournals) ? project.targetJournals : [],
+    immediateImprovement: Array.isArray(project.immediateImprovement) ? project.immediateImprovement : [],
+    nextActions: Array.isArray(project.nextActions) ? project.nextActions : [],
+    searchBlocks:
+      searchBlocks.length > 0
+        ? searchBlocks
+        : [{ label: "Search query needed", role: "Draft search", query: project.researchQuestion || "" }],
+    searchRuns:
+      searchRuns.length > 0
+        ? searchRuns.map((run) => ({
+            database: run.database || "PubMed",
+            searchedAt: run.searchedAt || new Date().toISOString().slice(0, 10),
+            label: run.label || "Search draft",
+            query: run.query || "",
+            resultCount: Number.isFinite(run.resultCount) ? run.resultCount : 0,
+            limits: run.limits || "Confirm database syntax, date, language, and filters.",
+            source: run.source || "User-saved topic",
+            exportAction: run.exportAction || "Run search and export RIS/NBIB/CSV.",
+          }))
+        : ["PubMed", "Scopus", "Web of Science", "Embase", "Cochrane"].map((database) => ({
+            database,
+            searchedAt: new Date().toISOString().slice(0, 10),
+            label: "Search draft",
+            query: "",
+            resultCount: 0,
+            limits: "Confirm database syntax, date, language, and filters.",
+            source: "Recovered from saved topic without search log",
+            exportAction: "Run search and export RIS/NBIB/CSV.",
+          })),
+    prismaRows,
+    screeningQueue: Array.isArray(project.screeningQueue) ? project.screeningQueue : [],
+    workbookSheets,
+    exposureGroups: Array.isArray(project.exposureGroups) ? project.exposureGroups : [],
+    exposureFeatures: Array.isArray(project.exposureFeatures) ? project.exposureFeatures : [],
+    extractionColumns: Array.isArray(project.extractionColumns) ? project.extractionColumns : [],
+    extractionSections: Array.isArray(project.extractionSections) ? project.extractionSections : [],
+    analysisLayers,
+    manuscriptOutputs: Array.isArray(project.manuscriptOutputs) ? project.manuscriptOutputs : [],
+    references: Array.isArray(project.references) ? project.references : [],
+  };
+}
+
 function mergeMetaStudyProjects(primary: MetaStudyProject[], secondary: MetaStudyProject[]) {
   const seen = new Set<string>();
   const merged: MetaStudyProject[] = [];
   for (const project of [...primary, ...secondary]) {
-    if (!project?.id || seen.has(project.id)) continue;
-    seen.add(project.id);
-    merged.push(project);
+    const sanitizedProject = sanitizeMetaStudyProject(project);
+    if (!sanitizedProject || seen.has(sanitizedProject.id)) continue;
+    seen.add(sanitizedProject.id);
+    merged.push(sanitizedProject);
   }
   return merged.slice(0, 30);
 }
@@ -488,14 +550,18 @@ function initialProtocolDraft(project: MetaStudyProject) {
     };
   }
 
+  const searchBlocks = Array.isArray(project.searchBlocks) ? project.searchBlocks : [];
+  const exposureGroups = Array.isArray(project.exposureGroups) ? project.exposureGroups : [];
+  const immediateImprovement = Array.isArray(project.immediateImprovement) ? project.immediateImprovement : [];
+  const analysisLayers = Array.isArray(project.analysisLayers) ? project.analysisLayers : [];
   return {
-    population: project.searchBlocks.find((block) => block.role.toLowerCase().includes("population"))?.query || project.researchQuestion,
-    exposure: project.exposureGroups.map((group) => `${group.group}: ${group.instruments}`).join("\n") || "Exposure needs confirmation.",
+    population: searchBlocks.find((block) => block.role.toLowerCase().includes("population"))?.query || project.researchQuestion,
+    exposure: exposureGroups.map((group) => `${group.group}: ${group.instruments}`).join("\n") || "Exposure needs confirmation.",
     comparator: "Comparator or subgroup contrast needs PI confirmation.",
-    outcomes: project.searchBlocks.find((block) => block.role.toLowerCase().includes("outcome"))?.query || "Primary and secondary outcomes need confirmation.",
-    eligibility: project.immediateImprovement.join("\n") || "Inclusion criteria need confirmation.",
+    outcomes: searchBlocks.find((block) => block.role.toLowerCase().includes("outcome"))?.query || "Primary and secondary outcomes need confirmation.",
+    eligibility: immediateImprovement.join("\n") || "Inclusion criteria need confirmation.",
     exclusion: "Define exclusion reasons before screening.",
-    synthesis: project.analysisLayers.map((layer) => `${layer.layer}: ${layer.method}. ${layer.purpose}`).join("\n"),
+    synthesis: analysisLayers.map((layer) => `${layer.layer}: ${layer.method}. ${layer.purpose}`).join("\n"),
   };
 }
 
@@ -755,8 +821,9 @@ function methodSentencesForProject(project: MetaStudyProject) {
 
 function projectSearchQueryForDatabase(project: MetaStudyProject, database: string, runQuery = "") {
   if (isOrchestralPainProject(project)) return orchestralExecutableSearchQuery(database);
+  const searchBlocks = Array.isArray(project.searchBlocks) ? project.searchBlocks : [];
   const labeledQuery = findDatabaseLabeledQuery(
-    [runQuery, ...project.searchBlocks.map((block) => block.query)].filter(Boolean),
+    [runQuery, ...searchBlocks.map((block) => block.query)].filter(Boolean),
     database,
   );
   if (labeledQuery) return normalizeDatabaseSpecificQuery(database, labeledQuery);
@@ -769,7 +836,7 @@ function projectSearchQueryForDatabase(project: MetaStudyProject, database: stri
   ) {
     return normalizeDatabaseSpecificQuery(database, cleanedRunQuery);
   }
-  const base = project.searchBlocks
+  const base = searchBlocks
     .map((block) => cleanSearchQueryText(block.query))
     .filter(Boolean)
     .map((query) => `(${query})`)
@@ -1535,6 +1602,7 @@ function SearchStage({
   const [querySavedAt, setQuerySavedAt] = useState("");
   const [uploadSummary, setUploadSummary] = useState<SearchUploadSummary | null>(null);
   const [uploadError, setUploadError] = useState("");
+  const searchRuns = Array.isArray(project.searchRuns) ? project.searchRuns : [];
 
   function updateImportRow(database: string, field: "resultCount" | "exportFile" | "notes", value: string) {
     setImportRows((current) => {
@@ -1552,7 +1620,7 @@ function SearchStage({
   function saveSearchImportLog() {
     const completedAt = new Date().toISOString();
     const nextRows = Object.fromEntries(
-      project.searchRuns.map((run) => {
+      searchRuns.map((run) => {
         const previous = importRows[run.database] ?? { resultCount: "", exportFile: "", notes: "", completedAt: "" };
         return [run.database, { ...previous, completedAt }];
       }),
@@ -1575,7 +1643,7 @@ function SearchStage({
   function searchImportCsv() {
     return csvRows([
       ["database", "original_screenshot_count", "external_result_count", "export_file", "notes", "completed_at"],
-      ...project.searchRuns.map((run) => [
+      ...searchRuns.map((run) => [
         run.database,
         String(run.resultCount),
         importRows[run.database]?.resultCount ?? "",
@@ -1691,7 +1759,7 @@ function SearchStage({
               </tr>
             </thead>
             <tbody>
-              {project.searchRuns.map((run) => {
+              {searchRuns.map((run) => {
                 const overrideQuery = queryOverrides[run.database] ?? "";
                 const searchQuery = overrideQuery.trim()
                   ? cleanSearchQueryText(overrideQuery)
@@ -1805,7 +1873,7 @@ function SearchStage({
               </tr>
             </thead>
             <tbody>
-              {project.searchRuns.map((run) => (
+              {searchRuns.map((run) => (
                 <tr key={run.database}>
                   <td className="border-b border-zinc-100 px-3 py-3 font-semibold text-zinc-950">{run.database}</td>
                   <td className="border-b border-zinc-100 px-3 py-3 text-zinc-700">{run.resultCount.toLocaleString()}</td>
@@ -2722,24 +2790,28 @@ function ManuscriptStage({ project }: { project: MetaStudyProject }) {
 }
 
 function totalSearchResults(project: MetaStudyProject) {
-  return project.searchRuns.reduce((total, run) => total + run.resultCount, 0);
+  const searchRuns = Array.isArray(project.searchRuns) ? project.searchRuns : [];
+  return searchRuns.reduce((total, run) => total + run.resultCount, 0);
 }
 
 function activeFullTextUploadCount(project: MetaStudyProject) {
-  return project.workbookSheets
+  const workbookSheets = Array.isArray(project.workbookSheets) ? project.workbookSheets : [];
+  return workbookSheets
     .filter((sheet) => sheet.uploadRequired)
     .reduce((total, sheet) => total + sheet.count, 0);
 }
 
 function prismaCount(project: MetaStudyProject, step: string) {
-  const row = project.prismaRows.find((candidate) => candidate.step === step);
+  const prismaRows = Array.isArray(project.prismaRows) ? project.prismaRows : [];
+  const row = prismaRows.find((candidate) => candidate.step === step);
   return row?.count === null || row?.count === undefined ? "TBD" : row.count.toLocaleString();
 }
 
 function searchLogCsv(project: MetaStudyProject, queryOverrides: Record<string, string> = {}) {
+  const searchRuns = Array.isArray(project.searchRuns) ? project.searchRuns : [];
   return csvRows([
     ["database", "searched_at", "label", "result_count", "limits", "source", "export_action", "query"],
-    ...project.searchRuns.map((run) => [
+    ...searchRuns.map((run) => [
       run.database,
       run.searchedAt,
       run.label,
