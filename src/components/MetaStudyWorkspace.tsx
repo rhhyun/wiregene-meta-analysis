@@ -236,6 +236,15 @@ function readStoredJson<T>(key: string, fallback: T): T {
   }
 }
 
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readStoredRecord<T>(key: string): Record<string, T> {
+  const value = readStoredJson<unknown>(key, {});
+  return isPlainRecord(value) ? (value as Record<string, T>) : {};
+}
+
 function sanitizeMetaStudyProject(project: MetaStudyProject | null | undefined): MetaStudyProject | null {
   if (!project?.id) return null;
   const fallback = metaStudyProjects[0];
@@ -1074,14 +1083,15 @@ export function MetaStudyWorkspace({
   initialSearchQuery?: string;
   currentUser?: CurrentWiregeneUser | null;
 }) {
-  const [userProjects, setUserProjects] = useState<MetaStudyProject[]>(() =>
-    readStoredJson<MetaStudyProject[]>(userMetaProjectsStorageKey, []),
-  );
+  const [userProjects, setUserProjects] = useState<MetaStudyProject[]>(() => {
+    const storedProjects = readStoredJson<MetaStudyProject[]>(userMetaProjectsStorageKey, []);
+    return Array.isArray(storedProjects) ? mergeMetaStudyProjects(storedProjects, []) : [];
+  });
   const [selectedProjectId, setSelectedProjectId] = useState(() => userProjects[0]?.id ?? metaStudyProjects[0]?.id ?? "new-topic");
   const [stage, setStage] = useState<MetaStudyStage>("overview");
   const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
   const [projectMenuCollapsed, setProjectMenuCollapsed] = useState(false);
-  const allProjects = useMemo(() => [...userProjects, ...metaStudyProjects], [userProjects]);
+  const allProjects = useMemo(() => mergeMetaStudyProjects(userProjects, metaStudyProjects), [userProjects]);
 
   const selectedProject = useMemo(
     () => allProjects.find((project) => project.id === selectedProjectId),
@@ -1594,10 +1604,12 @@ function SearchStage({
   const storageKey = `${searchImportStorageKey}:${project.id}`;
   const queryOverrideKey = `${searchQueryOverrideStorageKey}:${project.id}`;
   const copy = searchStageCopy(project);
-  const [importRows, setImportRows] = useState(() => readStoredJson<Record<string, SearchImportRow>>(storageKey, {}));
+  const [importRows, setImportRows] = useState<Record<string, SearchImportRow>>(() =>
+    readStoredRecord<SearchImportRow>(storageKey),
+  );
   const [importSavedAt, setImportSavedAt] = useState("");
-  const [queryOverrides, setQueryOverrides] = useState(() =>
-    readStoredJson<Record<string, string>>(queryOverrideKey, {}),
+  const [queryOverrides, setQueryOverrides] = useState<Record<string, string>>(() =>
+    readStoredRecord<string>(queryOverrideKey),
   );
   const [querySavedAt, setQuerySavedAt] = useState("");
   const [uploadSummary, setUploadSummary] = useState<SearchUploadSummary | null>(null);
