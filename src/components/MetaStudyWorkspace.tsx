@@ -1374,6 +1374,15 @@ function ProtocolStage({ project }: { project: MetaStudyProject }) {
     "",
     protocolPaste,
   ].join("\n");
+  const protocolFields = [
+    ["population", "Population"],
+    ["exposure", "Exposure"],
+    ["comparator", "Comparator"],
+    ["outcomes", "Outcomes"],
+    ["eligibility", "Inclusion / eligibility"],
+    ["exclusion", "Exclusion rule"],
+    ["synthesis", "Synthesis plan"],
+  ] as const;
 
   return (
     <div className="grid gap-5">
@@ -1383,10 +1392,14 @@ function ProtocolStage({ project }: { project: MetaStudyProject }) {
         detail={copy.detail}
       />
       <div className="grid gap-3 lg:grid-cols-4">
-        <Metric label="Population" value={draft.population} />
-        <Metric label="Exposure" value={draft.exposure} />
-        <Metric label="Comparator" value={draft.comparator} />
-        <Metric label="Outcomes" value={draft.outcomes} />
+        {protocolFields.slice(0, 4).map(([field, label]) => (
+          <div key={field} className="rounded-md border border-zinc-200 bg-white p-3">
+            <p className="text-xs font-semibold uppercase text-zinc-500">{label}</p>
+            <p className="mt-2 max-h-16 overflow-hidden text-sm leading-5 text-zinc-800">
+              {draft[field] || "Needs confirmation."}
+            </p>
+          </div>
+        ))}
       </div>
       <section className="rounded-md border border-emerald-200 bg-emerald-50 p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -1430,7 +1443,11 @@ function ProtocolStage({ project }: { project: MetaStudyProject }) {
             {parseNotice}
           </p>
         ) : null}
-        <label className="mt-4 grid gap-2 text-sm font-semibold text-zinc-700">
+        <details className="mt-4 rounded-md border border-emerald-200 bg-white p-3">
+          <summary className="cursor-pointer text-sm font-semibold text-emerald-900">
+            AI draft paste and parsing
+          </summary>
+        <label className="mt-3 grid gap-2 text-sm font-semibold text-zinc-700">
           AI protocol draft 붙여넣기
           <textarea
             value={protocolPaste}
@@ -1440,16 +1457,13 @@ function ProtocolStage({ project }: { project: MetaStudyProject }) {
             className="rounded-md border border-emerald-300 bg-white px-3 py-2 text-sm font-normal leading-6 text-zinc-800 outline-none focus:border-emerald-500"
           />
         </label>
-        <div className="mt-4 grid gap-3 lg:grid-cols-2">
-          {([
-            ["population", "Population"],
-            ["exposure", "Exposure"],
-            ["comparator", "Comparator"],
-            ["outcomes", "Outcomes"],
-            ["eligibility", "Inclusion / eligibility"],
-            ["exclusion", "Exclusion rule"],
-            ["synthesis", "Synthesis plan"],
-          ] as const).map(([field, label]) => (
+        </details>
+        <details className="mt-3 rounded-md border border-emerald-200 bg-white p-3">
+          <summary className="cursor-pointer text-sm font-semibold text-emerald-900">
+            Edit PICO/PEO and protocol fields
+          </summary>
+        <div className="mt-3 grid gap-3 lg:grid-cols-2">
+          {protocolFields.map(([field, label]) => (
             <label
               key={field}
               className={
@@ -1468,8 +1482,13 @@ function ProtocolStage({ project }: { project: MetaStudyProject }) {
             </label>
           ))}
         </div>
+        </details>
       </section>
-      <div className="grid gap-3 lg:grid-cols-3">
+      <details className="rounded-md border border-zinc-200 bg-white p-4">
+        <summary className="cursor-pointer text-sm font-semibold text-zinc-950">
+          Exposure classification and feature notes
+        </summary>
+      <div className="mt-3 grid gap-3 lg:grid-cols-3">
         {project.exposureGroups.map((group) => (
           <article key={group.group} className="rounded-md border border-zinc-200 p-4">
             <p className="text-sm font-semibold text-zinc-950">{group.group}</p>
@@ -1478,7 +1497,7 @@ function ProtocolStage({ project }: { project: MetaStudyProject }) {
           </article>
         ))}
       </div>
-      <section>
+      <section className="mt-4">
         <h3 className="text-base font-semibold text-zinc-950">{copy.featureHeading}</h3>
         <div className="mt-3 grid gap-2 lg:grid-cols-2">
           {project.exposureFeatures.map((item) => (
@@ -1489,6 +1508,7 @@ function ProtocolStage({ project }: { project: MetaStudyProject }) {
           ))}
         </div>
       </section>
+      </details>
       <Checklist title="Protocol lock before screening" items={newTopicLocks} />
     </div>
   );
@@ -1505,12 +1525,12 @@ function SearchStage({
 }) {
   type SearchImportRow = { resultCount: string; exportFile: string; notes: string; completedAt: string };
   const storageKey = `${searchImportStorageKey}:${project.id}`;
-  const queryOverrideStorageKey = `${searchQueryOverrideStorageKey}:${project.id}`;
+  const queryOverrideKey = `${searchQueryOverrideStorageKey}:${project.id}`;
   const copy = searchStageCopy(project);
   const [importRows, setImportRows] = useState(() => readStoredJson<Record<string, SearchImportRow>>(storageKey, {}));
   const [importSavedAt, setImportSavedAt] = useState("");
   const [queryOverrides, setQueryOverrides] = useState(() =>
-    readStoredJson<Record<string, string>>(queryOverrideStorageKey, {}),
+    readStoredJson<Record<string, string>>(queryOverrideKey, {}),
   );
   const [querySavedAt, setQuerySavedAt] = useState("");
   const [uploadSummary, setUploadSummary] = useState<SearchUploadSummary | null>(null);
@@ -1548,7 +1568,7 @@ function SearchStage({
 
   function saveQueryOverrides() {
     const nextSavedAt = new Date().toISOString();
-    window.localStorage.setItem(queryOverrideStorageKey, JSON.stringify(queryOverrides));
+    window.localStorage.setItem(queryOverrideKey, JSON.stringify(queryOverrides));
     setQuerySavedAt(nextSavedAt);
   }
 
