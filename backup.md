@@ -20,6 +20,58 @@ C:\Users\HyunJK\Documents\GitHub\meta.wiregene.com
 - 작업 시작 전 `git -C C:\Users\HyunJK\Documents\GitHub\meta.wiregene.com status --short`와 `git -C C:\Users\HyunJK\Documents\GitHub\meta.wiregene.com pull --ff-only origin main`을 확인한다.
 - 작업 종료 전 lint/typecheck/build, `backup.md` 업데이트, commit/push, Synology 작업스케줄러 명령 확인을 수행한다.
 
+## 2026-06-17 v1.75 Study list duplicate cleanup and archive/delete controls
+
+User issue:
+
+- The left Meta Studies panel showed duplicate topics with the same title.
+- The user needs a way to delete or archive studies so they no longer appear in the active study list.
+
+Changes made in the canonical actual app repository:
+
+```text
+C:\Users\HyunJK\Documents\GitHub\meta.wiregene.com
+```
+
+- App visible version `Ver 1.74` -> `Ver 1.75`.
+- Package version `0.1.39` -> `0.1.40`.
+- `MetaStudyProject` now supports optional visibility fields:
+  - `visibility=active|archived|deleted`
+  - `archivedAt`, `deletedAt`, `updatedAt`, `duplicateOf`
+- Client study-list merge now deduplicates by exact same project id and by normalized full title.
+- Hidden records (`archived` or `deleted`) win over same-title active duplicates so a duplicate does not reappear from the built-in list, browser localStorage, or shared registry.
+- New AI-created topics with the same title update the existing study instead of creating another duplicate card.
+- Left project rail now shows only active studies in the default `진행 중인 연구` list.
+- Each active study card now has `보관` and `삭제` controls.
+- Archived studies are moved to a collapsed `보관함` section with `복원` and `삭제` controls.
+- `/api/meta-analysis/projects` now accepts the visibility fields and the server storage layer also deduplicates same-title projects before writing Google Drive/local JSON.
+- `SERVICE.md` documents the new shared-registry duplicate cleanup and archive/delete behavior.
+
+Verification:
+
+```text
+npx tsc --noEmit: pass.
+npm run lint: pass.
+npm run build: pass.
+Browser verification at http://127.0.0.1:3317: Ver 1.75 visible, active study count shown, 보관/삭제 buttons visible in the left study rail, console errors=[].
+```
+
+Important carryover:
+
+- Continue using only `C:\Users\HyunJK\Documents\GitHub\meta.wiregene.com` for actual app code.
+- Do not use Playground or `C:\Users\HyunJK\Documents\GitHub\wiregene-meta-analysis` for new app work.
+- Existing local dirty user files were not touched:
+  - `src/components/MetaAiSettingsPanel.tsx`
+  - `src/lib/config.ts`
+  - `src/lib/meta-ai-settings.ts`
+  - untracked OAuth credential/token helper files
+
+Synology deploy/run command:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 ## 2026-06-17 v1.72 Shared project workspace-state storage
 
 User clarification:

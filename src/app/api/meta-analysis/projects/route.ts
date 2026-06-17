@@ -13,6 +13,11 @@ const projectSchema = z
     id: z.string().min(1),
     shortTitle: z.string().min(1),
     title: z.string().min(1),
+    visibility: z.enum(["active", "archived", "deleted"]).optional(),
+    archivedAt: z.string().optional(),
+    deletedAt: z.string().optional(),
+    updatedAt: z.string().optional(),
+    duplicateOf: z.string().optional(),
   })
   .passthrough();
 

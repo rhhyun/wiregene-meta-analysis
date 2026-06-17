@@ -70,6 +70,11 @@ export type MetaStudyProject = {
   id: string;
   shortTitle: string;
   title: string;
+  visibility?: "active" | "archived" | "deleted";
+  archivedAt?: string;
+  deletedAt?: string;
+  updatedAt?: string;
+  duplicateOf?: string;
   status: string;
   progress: number;
   sourcePath: string;

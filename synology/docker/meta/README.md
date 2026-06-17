@@ -100,6 +100,10 @@ META_PROJECT_STORAGE_BACKEND=google-drive
 META_PROJECT_DRIVE_PREFIX=meta-projects
 ```
 
+From app `Ver 1.75`, the shared study registry also stores study visibility
+state. Same-title studies are deduplicated, archived studies are hidden from the
+default active list, and soft-deleted studies do not reappear on another PC.
+
 The per-study shared state file is `project-workspace-state.json`; it stores the
 protocol draft, selected databases, DB query overrides, search import rows, and
 screening workbook board. Other services can discover project endpoints at

@@ -155,3 +155,10 @@ stored separately from `META_PROJECT_STORAGE_ROOT`.
 - If a study exists only in one browser's localStorage, open that PC once after
   the shared backend is configured. The app merges the browser list back into
   the shared project registry.
+- From app `Ver 1.75`, the study registry deduplicates same-title topics in
+  addition to same-id topics. If a duplicate title is loaded from localStorage or
+  shared storage, the app writes the cleaned list back through
+  `/api/meta-analysis/projects`.
+- From app `Ver 1.75`, study cards support `archive`, `restore`, and
+  soft-delete visibility states. Archived and deleted studies are hidden from the
+  default active study list on every PC that reads the shared registry.

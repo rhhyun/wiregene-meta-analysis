@@ -55,6 +55,14 @@ export type MetaProjectWorkspaceState = {
   workbookBoard?: unknown;
 };
 
+type StoredMetaStudyProjectLike = {
+  id?: string;
+  title?: string;
+  shortTitle?: string;
+  visibility?: string;
+  duplicateOf?: string;
+};
+
 type UserProjectFile = {
   projects: unknown[];
   updatedAt?: string;
@@ -67,13 +75,26 @@ export type MetaUserProjectsStorageSummary = {
   path: string;
 };
 
-export async function readStoredMetaStudyProjects<T>(): Promise<T[]> {
+export async function readStoredMetaStudyProjects<T extends StoredMetaStudyProjectLike>(): Promise<T[]> {
   const raw = await readUserProjectsStorageText();
   if (!raw) return [];
 
   try {
     const parsed = JSON.parse(raw) as Partial<UserProjectFile>;
-    return Array.isArray(parsed.projects) ? (parsed.projects as T[]) : [];
+    if (!Array.isArray(parsed.projects)) return [];
+
+    const projects = parsed.projects as T[];
+    const deduped = dedupeProjects(projects);
+    if (projectListSignature(projects) !== projectListSignature(deduped)) {
+      await writeUserProjectsStorageText(
+        JSON.stringify({ ...parsed, updatedAt: new Date().toISOString(), projects: deduped }, null, 2),
+      ).catch((error) => {
+        console.warn(
+          `Meta study project storage duplicate cleanup could not be written back: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      });
+    }
+    return deduped;
   } catch (error) {
     if (error instanceof SyntaxError) {
       await backupCorruptUserProjectsFile(raw, error);
@@ -83,7 +104,7 @@ export async function readStoredMetaStudyProjects<T>(): Promise<T[]> {
   }
 }
 
-export async function writeStoredMetaStudyProjects<T extends { id?: string }>(projects: T[]): Promise<T[]> {
+export async function writeStoredMetaStudyProjects<T extends StoredMetaStudyProjectLike>(projects: T[]): Promise<T[]> {
   const normalized = dedupeProjects(projects).slice(0, 30);
   await writeUserProjectsStorageText(JSON.stringify({ updatedAt: new Date().toISOString(), projects: normalized }, null, 2));
   return normalized;
@@ -380,16 +401,62 @@ function ensureGoogleDriveProjectStorageConfigured(operation: "read" | "write") 
   );
 }
 
-function dedupeProjects<T extends { id?: string }>(projects: T[]) {
+function dedupeProjects<T extends StoredMetaStudyProjectLike>(projects: T[]) {
   const seen = new Set<string>();
+  const topicIndex = new Map<string, number>();
   const deduped: T[] = [];
   for (const project of projects) {
     const id = typeof project.id === "string" ? project.id.trim() : "";
     if (!id || seen.has(id)) continue;
+    const topicKey = storedProjectTopicKey(project);
+    const existingIndex = topicIndex.get(topicKey);
+    if (existingIndex !== undefined) {
+      const existing = deduped[existingIndex];
+      if (storedProjectVisibility(project) !== "active" && storedProjectVisibility(existing) === "active") {
+        deduped[existingIndex] = {
+          ...project,
+          duplicateOf: existing.id,
+        };
+        seen.add(id);
+      }
+      continue;
+    }
     seen.add(id);
+    topicIndex.set(topicKey, deduped.length);
     deduped.push(project);
   }
   return deduped;
+}
+
+function storedProjectVisibility(project: StoredMetaStudyProjectLike) {
+  return project.visibility === "archived" || project.visibility === "deleted" ? project.visibility : "active";
+}
+
+function storedProjectTopicKey(project: StoredMetaStudyProjectLike) {
+  const title = normalizeStoredProjectTitle(project.title || project.shortTitle || "");
+  if (!title || title === "untitled meta analysis topic") return `id:${project.id ?? ""}`;
+  return `title:${title}`;
+}
+
+function normalizeStoredProjectTitle(value: string) {
+  return value
+    .normalize("NFKC")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase()
+    .replace(/[\W_]+/g, " ")
+    .trim();
+}
+
+function projectListSignature(projects: StoredMetaStudyProjectLike[]) {
+  return JSON.stringify(
+    projects.map((project) => ({
+      id: project.id ?? "",
+      title: normalizeStoredProjectTitle(project.title || project.shortTitle || ""),
+      visibility: storedProjectVisibility(project),
+      duplicateOf: project.duplicateOf ?? "",
+    })),
+  );
 }
 
 function safeProjectFolder(projectId: string) {

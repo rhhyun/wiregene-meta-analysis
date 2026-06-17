@@ -2,6 +2,7 @@
 
 import {
   ArrowUpRight,
+  Archive,
   BarChart3,
   BookOpenCheck,
   CheckCircle2,
@@ -18,9 +19,11 @@ import {
   PanelLeftOpen,
   Plus,
   RefreshCw,
+  RotateCcw,
   Save,
   Search,
   Target,
+  Trash2,
   Workflow,
   type LucideIcon,
 } from "lucide-react";
@@ -328,6 +331,49 @@ function projectMenuLabel(project: Pick<MetaStudyProject, "title" | "shortTitle"
   return menuLabelFromTitle(fullTitle);
 }
 
+function projectVisibility(project: Pick<MetaStudyProject, "visibility">) {
+  return project.visibility === "archived" || project.visibility === "deleted" ? project.visibility : "active";
+}
+
+function isVisibleProject(project: MetaStudyProject) {
+  return projectVisibility(project) === "active";
+}
+
+function isArchivedProject(project: MetaStudyProject) {
+  return projectVisibility(project) === "archived";
+}
+
+function projectTopicKey(project: Pick<MetaStudyProject, "id" | "title" | "shortTitle">) {
+  const fullTitle = projectFullTitle(project)
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[\W_]+/g, " ")
+    .trim();
+  if (!fullTitle || fullTitle === "untitled meta analysis topic") return `id:${project.id}`;
+  return `title:${fullTitle}`;
+}
+
+function sameProjectTopic(left: MetaStudyProject, right: MetaStudyProject) {
+  return left.id === right.id || projectTopicKey(left) === projectTopicKey(right);
+}
+
+function projectListSignature(projects: MetaStudyProject[]) {
+  return JSON.stringify(
+    projects.map((project) => ({
+      id: project.id,
+      title: projectFullTitle(project),
+      visibility: projectVisibility(project),
+      archivedAt: project.archivedAt ?? "",
+      deletedAt: project.deletedAt ?? "",
+      updatedAt: project.updatedAt ?? "",
+    })),
+  );
+}
+
+function firstVisibleProjectId(projects: MetaStudyProject[]) {
+  return projects.find(isVisibleProject)?.id ?? "new-topic";
+}
+
 function canonicalDatabaseName(value: string): CanonicalSearchDatabase | null {
   const normalized = value.toLowerCase().replace(/[()[\]{}]/g, " ");
   if (/\b(pubmed|puvmed|medline)\b/.test(normalized)) return "PubMed";
@@ -430,6 +476,7 @@ function sanitizeMetaStudyProject(project: MetaStudyProject | null | undefined):
     ...project,
     shortTitle: projectMenuLabel({ title, shortTitle: project.shortTitle || "" }),
     title,
+    visibility: projectVisibility(project),
     status: project.status || "Protocol and PRISMA search design",
     progress: Number.isFinite(project.progress) ? project.progress : 0,
     sourcePath: project.sourcePath || "User-saved meta-analysis topic",
@@ -458,11 +505,26 @@ function sanitizeMetaStudyProject(project: MetaStudyProject | null | undefined):
 
 function mergeMetaStudyProjects(primary: MetaStudyProject[], secondary: MetaStudyProject[]) {
   const seen = new Set<string>();
+  const topicIndex = new Map<string, number>();
   const merged: MetaStudyProject[] = [];
   for (const project of [...primary, ...secondary]) {
     const sanitizedProject = sanitizeMetaStudyProject(project);
     if (!sanitizedProject || seen.has(sanitizedProject.id)) continue;
+    const topicKey = projectTopicKey(sanitizedProject);
+    const existingIndex = topicIndex.get(topicKey);
+    if (existingIndex !== undefined) {
+      const existingProject = merged[existingIndex];
+      if (projectVisibility(sanitizedProject) !== "active" && projectVisibility(existingProject) === "active") {
+        merged[existingIndex] = {
+          ...sanitizedProject,
+          duplicateOf: existingProject.id,
+        };
+        seen.add(sanitizedProject.id);
+      }
+      continue;
+    }
     seen.add(sanitizedProject.id);
+    topicIndex.set(topicKey, merged.length);
     merged.push(sanitizedProject);
   }
   return merged.slice(0, 30);
@@ -1289,17 +1351,22 @@ export function MetaStudyWorkspace({
     const storedProjects = readStoredJson<MetaStudyProject[]>(userMetaProjectsStorageKey, []);
     return Array.isArray(storedProjects) ? mergeMetaStudyProjects(storedProjects, []) : [];
   });
-  const [selectedProjectId, setSelectedProjectId] = useState(() => userProjects[0]?.id ?? metaStudyProjects[0]?.id ?? "new-topic");
+  const [selectedProjectId, setSelectedProjectId] = useState(() =>
+    firstVisibleProjectId(mergeMetaStudyProjects(userProjects, metaStudyProjects)),
+  );
   const [stage, setStage] = useState<MetaStudyStage>("overview");
   const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
   const [projectMenuCollapsed, setProjectMenuCollapsed] = useState(false);
+  const [showArchivedProjects, setShowArchivedProjects] = useState(false);
   const [projectSyncNotice, setProjectSyncNotice] = useState("");
   const [projectSyncError, setProjectSyncError] = useState("");
   const allProjects = useMemo(() => mergeMetaStudyProjects(userProjects, metaStudyProjects), [userProjects]);
+  const visibleProjects = useMemo(() => allProjects.filter(isVisibleProject), [allProjects]);
+  const archivedProjects = useMemo(() => allProjects.filter(isArchivedProject), [allProjects]);
 
   const selectedProject = useMemo(
-    () => allProjects.find((project) => project.id === selectedProjectId),
-    [allProjects, selectedProjectId],
+    () => visibleProjects.find((project) => project.id === selectedProjectId),
+    [selectedProjectId, visibleProjects],
   );
 
   const saveUserProjects = useCallback(async (projects: MetaStudyProject[]) => {
@@ -1339,10 +1406,14 @@ export function MetaStudyWorkspace({
         setUserProjects((current) => {
           const next = mergeMetaStudyProjects(serverProjects, current);
           window.localStorage.setItem(userMetaProjectsStorageKey, JSON.stringify(next));
-          setSelectedProjectId((currentId) =>
-            next.length > 0 && currentId === metaStudyProjects[0]?.id ? next[0].id : currentId,
-          );
-          if (serverProjects.length < next.length) void saveUserProjects(next);
+          setSelectedProjectId((currentId) => {
+            const nextAllProjects = mergeMetaStudyProjects(next, metaStudyProjects);
+            if (currentId === "new-topic" || nextAllProjects.some((project) => project.id === currentId && isVisibleProject(project))) {
+              return currentId;
+            }
+            return firstVisibleProjectId(nextAllProjects);
+          });
+          if (projectListSignature(serverProjects) !== projectListSignature(next)) void saveUserProjects(next);
           return next;
         });
       } catch (caught) {
@@ -1368,15 +1439,112 @@ export function MetaStudyWorkspace({
     setStage("overview");
   }
 
+  function saveProjectList(next: MetaStudyProject[]) {
+    window.localStorage.setItem(userMetaProjectsStorageKey, JSON.stringify(next));
+    void saveUserProjects(next);
+  }
+
+  function upsertUserProject(project: MetaStudyProject, patch: Partial<MetaStudyProject>, selectProject = false) {
+    setUserProjects((current) => {
+      const nextProject = sanitizeMetaStudyProject({
+        ...(current.find((item) => item.id === project.id) ?? project),
+        ...project,
+        ...patch,
+      } as MetaStudyProject);
+      if (!nextProject) return current;
+
+      const next = mergeMetaStudyProjects(
+        [nextProject],
+        current.filter((item) => item.id !== project.id && !sameProjectTopic(item, nextProject)),
+      );
+      saveProjectList(next);
+
+      const nextAllProjects = mergeMetaStudyProjects(next, metaStudyProjects);
+      setSelectedProjectId((currentId) => {
+        if (selectProject) return nextProject.id;
+        if (currentId === project.id || !nextAllProjects.some((item) => item.id === currentId && isVisibleProject(item))) {
+          return firstVisibleProjectId(nextAllProjects);
+        }
+        return currentId;
+      });
+      return next;
+    });
+  }
+
+  function archiveProject(project: MetaStudyProject) {
+    const now = new Date().toISOString();
+    upsertUserProject(project, {
+      visibility: "archived",
+      archivedAt: now,
+      deletedAt: undefined,
+      updatedAt: now,
+    });
+    setProjectSyncNotice(`Archived "${projectMenuLabel(project)}".`);
+  }
+
+  function restoreProject(project: MetaStudyProject) {
+    const now = new Date().toISOString();
+    upsertUserProject(
+      project,
+      {
+        visibility: "active",
+        archivedAt: undefined,
+        deletedAt: undefined,
+        updatedAt: now,
+      },
+      true,
+    );
+    setShowArchivedProjects(false);
+    setAiSettingsOpen(false);
+    setStage("overview");
+    setProjectSyncNotice(`Restored "${projectMenuLabel(project)}".`);
+  }
+
+  function deleteProject(project: MetaStudyProject) {
+    const confirmed = window.confirm(`"${projectFullTitle(project)}" 주제를 진행 중 연구 목록에서 삭제할까요?`);
+    if (!confirmed) return;
+
+    const now = new Date().toISOString();
+    upsertUserProject(project, {
+      visibility: "deleted",
+      archivedAt: undefined,
+      deletedAt: now,
+      updatedAt: now,
+    });
+    setProjectSyncNotice(`Deleted "${projectMenuLabel(project)}" from the active study list.`);
+  }
+
   function addUserProject(project: MetaStudyProject) {
     setUserProjects((current) => {
-      const next = mergeMetaStudyProjects([project], current);
-      window.localStorage.setItem(userMetaProjectsStorageKey, JSON.stringify(next));
-      void saveUserProjects(next);
+      const now = new Date().toISOString();
+      const existingProject = mergeMetaStudyProjects(current, metaStudyProjects).find(
+        (item) => projectVisibility(item) !== "deleted" && sameProjectTopic(item, project),
+      );
+      const nextProject = sanitizeMetaStudyProject({
+        ...(existingProject ?? project),
+        ...project,
+        id: existingProject?.id ?? project.id,
+        visibility: "active",
+        archivedAt: undefined,
+        deletedAt: undefined,
+        updatedAt: now,
+      } as MetaStudyProject);
+      if (!nextProject) return current;
+
+      const next = mergeMetaStudyProjects(
+        [nextProject],
+        current.filter((item) => item.id !== nextProject.id && !sameProjectTopic(item, nextProject)),
+      );
+      saveProjectList(next);
+      setSelectedProjectId(nextProject.id);
+      setProjectSyncNotice(
+        existingProject
+          ? `Same-title study updated instead of creating a duplicate: ${projectMenuLabel(nextProject)}.`
+          : `New study added: ${projectMenuLabel(nextProject)}.`,
+      );
       return next;
     });
     setAiSettingsOpen(false);
-    setSelectedProjectId(project.id);
     setStage("protocol");
   }
 
@@ -1397,7 +1565,7 @@ export function MetaStudyWorkspace({
             <h2 className="mt-1 text-lg font-semibold text-zinc-950">진행 중인 연구</h2>
           </div>
           <span className={`h-8 min-w-8 items-center justify-center rounded-md bg-emerald-50 px-2 text-sm font-semibold text-emerald-700 ${projectMenuCollapsed ? "hidden" : "inline-flex"}`}>
-            {allProjects.length}
+            {visibleProjects.length}
           </span>
           <button
             type="button"
@@ -1432,33 +1600,114 @@ export function MetaStudyWorkspace({
         </button>
 
         <div className="mt-4 grid gap-2">
-          {allProjects.map((project) => (
-            <button
+          {visibleProjects.map((project) => (
+            <div
               key={project.id}
-              type="button"
-              onClick={() => openProject(project)}
-              title={projectFullTitle(project)}
-              aria-label={projectFullTitle(project)}
-              className={`rounded-md border text-left transition ${
-                projectMenuCollapsed ? "flex h-12 items-center justify-center p-0" : "p-3"
-              } ${
+              className={`overflow-hidden rounded-md border transition ${
                 selectedProjectId === project.id
                   ? "border-emerald-300 bg-emerald-50"
                   : "border-zinc-200 bg-white hover:border-zinc-300"
               }`}
             >
-              {projectMenuCollapsed ? <Database className="h-4 w-4 text-emerald-700" aria-hidden /> : null}
-              <span className={projectMenuCollapsed ? "sr-only" : "block text-sm font-semibold leading-5 text-zinc-950"}>{projectMenuLabel(project)}</span>
-              {!projectMenuCollapsed ? <span className="mt-2 block text-xs leading-5 text-zinc-500">{project.status}</span> : null}
+              <button
+                type="button"
+                onClick={() => openProject(project)}
+                title={projectFullTitle(project)}
+                aria-label={projectFullTitle(project)}
+                className={`w-full text-left transition ${
+                  projectMenuCollapsed ? "flex h-12 items-center justify-center p-0" : "p-3"
+                } ${
+                  selectedProjectId === project.id
+                    ? "bg-emerald-50"
+                    : "bg-white hover:bg-zinc-50"
+                }`}
+              >
+                {projectMenuCollapsed ? <Database className="h-4 w-4 text-emerald-700" aria-hidden /> : null}
+                <span className={projectMenuCollapsed ? "sr-only" : "block text-sm font-semibold leading-5 text-zinc-950"}>{projectMenuLabel(project)}</span>
+                {!projectMenuCollapsed ? <span className="mt-2 block text-xs leading-5 text-zinc-500">{project.status}</span> : null}
+                {!projectMenuCollapsed ? (
+                  <span className="mt-3 block h-2 overflow-hidden rounded-full bg-zinc-100">
+                    <span className="block h-full bg-emerald-600" style={{ width: `${project.progress}%` }} />
+                  </span>
+                ) : null}
+                {!projectMenuCollapsed ? <span className="mt-2 block text-xs font-semibold text-emerald-700">{project.progress}% designed</span> : null}
+              </button>
               {!projectMenuCollapsed ? (
-                <span className="mt-3 block h-2 overflow-hidden rounded-full bg-zinc-100">
-                  <span className="block h-full bg-emerald-600" style={{ width: `${project.progress}%` }} />
-                </span>
+                <div className="grid grid-cols-2 border-t border-zinc-100 bg-zinc-50">
+                  <button
+                    type="button"
+                    onClick={() => archiveProject(project)}
+                    title="보관"
+                    aria-label={`${projectMenuLabel(project)} 보관`}
+                    className="inline-flex h-9 items-center justify-center gap-1.5 text-xs font-semibold text-zinc-600 transition hover:bg-amber-50 hover:text-amber-800"
+                  >
+                    <Archive className="h-3.5 w-3.5" aria-hidden />
+                    보관
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => deleteProject(project)}
+                    title="삭제"
+                    aria-label={`${projectMenuLabel(project)} 삭제`}
+                    className="inline-flex h-9 items-center justify-center gap-1.5 border-l border-zinc-100 text-xs font-semibold text-zinc-600 transition hover:bg-rose-50 hover:text-rose-800"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                    삭제
+                  </button>
+                </div>
               ) : null}
-              {!projectMenuCollapsed ? <span className="mt-2 block text-xs font-semibold text-emerald-700">{project.progress}% designed</span> : null}
-            </button>
+            </div>
           ))}
+          {visibleProjects.length === 0 && !projectMenuCollapsed ? (
+            <div className="rounded-md border border-dashed border-zinc-300 bg-zinc-50 p-3 text-sm leading-6 text-zinc-600">
+              진행 중 연구가 없습니다. 신규 주제를 AI 분석해 추가하세요.
+            </div>
+          ) : null}
         </div>
+
+        {archivedProjects.length > 0 && !projectMenuCollapsed ? (
+          <div className="mt-3 rounded-md border border-zinc-200 bg-white p-3">
+            <button
+              type="button"
+              onClick={() => setShowArchivedProjects((current) => !current)}
+              className="flex w-full items-center justify-between gap-3 text-left text-xs font-semibold uppercase text-zinc-600"
+            >
+              <span className="inline-flex items-center gap-2">
+                <Archive className="h-4 w-4 text-amber-700" aria-hidden />
+                보관함
+              </span>
+              <span className="rounded-md bg-zinc-100 px-2 py-1 text-zinc-700">{archivedProjects.length}</span>
+            </button>
+            {showArchivedProjects ? (
+              <div className="mt-3 grid gap-2">
+                {archivedProjects.map((project) => (
+                  <div key={project.id} className="rounded-md border border-zinc-200 bg-zinc-50 p-2">
+                    <p className="text-sm font-semibold leading-5 text-zinc-900">{projectMenuLabel(project)}</p>
+                    <p className="mt-1 line-clamp-2 text-xs leading-5 text-zinc-500">{projectFullTitle(project)}</p>
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => restoreProject(project)}
+                        className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-emerald-200 bg-white text-xs font-semibold text-emerald-800 transition hover:bg-emerald-50"
+                      >
+                        <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+                        복원
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => deleteProject(project)}
+                        className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-rose-200 bg-white text-xs font-semibold text-rose-800 transition hover:bg-rose-50"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                        삭제
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         {currentUser ? (
           <button
