@@ -37,6 +37,17 @@ Or seed a new Basic Auth pair without editing the file manually:
 APP_BASIC_AUTH_USER='YOUR_LOGIN_ID' APP_BASIC_AUTH_PASSWORD='YOUR_PASSWORD' WIREGENE_ADMIN_EMAILS='YOUR_ADMIN_EMAIL' /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
 ```
 
+If you do not want a local Meta Basic Auth password in `/volume1/docker/meta/.env`,
+use portal central authentication instead:
+
+```txt
+PORTAL_AUTH_CHECK_SECRET=YOUR_SHARED_PORTAL_AUTH_CHECK_SECRET
+PORTAL_AUTH_CHECK_URL=https://portal.wiregene.com/api/auth/check
+```
+
+The Synology start script accepts this as the authentication guard even when
+`APP_BASIC_AUTH_USER` and `APP_BASIC_AUTH_PASSWORD` are empty.
+
 For accurate full-text article screening/extraction, set an OpenAI API key in
 `/volume1/docker/meta/.env` or seed it once through the scheduler environment.
 With OpenAI enabled, the assistant also returns a Hyunlab-style quality review

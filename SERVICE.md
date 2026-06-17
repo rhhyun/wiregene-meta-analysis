@@ -46,6 +46,17 @@ git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin
 APP_BASIC_AUTH_USER='YOUR_LOGIN_ID' APP_BASIC_AUTH_PASSWORD='YOUR_PASSWORD' WIREGENE_ADMIN_EMAILS='YOUR_ADMIN_EMAIL' /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
 ```
 
+Alternatively, Meta can rely on `portal.wiregene.com` central authentication.
+In that case `/volume1/docker/meta/.env` does not need a local
+`APP_BASIC_AUTH_PASSWORD`, but it must include:
+
+```txt
+PORTAL_AUTH_CHECK_SECRET=YOUR_SHARED_PORTAL_AUTH_CHECK_SECRET
+PORTAL_AUTH_CHECK_URL=https://portal.wiregene.com/api/auth/check
+```
+
+The secret must match the one configured on `portal.wiregene.com`.
+
 For full-text article screening/extraction accuracy, configure OpenAI. When
 enabled, the full-text workflow uses OpenAI Structured Outputs to produce both
 the eligibility/extraction draft and a Hyunlab-style quality review

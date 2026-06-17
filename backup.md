@@ -79,6 +79,41 @@ Synology deploy/run command:
 git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
 ```
 
+## 2026-06-17 v1.73 Synology portal-auth startup fix
+
+Problem:
+
+- Synology created `/volume1/docker/meta/.env` from `.env.example`.
+- Because local Basic Auth values were empty, `scripts/synology-start-meta.sh` stopped before Docker startup.
+- The user asked whether keeping a local `APP_BASIC_AUTH_PASSWORD` in `.env` is necessary and whether portal/subsite credentials can be reused.
+
+Fix:
+
+- UI version `Ver 1.72` -> `Ver 1.73`.
+- Package version `0.1.37` -> `0.1.38`.
+- Synology start script now accepts either:
+  - local Basic Auth: `APP_BASIC_AUTH_USER` + `APP_BASIC_AUTH_PASSWORD` or `APP_BASIC_AUTH_USERS`
+  - portal central auth: `PORTAL_AUTH_CHECK_SECRET` or `WIREGENE_AUTH_CHECK_SECRET`
+- Added `PORTAL_AUTH_CHECK_SECRET` and `PORTAL_AUTH_CHECK_URL` to Synology `.env.example`.
+- Added `WIREGENE_AUTH_CHECK_SECRET` to root `.env.example`.
+- Updated service docs with the portal-auth-only option.
+
+Recommended secure option:
+
+```text
+APP_BASIC_AUTH_USER=
+APP_BASIC_AUTH_PASSWORD=
+APP_BASIC_AUTH_USERS=
+PORTAL_AUTH_CHECK_SECRET=<same shared secret configured on portal.wiregene.com>
+PORTAL_AUTH_CHECK_URL=https://portal.wiregene.com/api/auth/check
+```
+
+Synology deploy/run command:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 ## 2026-06-16 v1.70 Study title and Search Design workflow fix
 
 User-reported problems from another PC at UI v1.69:
