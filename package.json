@@ -1,6 +1,6 @@
 {
   "name": "wiregene-meta-analysis",
-  "version": "0.1.38",
+  "version": "0.1.39",
   "private": true,
   "engines": {
     "node": ">=20.9.0"

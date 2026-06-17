@@ -77,6 +77,36 @@ seed_runtime_env_from_process() {
   done
 }
 
+seed_portal_auth_from_known_runtime_env() {
+  current=$(env_value PORTAL_AUTH_CHECK_SECRET)
+  fallback=$(env_value WIREGENE_AUTH_CHECK_SECRET)
+  [ -z "$current" ] || return 0
+  [ -z "$fallback" ] || return 0
+
+  for candidate in \
+    /volume1/docker/portal/.env \
+    /volume1/docker/wiregene-portal/.env \
+    /volume1/docker/research-briefing/.env \
+    /volume1/docker/search/.env \
+    /volume1/docker/hyunlab/.env \
+    /volume1/docker/wiregene/.env
+  do
+    [ -f "$candidate" ] || continue
+    value=$(
+      sed -n \
+        -e 's/^PORTAL_AUTH_CHECK_SECRET=//p' \
+        -e 's/^WIREGENE_AUTH_CHECK_SECRET=//p' \
+        "$candidate" |
+        sed 's/\r$//' |
+        sed -n '1p'
+    )
+    [ -n "$value" ] || continue
+    set_env_value PORTAL_AUTH_CHECK_SECRET "$value"
+    log "Filled PORTAL_AUTH_CHECK_SECRET in $RUNTIME_DIR/.env from $candidate."
+    return 0
+  done
+}
+
 ensure_runtime_env_value() {
   key="$1"
   expected="$2"
@@ -117,6 +147,7 @@ prepare_runtime() {
   fi
 
   seed_runtime_env_from_process
+  seed_portal_auth_from_known_runtime_env
   ensure_runtime_env_value APP_SOURCE_DIR "$APP_DIR"
   ensure_runtime_env_value CONTAINER_NAME "wiregene-meta"
   ensure_runtime_env_value WIREGENE_APP_MODE "meta"
@@ -147,12 +178,12 @@ warn_runtime_env() {
   admin_users=$(env_value APP_ADMIN_USERS)
   admin_user=$(env_value APP_ADMIN_USER)
 
-  if [ -z "$auth_users" ] && { [ -z "$auth_user" ] || [ -z "$auth_password" ]; } && [ -z "$portal_auth_secret" ] && [ -z "$wiregene_auth_secret" ]; then
-    fail "No complete local Basic Auth credential or portal auth secret found in $RUNTIME_DIR/.env. Either set APP_BASIC_AUTH_USER and APP_BASIC_AUTH_PASSWORD, or set PORTAL_AUTH_CHECK_SECRET for portal.wiregene.com central authentication."
+  if [ -z "$auth_users" ] && { [ -z "$auth_user" ] || [ -z "$auth_password" ]; } && { [ -n "$portal_auth_secret" ] || [ -n "$wiregene_auth_secret" ]; }; then
+    log "Local Basic Auth is not configured; Meta will rely on portal auth check secret."
   fi
 
-  if [ -z "$auth_users" ] && { [ -z "$auth_user" ] || [ -z "$auth_password" ]; }; then
-    log "Local Basic Auth is not configured; Meta will rely on portal auth check secret."
+  if [ -z "$auth_users" ] && { [ -z "$auth_user" ] || [ -z "$auth_password" ]; } && [ -z "$portal_auth_secret" ] && [ -z "$wiregene_auth_secret" ]; then
+    log "WARNING: No local Basic Auth or portal auth secret is configured in $RUNTIME_DIR/.env. The container will still start so the site can be reached, but configure PORTAL_AUTH_CHECK_SECRET or APP_BASIC_AUTH_USER/APP_BASIC_AUTH_PASSWORD before exposing this service publicly."
   fi
 
   if [ -z "$admin_emails" ] && [ -z "$admin_users" ] && [ -z "$admin_user" ]; then

@@ -56,6 +56,11 @@ PORTAL_AUTH_CHECK_URL=https://portal.wiregene.com/api/auth/check
 ```
 
 The secret must match the one configured on `portal.wiregene.com`.
+If the secret already exists in a common runtime file such as
+`/volume1/docker/portal/.env`, the Synology start script attempts to copy it
+into `/volume1/docker/meta/.env` automatically. If no auth value is found, the
+script now starts the container with a warning instead of blocking deployment;
+configure authentication before exposing the service publicly.
 
 For full-text article screening/extraction accuracy, configure OpenAI. When
 enabled, the full-text workflow uses OpenAI Structured Outputs to produce both

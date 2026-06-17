@@ -47,6 +47,9 @@ PORTAL_AUTH_CHECK_URL=https://portal.wiregene.com/api/auth/check
 
 The Synology start script accepts this as the authentication guard even when
 `APP_BASIC_AUTH_USER` and `APP_BASIC_AUTH_PASSWORD` are empty.
+It also tries to copy an existing auth secret from common runtime files such as
+`/volume1/docker/portal/.env`. If no auth value is found, it warns and starts
+the container instead of stopping the deployment.
 
 For accurate full-text article screening/extraction, set an OpenAI API key in
 `/volume1/docker/meta/.env` or seed it once through the scheduler environment.

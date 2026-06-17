@@ -114,6 +114,33 @@ Synology deploy/run command:
 git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
 ```
 
+## 2026-06-17 v1.74 Synology auth startup unblock
+
+Problem:
+
+- The Synology start script still stopped deployment when `/volume1/docker/meta/.env` did not contain local Basic Auth or `PORTAL_AUTH_CHECK_SECRET`.
+- This forced manual `.env` editing before the container could even start.
+
+Fix:
+
+- UI version `Ver 1.73` -> `Ver 1.74`.
+- Package version `0.1.38` -> `0.1.39`.
+- `scripts/synology-start-meta.sh` now tries to auto-fill `PORTAL_AUTH_CHECK_SECRET` from common existing runtime files:
+  - `/volume1/docker/portal/.env`
+  - `/volume1/docker/wiregene-portal/.env`
+  - `/volume1/docker/research-briefing/.env`
+  - `/volume1/docker/search/.env`
+  - `/volume1/docker/hyunlab/.env`
+  - `/volume1/docker/wiregene/.env`
+- If no auth value is found, the script logs a warning and still starts the Docker service instead of failing.
+- Authentication should still be configured before exposing the service publicly.
+
+Synology deploy/run command:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 ## 2026-06-16 v1.70 Study title and Search Design workflow fix
 
 User-reported problems from another PC at UI v1.69:
