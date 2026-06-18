@@ -25,7 +25,13 @@ type DriveFile = {
   webViewLink?: string;
   mimeType?: string;
   size?: string;
+  modifiedTime?: string;
 };
+
+export type GoogleDriveTextFileSummary = Pick<
+  DriveFile,
+  "id" | "name" | "webViewLink" | "mimeType" | "size" | "modifiedTime"
+>;
 
 type DriveIndexEntry = {
   id: string;
@@ -176,6 +182,34 @@ async function findFileByName(name: string) {
   const parentQuery = parent ? `'${parent}' in parents and ` : "";
   const query = `${parentQuery}name = '${driveQueryString(name)}' and trashed = false`;
   return findDriveFile(query);
+}
+
+export async function listTextFilesFromGoogleDriveByNamePrefix(namePrefix: string): Promise<GoogleDriveTextFileSummary[]> {
+  const parent = await targetParentId();
+  const parentQuery = parent ? `'${parent}' in parents and ` : "";
+  const files: GoogleDriveTextFileSummary[] = [];
+  let pageToken = "";
+
+  do {
+    const url = new URL(driveFilesUrl);
+    url.searchParams.set("q", `${parentQuery}name contains '${driveQueryString(namePrefix)}' and trashed = false`);
+    url.searchParams.set("fields", "nextPageToken,files(id,name,mimeType,size,webViewLink,modifiedTime)");
+    url.searchParams.set("pageSize", "100");
+    url.searchParams.set("includeItemsFromAllDrives", "true");
+    url.searchParams.set("supportsAllDrives", "true");
+    if (pageToken) url.searchParams.set("pageToken", pageToken);
+
+    const response = await driveFetch(url.toString());
+    if (!response.ok) {
+      throw new Error(`Google Drive file list failed: ${response.status} ${await response.text()}`);
+    }
+
+    const payload = (await response.json()) as { files?: GoogleDriveTextFileSummary[]; nextPageToken?: string };
+    files.push(...(payload.files ?? []));
+    pageToken = payload.nextPageToken ?? "";
+  } while (pageToken);
+
+  return files.sort((left, right) => (right.modifiedTime ?? "").localeCompare(left.modifiedTime ?? ""));
 }
 
 async function targetParentId() {

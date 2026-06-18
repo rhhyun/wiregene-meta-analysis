@@ -43,6 +43,15 @@ type DatasetOverview = {
 
 type MetaExtractionDatasetPanelProps = {
   extractionSections: ExtractionSection[];
+  projectId: string;
+};
+
+type ProjectFileSavePayload = {
+  savedFile?: {
+    fileName: string;
+    path: string;
+  };
+  error?: string;
 };
 
 const auditSection: ExtractionSection = {
@@ -90,7 +99,9 @@ const readOnlyFields = new Set([
   "validation_issue_count",
 ]);
 
-export function MetaExtractionDatasetPanel({ extractionSections }: MetaExtractionDatasetPanelProps) {
+const projectFileSavedEventName = "wiregene-meta-project-file-saved";
+
+export function MetaExtractionDatasetPanel({ extractionSections, projectId }: MetaExtractionDatasetPanelProps) {
   const [overview, setOverview] = useState<DatasetOverview | null>(null);
   const [selectedId, setSelectedId] = useState("");
   const [editingRow, setEditingRow] = useState<Record<string, string>>({});
@@ -99,6 +110,7 @@ export function MetaExtractionDatasetPanel({ extractionSections }: MetaExtractio
   const [verificationNotes, setVerificationNotes] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [exportSaving, setExportSaving] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
@@ -203,6 +215,33 @@ export function MetaExtractionDatasetPanel({ extractionSections }: MetaExtractio
     setNotice(`${label} copied to clipboard. Save verified rows before using them for final analysis.`);
   }
 
+  async function saveDraftCsv() {
+    if (!overview?.csv) return;
+    setExportSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch(`/api/meta-analysis/projects/${encodeURIComponent(projectId)}/files`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileName: "draft-excel-dataset.csv",
+          contents: overview.csv,
+        }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as ProjectFileSavePayload;
+      if (!response.ok || !payload.savedFile) {
+        throw new Error(payload.error || "Draft Excel CSV could not be saved.");
+      }
+      window.dispatchEvent(new CustomEvent(projectFileSavedEventName, { detail: { projectId } }));
+      setNotice(`Draft Excel CSV saved to project folder: ${payload.savedFile.fileName}`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Draft Excel CSV could not be saved.");
+    } finally {
+      setExportSaving(false);
+    }
+  }
+
   const selectedCsv = selectedRecord && overview ? csvRows(overview.columns, [editingRow]) : "";
 
   return (
@@ -234,6 +273,15 @@ export function MetaExtractionDatasetPanel({ extractionSections }: MetaExtractio
           >
             <FileSpreadsheet className="h-4 w-4" aria-hidden />
             Copy draft Excel CSV (not saved)
+          </button>
+          <button
+            type="button"
+            onClick={() => void saveDraftCsv()}
+            disabled={!overview?.records.length || exportSaving}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-sky-300 bg-white px-3 text-sm font-semibold text-sky-800 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Save className="h-4 w-4" aria-hidden />
+            {exportSaving ? "Saving..." : "Save draft Excel CSV"}
           </button>
         </div>
       </div>

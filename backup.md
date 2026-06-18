@@ -2,12 +2,479 @@
 
 작성일: 2026-06-12
 
+## Canonical workspace rule
+
+2026-06-15부터 Codex와 사용자는 아래 폴더만 `meta.wiregene.com` 실제 앱 작업 기준으로 사용한다.
+
+```text
+C:\Users\HyunJK\Documents\GitHub\meta.wiregene.com
+```
+
+규칙:
+
+- 앞으로 실제 코드 수정, 빌드, 커밋, push는 반드시 `C:\Users\HyunJK\Documents\GitHub\meta.wiregene.com`에서만 한다.
+- `C:\Users\HyunJK\Documents\Playground\research-briefing-platform\wiregene-meta-analysis`는 이전 임시 작업 폴더이며 새 작업 기준으로 사용하지 않는다.
+- `C:\Users\HyunJK\Documents\GitHub\wiregene-meta-analysis`는 오래된 복사본이며 새 작업 기준으로 사용하지 않는다.
+- `C:\Users\HyunJK\Documents\Meta.wiregene.com`은 문서/기획/handoff workspace이며 실제 Next.js 앱 소스 기준이 아니다.
+- 헷갈릴 경우 `src/lib/version.ts`가 `BRIEFING_VERSION = "1.65"` 이상인지 먼저 확인한다.
+- 작업 시작 전 `git -C C:\Users\HyunJK\Documents\GitHub\meta.wiregene.com status --short`와 `git -C C:\Users\HyunJK\Documents\GitHub\meta.wiregene.com pull --ff-only origin main`을 확인한다.
+- 작업 종료 전 lint/typecheck/build, `backup.md` 업데이트, commit/push, Synology 작업스케줄러 명령 확인을 수행한다.
+
+## 2026-06-18 v1.77 Save CSV browser download fallback (Vercel 서버리스 대응)
+
+User issue:
+
+- `meta.wiregene.com` (Vercel 배포)에서 RIS 업로드 후 "Save master CSV" 클릭 시 즉시 에러 발생.
+
+Root cause:
+
+- Vercel 서버리스 환경은 파일시스템이 읽기 전용이라 `saveMetaProjectTextFile`이 항상 "read-only serverless filesystem" 에러를 던짐.
+- body size가 아닌 파일시스템 제한이 진짜 원인.
+
+Fix:
+
+- `downloadFileToBrowser()` 헬퍼 추가: Blob URL로 브라우저 파일 다운로드 트리거.
+- `isServerlessStorageError()` 헬퍼 추가: "serverless", "read-only", "Synology", "writable" 키워드 감지.
+- `ProjectFileSaveButton`: 서버 저장 실패가 서버리스 환경 에러인 경우 자동으로 브라우저 다운로드로 fallback.
+  - 버튼 상태: `"downloaded"` 추가, "Downloaded ↓" 표시.
+  - 노란색 안내 메시지 3초 표시: "서버 저장 불가 (Vercel 환경) — 파일이 브라우저로 다운로드됐습니다."
+  - Google Drive / Synology 환경에서는 기존과 동일하게 서버 저장.
+
+Verification:
+
+```text
+npx tsc --noEmit: pass.
+git push: 34b2982..f8305c5 main -> main.
+```
+
+Commits:
+- `34b2982` Fix: gzip compression to bypass 4.5MB request body limit
+- `f8305c5` Fix: browser download fallback when server save fails on Vercel serverless
+
+Synology deploy/run command:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+---
+
+## 2026-06-18 v1.76 Gzip compression for large payloads (body size 초과 대응)
+
+User issue:
+
+- RIS 파일 5개 업로드(13,047개 레코드) 후 "Save master CSV" 시 "Project file could not be saved" 에러.
+
+Root cause analysis:
+
+- master CSV가 ~10MB 이상이 되어 서버 요청 body 크기 제한 초과.
+
+Fix:
+
+- **Client (MetaStudyWorkspace.tsx)**:
+  - `compressPayload()` 함수 추가: 브라우저 `CompressionStream` API로 gzip 압축, 미지원 시 uncompressed fallback.
+  - `saveProjectTextFile`, `saveProjectWorkspaceState`, `saveUserProjects` 세 함수에 압축 적용.
+- **Server (meta-project-storage.ts)**:
+  - `parseRequestJson()` 함수 추가: `Content-Encoding: gzip` 헤더 감지 시 Node.js `zlib.gunzipSync`로 압축 해제.
+- **API Routes**: `/files`, `/state`, `/projects` 세 라우트에 `parseRequestJson` 적용.
+
+Verification:
+
+```text
+npx tsc --noEmit: pass.
+npm run build: TypeScript pass. 빌드 워커 크래시는 기존 Windows 환경 문제 (원본 코드도 동일 오류).
+git push: 77dcecb..34b2982 main -> main.
+```
+
+Synology deploy/run command:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+---
+
+## 2026-06-17 v1.75 Study list duplicate cleanup and archive/delete controls
+
+
+User issue:
+
+- The left Meta Studies panel showed duplicate topics with the same title.
+- The user needs a way to delete or archive studies so they no longer appear in the active study list.
+
+Changes made in the canonical actual app repository:
+
+```text
+C:\Users\HyunJK\Documents\GitHub\meta.wiregene.com
+```
+
+- App visible version `Ver 1.74` -> `Ver 1.75`.
+- Package version `0.1.39` -> `0.1.40`.
+- `MetaStudyProject` now supports optional visibility fields:
+  - `visibility=active|archived|deleted`
+  - `archivedAt`, `deletedAt`, `updatedAt`, `duplicateOf`
+- Client study-list merge now deduplicates by exact same project id and by normalized full title.
+- Hidden records (`archived` or `deleted`) win over same-title active duplicates so a duplicate does not reappear from the built-in list, browser localStorage, or shared registry.
+- New AI-created topics with the same title update the existing study instead of creating another duplicate card.
+- Left project rail now shows only active studies in the default `진행 중인 연구` list.
+- Each active study card now has `보관` and `삭제` controls.
+- Archived studies are moved to a collapsed `보관함` section with `복원` and `삭제` controls.
+- `/api/meta-analysis/projects` now accepts the visibility fields and the server storage layer also deduplicates same-title projects before writing Google Drive/local JSON.
+- `SERVICE.md` documents the new shared-registry duplicate cleanup and archive/delete behavior.
+
+Verification:
+
+```text
+npx tsc --noEmit: pass.
+npm run lint: pass.
+npm run build: pass.
+Browser verification at http://127.0.0.1:3317: Ver 1.75 visible, active study count shown, 보관/삭제 buttons visible in the left study rail, console errors=[].
+```
+
+Important carryover:
+
+- Continue using only `C:\Users\HyunJK\Documents\GitHub\meta.wiregene.com` for actual app code.
+- Do not use Playground or `C:\Users\HyunJK\Documents\GitHub\wiregene-meta-analysis` for new app work.
+- Existing local dirty user files were not touched:
+  - `src/components/MetaAiSettingsPanel.tsx`
+  - `src/lib/config.ts`
+  - `src/lib/meta-ai-settings.ts`
+  - untracked OAuth credential/token helper files
+
+Synology deploy/run command:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+## 2026-06-17 v1.72 Shared project workspace-state storage
+
+User clarification:
+
+- Having the same study list is not enough. Each study's internal work state must also be stored in one external/shared project storage layer.
+- Other PCs must be able to open, edit, save, and download the same project state/files.
+- `search.wiregene.com` and `omni.wiregene.com` should be able to discover meta-analysis projects and connect search/research-topic/working-state data.
+- Meta-analysis projects often connect to real-data or hybrid papers, so stable project-level and record-level join keys are required.
+
+Changes made:
+
+- UI version `Ver 1.71` -> `Ver 1.72`.
+- Package version `0.1.36` -> `0.1.37`.
+- Added project workspace state API:
+  - `GET/PATCH/PUT /api/meta-analysis/projects/{projectId}/state`
+  - shared state file: `project-workspace-state.json`
+- Added project text file download API:
+  - `GET /api/meta-analysis/projects/{projectId}/files/{fileName}`
+- Added cross-site manifest API:
+  - `GET /api/meta-analysis/workspace/manifest`
+- Added project file/state Google Drive backend:
+  - `META_PROJECT_STORAGE_BACKEND=local-json|google-drive`
+  - `META_PROJECT_DRIVE_PREFIX=meta-projects`
+- Kept study-list registry storage separate:
+  - `META_USER_PROJECTS_STORAGE_BACKEND=local-json|google-drive`
+- `ProtocolStage` now loads/saves `protocolDraft` through shared project state.
+- `SearchStage` now loads/saves `selectedDatabases`, `queryOverrides`, and `searchImportRows` through shared project state.
+- `WorkbookFullTextBoard` now has `Save shared state` for `workbookBoard`.
+- Project storage panel now shows local vs Google Drive backend and gives download links.
+
+Recommended multi-PC / Vercel / cross-site env:
+
+```text
+META_USER_PROJECTS_STORAGE_BACKEND=google-drive
+META_USER_PROJECTS_DRIVE_FILENAME=meta-user-study-projects.json
+META_PROJECT_STORAGE_BACKEND=google-drive
+META_PROJECT_DRIVE_PREFIX=meta-projects
+GOOGLE_DRIVE_CLIENT_ID=<oauth-client-id>
+GOOGLE_DRIVE_CLIENT_SECRET=<oauth-client-secret>
+GOOGLE_DRIVE_REFRESH_TOKEN=<oauth-refresh-token>
+GOOGLE_DRIVE_FOLDER_ID=<target-folder-id>
+```
+
+Verification:
+
+```text
+npx tsc --noEmit: pass.
+npm run lint: pass.
+npm run build: pass.
+Browser verification at http://127.0.0.1:3227: Ver 1.72 displayed in Meta workspace.
+API verification: manifest OK, state PATCH/GET OK, omni consumer listed, file download route returned 200 OK.
+```
+
+Synology deploy/run command:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+## 2026-06-17 v1.73 Synology portal-auth startup fix
+
+Problem:
+
+- Synology created `/volume1/docker/meta/.env` from `.env.example`.
+- Because local Basic Auth values were empty, `scripts/synology-start-meta.sh` stopped before Docker startup.
+- The user asked whether keeping a local `APP_BASIC_AUTH_PASSWORD` in `.env` is necessary and whether portal/subsite credentials can be reused.
+
+Fix:
+
+- UI version `Ver 1.72` -> `Ver 1.73`.
+- Package version `0.1.37` -> `0.1.38`.
+- Synology start script now accepts either:
+  - local Basic Auth: `APP_BASIC_AUTH_USER` + `APP_BASIC_AUTH_PASSWORD` or `APP_BASIC_AUTH_USERS`
+  - portal central auth: `PORTAL_AUTH_CHECK_SECRET` or `WIREGENE_AUTH_CHECK_SECRET`
+- Added `PORTAL_AUTH_CHECK_SECRET` and `PORTAL_AUTH_CHECK_URL` to Synology `.env.example`.
+- Added `WIREGENE_AUTH_CHECK_SECRET` to root `.env.example`.
+- Updated service docs with the portal-auth-only option.
+
+Recommended secure option:
+
+```text
+APP_BASIC_AUTH_USER=
+APP_BASIC_AUTH_PASSWORD=
+APP_BASIC_AUTH_USERS=
+PORTAL_AUTH_CHECK_SECRET=<same shared secret configured on portal.wiregene.com>
+PORTAL_AUTH_CHECK_URL=https://portal.wiregene.com/api/auth/check
+```
+
+Synology deploy/run command:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+## 2026-06-17 v1.74 Synology auth startup unblock
+
+Problem:
+
+- The Synology start script still stopped deployment when `/volume1/docker/meta/.env` did not contain local Basic Auth or `PORTAL_AUTH_CHECK_SECRET`.
+- This forced manual `.env` editing before the container could even start.
+
+Fix:
+
+- UI version `Ver 1.73` -> `Ver 1.74`.
+- Package version `0.1.38` -> `0.1.39`.
+- `scripts/synology-start-meta.sh` now tries to auto-fill `PORTAL_AUTH_CHECK_SECRET` from common existing runtime files:
+  - `/volume1/docker/portal/.env`
+  - `/volume1/docker/wiregene-portal/.env`
+  - `/volume1/docker/research-briefing/.env`
+  - `/volume1/docker/search/.env`
+  - `/volume1/docker/hyunlab/.env`
+  - `/volume1/docker/wiregene/.env`
+- If no auth value is found, the script logs a warning and still starts the Docker service instead of failing.
+- Authentication should still be configured before exposing the service publicly.
+
+Synology deploy/run command:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+## 2026-06-16 v1.70 Study title and Search Design workflow fix
+
+User-reported problems from another PC at UI v1.69:
+
+- Three studies are in progress, but two study titles are cut in the left menu.
+- `Evidence-informed prediction of preventable post-traumatic disability` still errors when `Search Design` is opened.
+- `Search log for this topic` effectively shows only PubMed, non-PubMed Open links are not useful, and too many DBs are listed before the researcher chooses them.
+- Current AI model setting is `gpt-5-nano`; user asked whether a more suitable API/model should be used.
+
+Changes made in the actual canonical app repo:
+
+- `src/components/MetaStudyWorkspace.tsx`
+  - Split study display title from left-menu label.
+  - Left menu now shows concise labels such as `Post-traumatic disability` or `Musician PRMD pain`.
+  - Main project header uses the full title via `projectFullTitle()` and no longer depends on a truncated `shortTitle`.
+  - New topic creation no longer truncates `title`; only the menu label is shortened.
+  - Added a known repair for the stored title `Evidence-informed prediction of preventable post-traumatic disability`.
+  - Canonical DB list is fixed to PubMed, Embase, Scopus, Web of Science, and Cochrane.
+  - New topics default to PubMed only; the researcher chooses additional DBs in `Search Design`.
+  - Added DB selection state and `Generate draft DB queries`.
+  - Search log, import log, and CSV export now use only the selected DBs.
+  - Added canonical DB normalization for PubMed/PuvMed/MEDLINE, Embase, Scopus, Web of Science/WoS, and Cochrane/CENTRAL.
+  - Fixed the likely Search Design crash by escaping database aliases before building regular expressions.
+  - Non-PubMed DBs now get generated draft syntax from the project query when possible.
+  - Open links are now limited to selected DBs: PubMed/Cochrane open with query URLs; Embase/Scopus/Web of Science open advanced search pages and rely on the Copy query button.
+- `src/lib/version.ts`
+  - UI version `Ver 1.69` -> `Ver 1.70 | 2026 copyright by JK Hyun`.
+- `package.json`, `package-lock.json`
+  - app package version `0.1.34` -> `0.1.35`.
+
+Verification during this work:
+
+```text
+npx tsc --noEmit: pass.
+npm run lint: pass.
+npm run build: pass.
+Browser verification at http://127.0.0.1:3224:
+- Ver 1.70 displayed.
+- Left menu displayed `Post-traumatic disability`; main header displayed full title `Evidence-informed prediction of preventable post-traumatic disability`.
+- Search Design opened without console errors for a project seeded with `PubMed (MEDLINE)`.
+- DB selector showed only PubMed, Embase, Scopus, Web of Science, and Cochrane.
+- Default selected DB was PubMed; after selecting Embase and Scopus, search log/import log showed PubMed, Embase, and Scopus only.
+- `Generate draft DB queries` stored generated PubMed/Embase/Scopus query overrides.
+- Open links resolved to PubMed query URL, Embase advanced search, and Scopus advanced search.
+```
+
+Model/API note:
+
+- The OpenAI API key itself does not change by model. For this app, `gpt-5-nano` is acceptable for low-cost simple parsing, but `gpt-5.4-mini` is the better default for structured study-plan parsing/search-query generation. Use `gpt-5.5` selectively for hard protocol/full-text reasoning where quality is more important than cost.
+
+Synology deploy/run command after push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+Verification:
+
+```text
+npx tsc --noEmit: pass.
+npm run lint: pass.
+npm run build: pass.
+Browser verification at http://127.0.0.1:3225:
+- Ver 1.71 displayed.
+- Left sidebar displayed the study-list storage location notice.
+- /api/meta-analysis/projects GET returned projects plus storage diagnostics.
+- Temporary PUT created one shared project, GET returned count=1, reset PUT returned ok=true.
+- Browser console error log was empty.
+```
+
+No new Synology Task Scheduler job is required for this UI/search fix; use the existing pull/start command after the GitHub push.
+
+## 2026-06-17 v1.71 Shared study-list storage fix
+
+User-reported problem:
+
+- On another PC, `meta.wiregene.com` showed only one built-in study even though three studies had been created previously.
+
+Root cause:
+
+- The previous storage work saved project CSV/export files to project folders and added a server API for the study list.
+- However, the study-list registry still defaulted to local JSON at `.data/meta/user-study-projects.json`.
+- On Synology/local Docker that can be shared if the same server/data volume is used.
+- On Vercel/serverless or a browser-only workflow, new user-created studies can remain in browser `localStorage` or fail server write silently, so another PC sees only the built-in Study 1.
+
+Changes made:
+
+- `src/lib/meta-project-storage.ts`
+  - Added shared user-study-list storage backend support.
+  - New env:
+    - `META_USER_PROJECTS_STORAGE_BACKEND=local-json|google-drive`
+    - `META_USER_PROJECTS_FILE=.data/meta/user-study-projects.json`
+    - `META_USER_PROJECTS_DRIVE_FILENAME=meta-user-study-projects.json`
+    - `META_USER_PROJECTS_DRIVE_FILE_ID=`
+  - On serverless with Google Drive credentials, the study list automatically uses Google Drive if no explicit backend is set.
+  - Google Drive corrupt JSON is backed up before resetting to an empty registry.
+- `src/app/api/meta-analysis/projects/route.ts`
+  - GET/PUT now return storage location diagnostics.
+  - GET/PUT return clear 500 JSON errors instead of falling through silently.
+- `src/components/MetaStudyWorkspace.tsx`
+  - Study-list save/load failures are now shown in the left sidebar.
+  - Successful load/save shows the active storage backend/path.
+  - Existing local browser projects are still merged back to the shared registry when that PC opens the updated app.
+- `.env.example`, `synology/docker/meta/.env.example`, `scripts/synology-start-meta.sh`, `SERVICE.md`
+  - Documented and wired the new shared study-list storage env variables.
+- `src/lib/version.ts`
+  - UI version `Ver 1.70` -> `Ver 1.71 | 2026 copyright by JK Hyun`.
+- `package.json`, `package-lock.json`
+  - app package version `0.1.35` -> `0.1.36`.
+
+Operational note:
+
+- If the two missing studies exist only in one PC's browser localStorage, they cannot be reconstructed from GitHub alone.
+- After v1.71 is deployed and shared storage is configured, open `meta.wiregene.com` once on the PC that still shows all three studies. The app will merge that local list into the shared registry.
+- Then other PCs should reload and see the same study list.
+
+Recommended Vercel/serverless env for multi-PC study list sync:
+
+```text
+META_USER_PROJECTS_STORAGE_BACKEND=google-drive
+META_USER_PROJECTS_DRIVE_FILENAME=meta-user-study-projects.json
+GOOGLE_DRIVE_CLIENT_ID=<oauth-client-id>
+GOOGLE_DRIVE_CLIENT_SECRET=<oauth-client-secret>
+GOOGLE_DRIVE_REFRESH_TOKEN=<oauth-refresh-token>
+GOOGLE_DRIVE_FOLDER_ID=<target-folder-id>
+```
+
+Synology/local Docker can use:
+
+```text
+META_USER_PROJECTS_STORAGE_BACKEND=local-json
+META_USER_PROJECTS_FILE=.data/meta/user-study-projects.json
+```
+
+Synology deploy/run command after push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+## 2026-06-15 New topic study-isolation fix
+
+사용자 지적:
+
+```text
+새로 생성한 주제의 PRISMA protocol에 "악기 분류보다 exposure definition을 먼저 고정합니다"라는 엉뚱한 문자가 있습니다. 기존 주제와 믹스되어 진행하면 절대로 안됩니다
+```
+
+원인:
+
+- `ProtocolStage`의 header title/detail이 기존 Study 1(오케스트라/악기 비대칭 PRMD) 전용 문구로 하드코딩되어 있었다.
+- Search, Screening, Extraction, Analysis, Manuscript, References에도 일부 Study 1 전용 설명 문구와 예시가 하드코딩되어 새로 생성한 user project에 노출될 위험이 있었다.
+
+변경:
+
+- `src/components/MetaStudyWorkspace.tsx`
+  - `isOrchestralPainProject()` 분기를 추가해 `orchestral-prmd-asymmetry`일 때만 기존 Study 1 전용 문구를 사용한다.
+  - 신규/사용자 생성 project는 generic systematic-review copy만 사용한다.
+  - Protocol title은 신규 주제에서 `연구 질문과 eligibility criteria를 먼저 고정합니다`로 표시된다.
+  - Protocol feature heading은 신규 주제에서 `Exposure / intervention criteria`로 표시된다.
+  - Search/Screening/Workbook/Extraction/Analysis/Manuscript/References stage도 신규 주제용 generic copy로 분리했다.
+  - 새 주제에서는 기존 연구의 DB count, Excel sheet, PRMD/악기/biomechanics 문구가 자동 표시되지 않도록 했다.
+- `package.json`, `package-lock.json`
+  - app package version `0.1.30` -> `0.1.31`.
+- `src/lib/version.ts`
+  - UI version `Ver 1.65` -> `Ver 1.66 | 2026 copyright by JK Hyun`.
+
+검증:
+
+```text
+npm ci: completed; existing audit warning remains 4 vulnerabilities.
+npx tsc --noEmit: pass.
+npm run lint: pass.
+npm run build: pass.
+Browser verification with WIREGENE_APP_MODE=meta at http://127.0.0.1:3222:
+- Created a new test topic.
+- New Protocol screen showed "연구 질문과 eligibility criteria를 먼저 고정합니다".
+- New Protocol screen did not show "악기 분류보다 exposure definition을 먼저 고정합니다".
+- New Protocol screen did not show "Biomechanical criteria".
+- Search, Screening, Extraction, Analysis, Manuscript, References were checked for old Study 1 phrases; none were found in the new topic flow.
+```
+
+Synology deploy/run command:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+GitHub update:
+
+```text
+Committed and pushed to origin/main:
+541b13a Isolate new meta study stage copy
+```
+
 ## 작업 위치
 
 실제 작업 저장소:
 
 ```text
-C:\Users\rhhyu\Documents\GitHub\wiregene-meta-analysis
+C:\Users\HyunJK\Documents\GitHub\meta.wiregene.com
+```
+
+현재 PC 작업 저장소:
+
+```text
+C:\Users\HyunJK\Documents\GitHub\meta.wiregene.com
 ```
 
 원격 저장소:
@@ -18,9 +485,158 @@ https://github.com/rhhyun/wiregene-meta-analysis.git
 
 주의:
 
-- `C:\Users\rhhyu\Documents\Meta.wiregene.com`은 안내용 폴더이며 실제 Meta 소스는 위 GitHub 폴더에 있다.
+- `C:\Users\HyunJK\Documents\Meta.wiregene.com`은 문서/기획/handoff 폴더이며 실제 Meta 앱 소스는 위 canonical GitHub 폴더에 있다.
 - 작업이 끝나면 GitHub에 자동 commit/push한다.
 - Synology 자동 배포를 실행하지 못했거나 확인하지 못하면 마지막에 작업 스케줄러 명령을 남긴다.
+
+## 2026-06-15 New topic AI analysis UI actual content fix
+
+사용자 지적:
+
+```text
+버전이 문제가 아니라 내용이 안바뀌었습니다
+```
+
+원인:
+
+- 앞선 변경은 `C:\Users\HyunJK\Documents\Meta.wiregene.com`의 문서/spec 중심으로 이루어졌다.
+- 실제 화면에 보이는 `AI planning prompt 복사`와 `skeleton 복사`는 최신 앱 소스인 `C:\Users\HyunJK\Documents\Playground\research-briefing-platform\wiregene-meta-analysis\src\components\MetaStudyWorkspace.tsx`에 남아 있었다.
+
+변경 내용:
+
+- `src/components/MetaStudyWorkspace.tsx`
+  - 신규 주제 화면의 primary action을 `AI 분석 시작`으로 변경.
+  - 구상내용 textarea label을 `구상내용 붙여넣기`로 변경.
+  - `AI planning prompt 복사` 버튼을 첫 화면 main action에서 제거.
+  - `skeleton 복사` 버튼을 제거하고 `고급 옵션: 외부 검토 prompt / 검색식 예시` 안의 `검색식 예시 복사`로 이동.
+  - `AI 분석 시작` 클릭 시 `/api/meta-analysis/study-plan/analyze`를 호출해 항목별 draft를 자동 채우도록 연결.
+  - AI 분석 후 확인 필요 항목을 화면에 표시.
+- `src/app/api/meta-analysis/study-plan/analyze/route.ts`
+  - 신규 API route 추가.
+  - OpenAI key가 있으면 OpenAI로 연구계획 JSON을 생성.
+  - OpenAI key가 없거나 실패하면 규칙 기반 fallback parser로 제목, 질문, population, exposure, outcomes, DB count, eligibility, search block, extraction plan을 채움.
+- `package.json`, `package-lock.json`
+  - package version `0.1.28` -> `0.1.29`.
+- `src/lib/version.ts`
+  - UI label `Ver 1.63` -> `Ver 1.64 | 2026 copyright by JK Hyun`.
+
+검증:
+
+```text
+npm install: completed; existing dependency audit reports 4 vulnerabilities.
+npm run lint: pass.
+npx tsc --noEmit: pass.
+npm run build: pass.
+Build route list includes /api/meta-analysis/study-plan/analyze.
+Static code check confirms no visible "AI planning prompt 복사" or "skeleton 복사" main button remains in MetaStudyWorkspace.tsx.
+```
+
+제한:
+
+- 이 Codex 세션에서는 Windows background process 생성 권한 문제로 local dev server browser verification을 완료하지 못했다.
+- Build는 성공했으므로 배포 가능한 코드 상태는 확인됐다.
+
+Synology deploy/run command:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+## 2026-06-15 New topic AI settings and auto-project flow fix
+
+사용자 지적:
+
+```text
+신규 주제를 넣었으면 AI 분석 후에 자동 저장, 그리고 다음 단계로 넘어가면서 진행 중인 연구에 추가가 되어야 하는데 지금은 초기 분석, 그것도 AI 분석도 못하고 그 화면에서 더 진행이 안됩니다.
+현재 AI 평가 설정은 gpt-5-nano로 분명히 되어 있는데 api key가 없다고하면 얼마나 당황스럽습니까
+```
+
+원인:
+
+- 신규 주제 분석 API가 기존 AI 평가 설정 저장소를 사용하지 않고 `config.openaiApiKey` 환경변수만 직접 확인했다.
+- 따라서 Meta AI settings 화면에 저장된 key/model이 있어도 신규 주제 분석 route에서는 key가 없는 것처럼 fallback 처리될 수 있었다.
+- 신규 주제 draft는 `wiregene-meta-new-topic-draft-v1`에만 저장되고, 왼쪽 `진행 중인 연구` 목록은 정적 `metaStudyProjects` 배열만 렌더링했다.
+- 결과적으로 AI 분석 결과가 진행 중인 연구에 추가되거나 다음 Protocol 단계로 넘어가는 구조가 없었다.
+
+변경 내용:
+
+- `src/app/api/meta-analysis/study-plan/analyze/route.ts`
+  - `resolveMetaOpenAIConfig()`를 사용하도록 수정했다.
+  - 저장된 OpenAI key, 환경변수 key, 저장된 model name을 신규 주제 분석 route에서 동일하게 사용한다.
+  - key source를 `saved`, `environment`, `missing`으로 구분해 응답한다.
+  - 설정 저장소 읽기 실패와 key 미존재를 구분해 fallback note를 반환한다.
+- `src/components/MetaStudyWorkspace.tsx`
+  - AI 분석 결과를 `MetaStudyProject`로 변환하는 생성기를 추가했다.
+  - 분석 완료 시 draft를 자동 저장하고 `wiregene-meta-user-study-projects-v1`에 사용자 연구로 저장한다.
+  - 새 연구를 왼쪽 `진행 중인 연구` 목록 맨 위에 표시한다.
+  - 분석 완료 후 새 연구의 `Protocol` 단계로 자동 이동한다.
+  - Protocol stage 기본값을 프로젝트별로 생성해, 신규 AI draft가 다음 단계의 editable protocol fields에 반영되도록 했다.
+- `package.json`, `package-lock.json`
+  - package version `0.1.29` -> `0.1.30`.
+- `src/lib/version.ts`
+  - UI label `Ver 1.64` -> `Ver 1.65 | 2026 copyright by JK Hyun`.
+
+검증:
+
+```text
+npm run lint: pass.
+npx tsc --noEmit: pass.
+npm run build: pass.
+Browser verification: WIREGENE_APP_MODE=meta dev server opened at http://127.0.0.1:3221.
+Meta screen displayed Ver 1.65.
+New topic screen displayed 신규 주제, 구상내용 붙여넣기, AI 분석 시작, 수정 내용 저장.
+Old main-path labels "AI planning prompt 복사" and "skeleton 복사" were not present.
+Browser console error/warning log: empty.
+```
+
+로컬 API 확인:
+
+```text
+POST /api/meta-analysis/study-plan/analyze returned ok=true.
+This local dev process had no .data/meta/meta-ai-settings.json and no OpenAI/Meta AI secret environment variables, so apiKeySource=missing and fallback parsing was expected locally.
+The route now uses the saved AI settings resolver; Synology/production must run with the same AI settings storage/secret used by the settings panel.
+```
+
+Synology deploy/run command:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+## 2026-06-15 Why the user still saw Ver 1.64
+
+사용자 지적:
+
+```text
+변한게 없고 버전이 1.64인데 왜 이럴까요
+```
+
+확인 결과:
+
+- 수정된 실제 소스는 `C:\Users\HyunJK\Documents\Playground\research-briefing-platform\wiregene-meta-analysis`에 있고 여기서는 `BRIEFING_VERSION = "1.65"`가 맞다.
+- 하지만 이 변경 6개 파일은 아직 Git commit/push 되지 않은 working tree 상태였다.
+- 따라서 Synology/production이 `git pull`을 해도 `Ver 1.65` 코드가 내려갈 수 없었다.
+- `localhost:3000`은 Meta 앱이 아니라 `hyunlab-wiregene-platform-frontend` Docker container가 잡고 있었다.
+- `C:\Users\HyunJK\Documents\GitHub\wiregene-meta-analysis`는 오래된 복사본이며 `src/components/MetaStudyWorkspace.tsx`에 아직 `skeleton 복사`가 남아 있고 `BRIEFING_VERSION = "1.35"`다.
+
+정리:
+
+- 사용자가 `Ver 1.64`를 본 이유는 새 코드가 실행/배포 서버에 반영되지 않았기 때문이다.
+- 반드시 이 repo의 변경사항을 GitHub에 push한 뒤 Synology에서 pull/restart 해야 한다.
+- 2026-06-15 후속 정리로 실제 source of truth는 `C:\Users\HyunJK\Documents\GitHub\meta.wiregene.com`으로 이동 및 고정했다.
+
+Required deploy sequence:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+GitHub update:
+
+```text
+Committed and pushed to origin/main:
+0f33326 Fix meta new topic AI project flow
+```
 
 ## 2026-06-12 Synology 명령 정정
 
@@ -845,8 +1461,8 @@ Implemented:
 - `src/app/api/meta-analysis/full-text/analyze/route.ts`
   - Saved-record summaries returned immediately after analysis now include reviewer decisions and PI final fields.
 - Version bumped:
-  - `package.json` / `package-lock.json`: `0.1.29`
-  - UI label: `Ver 1.64 | 2026 copyright by JK Hyun`
+  - `package.json` / `package-lock.json`: `0.1.41`
+  - UI label: `Ver 1.76 | 2026 copyright by JK Hyun`
 
 Important product note:
 
@@ -859,9 +1475,70 @@ Verification:
 npm.cmd run lint: passed.
 npx.cmd tsc --noEmit --pretty false: passed.
 npm.cmd run build: passed.
+Browser verification in forced Meta mode on `http://127.0.0.1:3212`: `Ver 1.76` visible; AI settings renders three reviewer slots; browser console errors=[].
 ```
 
 Regular Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+## 2026-06-16 Screening project-folder export storage
+
+User asked where Screening-generated Excel/CSV/data files are saved and requested a folder option or per-project folders.
+
+Current diagnosis:
+
+- Before this change, Screening/Search export buttons were clipboard-only.
+- `Search import log` and workbook board edits were browser `localStorage` only, scoped by project id but not shared across PCs.
+- Full-text analysis history was already server-side in `.data/meta/meta-full-text-history.json` or Google Drive when configured.
+- Draft Excel CSV in the extraction dataset panel was explicitly `Copy draft Excel CSV (not saved)`.
+
+Implemented in the canonical actual app repository:
+
+```text
+C:\Users\HyunJK\Documents\GitHub\meta.wiregene.com
+```
+
+Changed files:
+
+- `src/lib/meta-project-storage.ts`
+- `src/app/api/meta-analysis/projects/[projectId]/files/route.ts`
+- `src/components/MetaStudyWorkspace.tsx`
+- `src/components/MetaExtractionDatasetPanel.tsx`
+- `.env.example`
+- `synology/docker/meta/.env.example`
+- `scripts/synology-start-meta.sh`
+- `SERVICE.md`
+- `package.json`
+- `package-lock.json`
+- `src/lib/version.ts`
+
+Behavior now:
+
+- New API: `/api/meta-analysis/projects/[projectId]/files`.
+- Default app path: `.data/meta/projects/{projectId}/`.
+- Default Synology host path: `/volume1/docker/meta/data/projects/{projectId}/`.
+- Root folder option: `META_PROJECT_STORAGE_ROOT`; default `.data/meta/projects`.
+- Screening tab shows `Project file storage` with app path, Synology host-path hint, saved file count, and file list.
+- Save buttons now exist for search log CSV, search import CSV, PRISMA CSV, workbook board CSV, screening decision header CSV, and draft Excel dataset CSV.
+
+Version:
+
+- Actual app package version: `0.1.32`.
+- Visible UI version: `Ver 1.67 | 2026 copyright by JK Hyun`.
+
+Verification:
+
+- `npx tsc --noEmit`: passed.
+- `npm run lint`: passed.
+- `npm run build`: passed without Turbopack warnings.
+- Browser verification on `http://127.0.0.1:3223` confirmed the Screening storage panel and save buttons.
+- `Save header` created `.data/meta/projects/orchestral-prmd-asymmetry/screening-decision-header.csv`.
+- `Save board` created `.data/meta/projects/orchestral-prmd-asymmetry/workbook-fulltext-board.csv`.
+
+Synology deploy/run command after GitHub push:
 
 ```sh
 git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh

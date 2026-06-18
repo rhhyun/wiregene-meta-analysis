@@ -46,6 +46,22 @@ git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin
 APP_BASIC_AUTH_USER='YOUR_LOGIN_ID' APP_BASIC_AUTH_PASSWORD='YOUR_PASSWORD' WIREGENE_ADMIN_EMAILS='YOUR_ADMIN_EMAIL' /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
 ```
 
+Alternatively, Meta can rely on `portal.wiregene.com` central authentication.
+In that case `/volume1/docker/meta/.env` does not need a local
+`APP_BASIC_AUTH_PASSWORD`, but it must include:
+
+```txt
+PORTAL_AUTH_CHECK_SECRET=YOUR_SHARED_PORTAL_AUTH_CHECK_SECRET
+PORTAL_AUTH_CHECK_URL=https://portal.wiregene.com/api/auth/check
+```
+
+The secret must match the one configured on `portal.wiregene.com`.
+If the secret already exists in a common runtime file such as
+`/volume1/docker/portal/.env`, the Synology start script attempts to copy it
+into `/volume1/docker/meta/.env` automatically. If no auth value is found, the
+script now starts the container with a warning instead of blocking deployment;
+configure authentication before exposing the service publicly.
+
 For full-text article screening/extraction accuracy, configure OpenAI. When
 enabled, the full-text workflow uses OpenAI Structured Outputs to produce both
 the eligibility/extraction draft and a Hyunlab-style quality review
@@ -81,3 +97,68 @@ and reviewer verification fields. On Vercel, the history storage uses Google
 Drive automatically when Google Drive credentials are configured, or it can be
 forced with `META_FULL_TEXT_HISTORY_STORAGE_BACKEND=google-drive`. The default
 Drive file is `meta-full-text-history.json`.
+
+## Meta Project File Storage
+
+Screening/search CSV exports and each study's shared workspace state are not
+written as files until the in-app `Save ...` or shared-state buttons are
+clicked. Saved project files are written by the Next.js server under:
+
+```txt
+.data/meta/projects/{projectId}/
+```
+
+In the Synology Docker package this path is bind-mounted to:
+
+```txt
+/volume1/docker/meta/data/projects/{projectId}/
+```
+
+Set `META_PROJECT_STORAGE_ROOT` only to a writable path visible inside the
+container. The default `.data/meta/projects` is recommended for Synology because
+it stays inside the existing `/volume1/docker/meta/data` runtime volume.
+
+For multi-PC editing, Vercel/serverless use, or cross-service integration with
+`search.wiregene.com` / `omni.wiregene.com`, configure:
+
+```txt
+META_PROJECT_STORAGE_BACKEND=google-drive
+META_PROJECT_DRIVE_PREFIX=meta-projects
+```
+
+with Google Drive credentials. The project state is saved as
+`project-workspace-state.json` under the project storage backend. It currently
+contains PRISMA protocol draft fields, selected search databases, database query
+overrides, search import rows, and the screening workbook board. Text exports
+can be downloaded through:
+
+```txt
+/api/meta-analysis/projects/{projectId}/files/{fileName}
+```
+
+Other Wiregene services can discover available studies and endpoints through:
+
+```txt
+/api/meta-analysis/workspace/manifest
+```
+
+## Shared Meta Study List Storage
+
+The left-menu study list is a project registry, not a CSV/export file. It is
+stored separately from `META_PROJECT_STORAGE_ROOT`.
+
+- Local/Synology default: `META_USER_PROJECTS_STORAGE_BACKEND=local-json` with
+  `META_USER_PROJECTS_FILE=.data/meta/user-study-projects.json`.
+- Vercel/serverless or multi-PC sharing: set
+  `META_USER_PROJECTS_STORAGE_BACKEND=google-drive` plus Google Drive
+  credentials. The default Drive file name is `meta-user-study-projects.json`.
+- If a study exists only in one browser's localStorage, open that PC once after
+  the shared backend is configured. The app merges the browser list back into
+  the shared project registry.
+- From app `Ver 1.75`, the study registry deduplicates same-title topics in
+  addition to same-id topics. If a duplicate title is loaded from localStorage or
+  shared storage, the app writes the cleaned list back through
+  `/api/meta-analysis/projects`.
+- From app `Ver 1.75`, study cards support `archive`, `restore`, and
+  soft-delete visibility states. Archived and deleted studies are hidden from the
+  default active study list on every PC that reads the shared registry.

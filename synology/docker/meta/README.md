@@ -37,6 +37,20 @@ Or seed a new Basic Auth pair without editing the file manually:
 APP_BASIC_AUTH_USER='YOUR_LOGIN_ID' APP_BASIC_AUTH_PASSWORD='YOUR_PASSWORD' WIREGENE_ADMIN_EMAILS='YOUR_ADMIN_EMAIL' /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
 ```
 
+If you do not want a local Meta Basic Auth password in `/volume1/docker/meta/.env`,
+use portal central authentication instead:
+
+```txt
+PORTAL_AUTH_CHECK_SECRET=YOUR_SHARED_PORTAL_AUTH_CHECK_SECRET
+PORTAL_AUTH_CHECK_URL=https://portal.wiregene.com/api/auth/check
+```
+
+The Synology start script accepts this as the authentication guard even when
+`APP_BASIC_AUTH_USER` and `APP_BASIC_AUTH_PASSWORD` are empty.
+It also tries to copy an existing auth secret from common runtime files such as
+`/volume1/docker/portal/.env`. If no auth value is found, it warns and starts
+the container instead of stopping the deployment.
+
 For accurate full-text article screening/extraction, set an OpenAI API key in
 `/volume1/docker/meta/.env` or seed it once through the scheduler environment.
 With OpenAI enabled, the assistant also returns a Hyunlab-style quality review
@@ -72,6 +86,28 @@ and reviewer verification fields. On Vercel, the history storage uses Google
 Drive automatically when Google Drive credentials are configured, or it can be
 forced with `META_FULL_TEXT_HISTORY_STORAGE_BACKEND=google-drive`. The default
 Drive file is `meta-full-text-history.json`.
+
+For multi-PC meta-analysis project editing, keep the study registry and the
+project workspace state in shared storage. Synology local storage is acceptable
+for one NAS-backed internal deployment. For cross-PC/Vercel/cross-site sharing
+with `search.wiregene.com` or `omni.wiregene.com`, set Google Drive storage in
+`/volume1/docker/meta/.env`:
+
+```sh
+META_USER_PROJECTS_STORAGE_BACKEND=google-drive
+META_USER_PROJECTS_DRIVE_FILENAME=meta-user-study-projects.json
+META_PROJECT_STORAGE_BACKEND=google-drive
+META_PROJECT_DRIVE_PREFIX=meta-projects
+```
+
+From app `Ver 1.75`, the shared study registry also stores study visibility
+state. Same-title studies are deduplicated, archived studies are hidden from the
+default active list, and soft-deleted studies do not reappear on another PC.
+
+The per-study shared state file is `project-workspace-state.json`; it stores the
+protocol draft, selected databases, DB query overrides, search import rows, and
+screening workbook board. Other services can discover project endpoints at
+`/api/meta-analysis/workspace/manifest`.
 
 If port `3001` is already used, the script prints the running container that
 owns the port and stops before changing anything. If that old container should

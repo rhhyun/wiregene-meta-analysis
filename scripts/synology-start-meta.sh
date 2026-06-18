@@ -56,7 +56,7 @@ process_env_value() {
 }
 
 seed_runtime_env_from_process() {
-  for key in APP_BASIC_AUTH_USER APP_BASIC_AUTH_PASSWORD APP_BASIC_AUTH_USERS WIREGENE_ADMIN_EMAILS APP_ADMIN_USERS APP_ADMIN_USER OPENAI_API_KEY OPENAI_MODEL META_AI_SETTINGS_STORAGE_BACKEND META_AI_SETTINGS_STORAGE_PATH META_AI_SETTINGS_DRIVE_FILENAME META_AI_SETTINGS_DRIVE_FILE_ID META_AI_SETTINGS_SECRET META_FULL_TEXT_HISTORY_STORAGE_BACKEND META_FULL_TEXT_HISTORY_STORAGE_PATH META_FULL_TEXT_HISTORY_DRIVE_FILENAME META_FULL_TEXT_HISTORY_DRIVE_FILE_ID GOOGLE_DRIVE_CLIENT_ID GOOGLE_DRIVE_CLIENT_SECRET GOOGLE_DRIVE_REFRESH_TOKEN GOOGLE_DRIVE_FOLDER_ID GOOGLE_DRIVE_FOLDER_URL GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON; do
+  for key in APP_BASIC_AUTH_USER APP_BASIC_AUTH_PASSWORD APP_BASIC_AUTH_USERS WIREGENE_ADMIN_EMAILS APP_ADMIN_USERS APP_ADMIN_USER PORTAL_AUTH_CHECK_SECRET PORTAL_AUTH_CHECK_URL WIREGENE_AUTH_CHECK_SECRET OPENAI_API_KEY OPENAI_MODEL META_PROJECT_STORAGE_BACKEND META_PROJECT_STORAGE_ROOT META_PROJECT_DRIVE_PREFIX META_USER_PROJECTS_STORAGE_BACKEND META_USER_PROJECTS_FILE META_USER_PROJECTS_DRIVE_FILENAME META_USER_PROJECTS_DRIVE_FILE_ID META_AI_SETTINGS_STORAGE_BACKEND META_AI_SETTINGS_STORAGE_PATH META_AI_SETTINGS_DRIVE_FILENAME META_AI_SETTINGS_DRIVE_FILE_ID META_AI_SETTINGS_SECRET META_FULL_TEXT_HISTORY_STORAGE_BACKEND META_FULL_TEXT_HISTORY_STORAGE_PATH META_FULL_TEXT_HISTORY_DRIVE_FILENAME META_FULL_TEXT_HISTORY_DRIVE_FILE_ID GOOGLE_DRIVE_CLIENT_ID GOOGLE_DRIVE_CLIENT_SECRET GOOGLE_DRIVE_REFRESH_TOKEN GOOGLE_DRIVE_FOLDER_ID GOOGLE_DRIVE_FOLDER_URL GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON; do
     value=$(process_env_value "$key")
     [ -n "$value" ] || continue
     current=$(env_value "$key")
@@ -74,6 +74,36 @@ seed_runtime_env_from_process() {
       set_env_value "$key" "$value"
       log "Set $key in $RUNTIME_DIR/.env from scheduler environment."
     fi
+  done
+}
+
+seed_portal_auth_from_known_runtime_env() {
+  current=$(env_value PORTAL_AUTH_CHECK_SECRET)
+  fallback=$(env_value WIREGENE_AUTH_CHECK_SECRET)
+  [ -z "$current" ] || return 0
+  [ -z "$fallback" ] || return 0
+
+  for candidate in \
+    /volume1/docker/portal/.env \
+    /volume1/docker/wiregene-portal/.env \
+    /volume1/docker/research-briefing/.env \
+    /volume1/docker/search/.env \
+    /volume1/docker/hyunlab/.env \
+    /volume1/docker/wiregene/.env
+  do
+    [ -f "$candidate" ] || continue
+    value=$(
+      sed -n \
+        -e 's/^PORTAL_AUTH_CHECK_SECRET=//p' \
+        -e 's/^WIREGENE_AUTH_CHECK_SECRET=//p' \
+        "$candidate" |
+        sed 's/\r$//' |
+        sed -n '1p'
+    )
+    [ -n "$value" ] || continue
+    set_env_value PORTAL_AUTH_CHECK_SECRET "$value"
+    log "Filled PORTAL_AUTH_CHECK_SECRET in $RUNTIME_DIR/.env from $candidate."
+    return 0
   done
 }
 
@@ -117,9 +147,11 @@ prepare_runtime() {
   fi
 
   seed_runtime_env_from_process
+  seed_portal_auth_from_known_runtime_env
   ensure_runtime_env_value APP_SOURCE_DIR "$APP_DIR"
   ensure_runtime_env_value CONTAINER_NAME "wiregene-meta"
   ensure_runtime_env_value WIREGENE_APP_MODE "meta"
+  ensure_runtime_env_value META_PROJECT_STORAGE_ROOT ".data/meta/projects"
 }
 
 env_value() {
@@ -140,12 +172,18 @@ warn_runtime_env() {
   auth_user=$(env_value APP_BASIC_AUTH_USER)
   auth_password=$(env_value APP_BASIC_AUTH_PASSWORD)
   auth_users=$(env_value APP_BASIC_AUTH_USERS)
+  portal_auth_secret=$(env_value PORTAL_AUTH_CHECK_SECRET)
+  wiregene_auth_secret=$(env_value WIREGENE_AUTH_CHECK_SECRET)
   admin_emails=$(env_value WIREGENE_ADMIN_EMAILS)
   admin_users=$(env_value APP_ADMIN_USERS)
   admin_user=$(env_value APP_ADMIN_USER)
 
-  if [ -z "$auth_users" ] && { [ -z "$auth_user" ] || [ -z "$auth_password" ]; }; then
-    fail "No complete Basic Auth credential found in $RUNTIME_DIR/.env. Run $APP_DIR/scripts/synology-migrate-auth-env.sh, edit $RUNTIME_DIR/.env, or rerun with APP_BASIC_AUTH_USER and APP_BASIC_AUTH_PASSWORD in the scheduler command."
+  if [ -z "$auth_users" ] && { [ -z "$auth_user" ] || [ -z "$auth_password" ]; } && { [ -n "$portal_auth_secret" ] || [ -n "$wiregene_auth_secret" ]; }; then
+    log "Local Basic Auth is not configured; Meta will rely on portal auth check secret."
+  fi
+
+  if [ -z "$auth_users" ] && { [ -z "$auth_user" ] || [ -z "$auth_password" ]; } && [ -z "$portal_auth_secret" ] && [ -z "$wiregene_auth_secret" ]; then
+    log "WARNING: No local Basic Auth or portal auth secret is configured in $RUNTIME_DIR/.env. The container will still start so the site can be reached, but configure PORTAL_AUTH_CHECK_SECRET or APP_BASIC_AUTH_USER/APP_BASIC_AUTH_PASSWORD before exposing this service publicly."
   fi
 
   if [ -z "$admin_emails" ] && [ -z "$admin_users" ] && [ -z "$admin_user" ]; then
