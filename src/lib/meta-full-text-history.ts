@@ -7,6 +7,10 @@ import {
   writeTextFileToGoogleDrive,
 } from "./google-drive-storage";
 import type { MetaFullTextAnalysis } from "./meta-full-text-analysis";
+import {
+  normalizeMetaFullTextSourceFile,
+  type MetaFullTextSourceFile,
+} from "./meta-full-text-source-files";
 
 export type MetaFullTextVerification = {
   reviewerOneName: string;
@@ -40,9 +44,16 @@ export type MetaFullTextHistoryRecord = {
   reviewMode: string | null;
   referenceRecord: string | null;
   savedAt: string;
+  sourceFile: MetaFullTextSourceFile | null;
   analysis: MetaFullTextAnalysis;
   verification: MetaFullTextVerification;
   extractionReview: MetaFullTextExtractionReview;
+  analysisArchive?: MetaFullTextAnalysisArchiveEntry[];
+};
+
+export type MetaFullTextAnalysisArchiveEntry = {
+  archivedAt: string;
+  analysis: MetaFullTextAnalysis;
 };
 
 export type MetaFullTextHistorySummary = {
@@ -64,6 +75,8 @@ export type MetaFullTextHistorySummary = {
   extractionRowCount: number;
   missingCriticalFieldCount: number;
   validationIssueCount: number;
+  sourceFileSaved: boolean;
+  sourceStorage: MetaFullTextSourceFile["storage"] | null;
   verificationComplete: boolean;
   reviewerOneName: string;
   reviewerTwoName: string;
@@ -123,6 +136,7 @@ export async function saveMetaFullTextHistory(input: {
   referenceRecord?: string | null;
   reviewerOneName?: string | null;
   reviewerTwoName?: string | null;
+  sourceFile?: MetaFullTextSourceFile | null;
 }) {
   const data = await readHistoryData();
   const reviewerSettings = mergeReviewerSettings(data.reviewerSettings, {
@@ -143,9 +157,11 @@ export async function saveMetaFullTextHistory(input: {
     reviewMode: cleanOptional(input.reviewMode),
     referenceRecord: cleanOptional(input.referenceRecord),
     savedAt: new Date().toISOString(),
+    sourceFile: input.sourceFile ?? null,
     analysis: input.analysis,
     verification: emptyVerification(data.reviewerSettings),
     extractionReview: emptyExtractionReview(),
+    analysisArchive: [],
   };
 
   data.records = [record, ...data.records.filter((item) => item.id !== record.id)].slice(0, maxStoredRecords);
@@ -233,6 +249,27 @@ export async function updateMetaFullTextExtractionReview(id: string, review: Par
   return data.records[index];
 }
 
+export async function replaceMetaFullTextHistoryAnalysis(id: string, analysis: MetaFullTextAnalysis) {
+  const data = await readHistoryData();
+  const index = data.records.findIndex((record) => record.id === id);
+  if (index < 0) return null;
+  const current = data.records[index];
+
+  data.records[index] = {
+    ...current,
+    analysis,
+    analysisArchive: [
+      {
+        archivedAt: new Date().toISOString(),
+        analysis: current.analysis,
+      },
+      ...(current.analysisArchive ?? []),
+    ].slice(0, 10),
+  };
+  await writeHistoryData(data);
+  return data.records[index];
+}
+
 export async function updateMetaFullTextReviewerSettings(settings: Partial<MetaFullTextReviewerSettings>) {
   const data = await readHistoryData();
   data.reviewerSettings = {
@@ -287,6 +324,8 @@ function toSummary(record: MetaFullTextHistoryRecord): MetaFullTextHistorySummar
     extractionRowCount: record.analysis.extraction.rows.length,
     missingCriticalFieldCount: record.analysis.extraction.missingCriticalFields.length,
     validationIssueCount: record.analysis.extraction.validationIssues.length,
+    sourceFileSaved: Boolean(record.sourceFile),
+    sourceStorage: record.sourceFile?.storage ?? null,
     verificationComplete: isVerificationComplete(record.verification),
     reviewerOneName: record.verification.reviewerOneName,
     reviewerTwoName: record.verification.reviewerTwoName,
@@ -430,9 +469,23 @@ function normalizeRecord(value: unknown): MetaFullTextHistoryRecord | null {
     reviewMode: cleanOptional(record.reviewMode),
     referenceRecord: cleanOptional(record.referenceRecord),
     savedAt: cleanString(record.savedAt) || analysis.analyzedAt || new Date().toISOString(),
+    sourceFile: normalizeMetaFullTextSourceFile(record.sourceFile),
     analysis,
     verification: normalizeVerification(record.verification ?? {}),
     extractionReview: normalizeExtractionReview(record.extractionReview),
+    analysisArchive: Array.isArray(record.analysisArchive)
+      ? record.analysisArchive.map(normalizeAnalysisArchiveEntry).filter(Boolean).slice(0, 10) as MetaFullTextAnalysisArchiveEntry[]
+      : [],
+  };
+}
+
+function normalizeAnalysisArchiveEntry(value: unknown): MetaFullTextAnalysisArchiveEntry | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Partial<MetaFullTextAnalysisArchiveEntry>;
+  if (!record.analysis || typeof record.analysis !== "object") return null;
+  return {
+    archivedAt: cleanString(record.archivedAt) || new Date().toISOString(),
+    analysis: normalizeStoredAnalysis(record.analysis as Partial<MetaFullTextAnalysis>),
   };
 }
 

@@ -10,6 +10,7 @@ import {
   metaFullTextHistoryStorageErrorDetails,
   saveMetaFullTextHistory,
 } from "@/lib/meta-full-text-history";
+import { saveMetaFullTextSourceFile } from "@/lib/meta-full-text-source-files";
 import { orchestralPainProject } from "@/lib/meta-projects";
 
 export const runtime = "nodejs";
@@ -53,6 +54,7 @@ type AnalyzeRequestInput = {
   reviewerOneName: string;
   reviewerTwoName: string;
   extractionColumns: string[];
+  driveFileId: string | null;
 };
 
 function formString(formData: FormData, key: string) {
@@ -166,6 +168,7 @@ async function parseMultipartAnalyzeRequest(
     reviewerOneName: formString(formData, "reviewerOneName"),
     reviewerTwoName: formString(formData, "reviewerTwoName"),
     extractionColumns: allowedExtractionColumns(columnsSchema.parse(formString(formData, "extractionColumns"))),
+    driveFileId: null,
   };
 }
 
@@ -208,10 +211,20 @@ async function parseGoogleDriveAnalyzeRequest(
     reviewerOneName: payloadString(payload, "reviewerOneName"),
     reviewerTwoName: payloadString(payload, "reviewerTwoName"),
     extractionColumns: payloadColumns(payload),
+    driveFileId,
   };
 }
 
 async function analyzeAndSave(input: AnalyzeRequestInput, context: AnalyzeRequestContext) {
+  context.phase = "save_source_file";
+  const sourceFile = await saveMetaFullTextSourceFile({
+    buffer: input.buffer,
+    fileName: input.fileName,
+    mimeType: input.mimeType,
+    fileSize: input.fileSize,
+    existingDriveFileId: input.driveFileId,
+  });
+
   context.phase = "analyze_full_text";
   const analysis = await analyzeMetaFullTextUpload({
     buffer: input.buffer,
@@ -238,6 +251,7 @@ async function analyzeAndSave(input: AnalyzeRequestInput, context: AnalyzeReques
       referenceRecord: input.referenceRecord,
       reviewerOneName: input.reviewerOneName,
       reviewerTwoName: input.reviewerTwoName,
+      sourceFile,
     });
 
     console.info("[meta-full-text/analyze] history saved", {
@@ -266,6 +280,8 @@ async function analyzeAndSave(input: AnalyzeRequestInput, context: AnalyzeReques
         extractionRowCount: savedRecord.analysis.extraction.rows.length,
         missingCriticalFieldCount: savedRecord.analysis.extraction.missingCriticalFields.length,
         validationIssueCount: savedRecord.analysis.extraction.validationIssues.length,
+        sourceFileSaved: Boolean(savedRecord.sourceFile),
+        sourceStorage: savedRecord.sourceFile?.storage ?? null,
         verificationComplete: false,
         reviewerOneName: savedRecord.verification.reviewerOneName,
         reviewerTwoName: savedRecord.verification.reviewerTwoName,

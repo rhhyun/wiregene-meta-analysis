@@ -320,6 +320,50 @@ async function uploadText(name: string, contents: string, fileId?: string) {
   return file;
 }
 
+async function uploadBinary(name: string, contents: Buffer, mimeType: string, fileId?: string) {
+  const boundary = `briefing-${crypto.randomUUID()}`;
+  const parent = fileId ? "" : await targetParentId();
+  const metadata = {
+    name,
+    parents: fileId || !parent ? undefined : [parent],
+    mimeType,
+  };
+  const body = Buffer.concat([
+    Buffer.from(
+      [
+        `--${boundary}`,
+        "Content-Type: application/json; charset=UTF-8",
+        "",
+        JSON.stringify(metadata),
+        `--${boundary}`,
+        `Content-Type: ${mimeType || "application/octet-stream"}`,
+        "",
+      ].join("\r\n"),
+      "utf8",
+    ),
+    contents,
+    Buffer.from(`\r\n--${boundary}--\r\n`, "utf8"),
+  ]);
+  const url = new URL(fileId ? `${driveUploadUrl}/${fileId}` : driveUploadUrl);
+  url.searchParams.set("uploadType", "multipart");
+  url.searchParams.set("fields", "id,name,mimeType,size,webViewLink");
+  url.searchParams.set("supportsAllDrives", "true");
+  const response = await driveFetch(url.toString(), {
+    method: fileId ? "PATCH" : "POST",
+    headers: { "content-type": `multipart/related; boundary=${boundary}` },
+    body,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Google Drive binary upload failed: ${response.status} ${await response.text()}`);
+  }
+
+  const file = (await response.json()) as DriveFile;
+  await shareRootFallbackFile(file);
+  logDriveFile("file", file);
+  return file;
+}
+
 function driveShareEmail() {
   return (process.env.GOOGLE_DRIVE_SHARE_EMAIL ?? "").trim();
 }
@@ -387,6 +431,20 @@ export async function writeTextFileToGoogleDrive(name: string, contents: string,
 
   const file = await findFileByName(name);
   await uploadText(name, contents, file?.id);
+}
+
+export async function writeBinaryFileToGoogleDrive(name: string, contents: Buffer, mimeType = "application/octet-stream", explicitFileId = "") {
+  if (explicitFileId) {
+    return uploadBinary(name, contents, mimeType, explicitFileId);
+  }
+
+  const file = await findFileByName(name);
+  if (file) {
+    const existing = await readBinaryFileFromGoogleDrive(file.id);
+    if (existing.equals(contents)) return file;
+    return uploadBinary(name, contents, mimeType, file.id);
+  }
+  return uploadBinary(name, contents, mimeType);
 }
 
 export async function createGoogleDriveResumableUploadSession(input: {

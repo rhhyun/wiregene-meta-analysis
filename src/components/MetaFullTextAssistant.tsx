@@ -54,6 +54,8 @@ type MetaFullTextHistorySummary = {
   extractionRowCount: number;
   missingCriticalFieldCount: number;
   validationIssueCount: number;
+  sourceFileSaved: boolean;
+  sourceStorage: string | null;
   verificationComplete: boolean;
   reviewerOneName: string;
   reviewerTwoName: string;
@@ -100,6 +102,17 @@ type MetaFullTextHistoryRecord = {
   reviewMode: string | null;
   referenceRecord: string | null;
   savedAt: string;
+  sourceFile: {
+    storage: string;
+    fileName: string;
+    mimeType: string;
+    fileSize: number;
+    sha256: string;
+    savedAt: string;
+    localPath: string | null;
+    driveFileId: string | null;
+    webViewLink: string | null;
+  } | null;
   analysis: MetaFullTextAnalysis;
   verification: MetaFullTextVerification;
 };
@@ -474,6 +487,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isSavingVerification, setIsSavingVerification] = useState(false);
   const [isSavingReviewerSettings, setIsSavingReviewerSettings] = useState(false);
+  const [isReanalyzingSavedSource, setIsReanalyzingSavedSource] = useState(false);
   const [reviewerNamesSaved, setReviewerNamesSaved] = useState(false);
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("all");
 
@@ -815,6 +829,38 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
       setError(caught instanceof Error ? caught.message : "Reviewer verification could not be saved.");
     } finally {
       setIsSavingVerification(false);
+    }
+  }
+
+  async function reanalyzeSavedSource() {
+    if (!currentHistoryId) {
+      setError("Open a saved full-text record before reanalyzing.");
+      return;
+    }
+    setIsReanalyzingSavedSource(true);
+    setError("");
+    setNotice("");
+    try {
+      const payload = await readHistoryRecordPayload(
+        await fetch(`/api/meta-analysis/full-text/history/${encodeURIComponent(currentHistoryId)}/reanalyze`, {
+          method: "POST",
+        }),
+      );
+      const record = payload.record;
+      setAnalysis(record.analysis);
+      setCurrentHistoryId(record.id);
+      setReferenceRecord(stripGeneratedReferenceContext(record.referenceRecord));
+      if (record.sourceSheet) setWorksheetName(record.sourceSheet);
+      applyVerification(record.verification);
+      const overview = await readHistoryListPayload(
+        await fetch(fullTextHistoryListUrl, { cache: "no-store" }),
+      );
+      applyHistoryOverview(overview);
+      setNotice(`Re-analyzed saved full-text source with the current AI model settings: ${record.fileName}`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Saved full-text source could not be reanalyzed.");
+    } finally {
+      setIsReanalyzingSavedSource(false);
     }
   }
 
@@ -1268,6 +1314,9 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
                             <span className="rounded-md bg-zinc-100 px-2 py-1">{item.sourceSheet ?? "no sheet"}</span>
                             <span className="rounded-md bg-zinc-100 px-2 py-1">{decisionLabel(item.decision)}</span>
                             <span className="rounded-md bg-zinc-100 px-2 py-1">confidence {item.confidence}</span>
+                            <span className="rounded-md bg-zinc-100 px-2 py-1">
+                              {item.sourceFileSaved ? `source saved: ${item.sourceStorage}` : "legacy/no source"}
+                            </span>
                             <span className="rounded-md bg-zinc-100 px-2 py-1">{new Date(item.savedAt).toLocaleString("ko-KR")}</span>
                           </div>
                           {item.titleGuess ? <p className="line-clamp-2 text-xs leading-5 text-zinc-500">{item.titleGuess}</p> : null}
@@ -1295,6 +1344,22 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
                   <p className="text-xs font-semibold leading-5 text-zinc-600">
                     PI final: {currentHistoryItem.piFinalDecision || "pending"} · {currentHistoryItem.piName || "PI not set"}
                   </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <span className="rounded-md bg-white px-2 py-1 text-xs font-semibold text-zinc-700 ring-1 ring-emerald-100">
+                      {currentHistoryItem.sourceFileSaved
+                        ? `source saved: ${currentHistoryItem.sourceStorage}`
+                        : "legacy record: source file not saved"}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void reanalyzeSavedSource()}
+                      disabled={isReanalyzingSavedSource || !currentHistoryItem.sourceFileSaved}
+                      className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-emerald-300 bg-white px-3 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:border-zinc-200 disabled:text-zinc-400"
+                    >
+                      {isReanalyzingSavedSource ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden />}
+                      Re-analyze saved source with current AI
+                    </button>
+                  </div>
                   <p className="text-xs font-medium leading-5 text-zinc-600">
                     {currentHistoryItem.sourceSheet ?? "no sheet"} · {decisionLabel(currentHistoryItem.decision)} · confidence{" "}
                     {currentHistoryItem.confidence} · {currentHistoryItem.aiUsed ? `AI ${currentHistoryItem.model}` : "fallback"} · review{" "}

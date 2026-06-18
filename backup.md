@@ -1484,6 +1484,60 @@ Regular Synology deploy/run command after GitHub push:
 git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
 ```
 
+## 2026-06-18 Full-text source persistence and saved-record reanalysis
+
+User clarified:
+
+- Full-text articles are uploaded once in a batch.
+- Once uploaded, saved papers must not disappear when AI model settings change.
+- The app must not require the researcher to upload the same full-text file again just to rerun analysis with a new AI model.
+
+Implemented:
+
+- Added `src/lib/meta-full-text-source-files.ts`.
+  - Saves uploaded full-text source files separately from analysis history.
+  - Local/Synology default path: `.data/meta/full-text-files`.
+  - Vercel/serverless with Google Drive credentials uses Google Drive source storage.
+  - Existing Google Drive large-file uploads keep their `driveFileId` instead of duplicating the file.
+- Added `writeBinaryFileToGoogleDrive` in `src/lib/google-drive-storage.ts` so small multipart PDF/Word/TXT uploads can also be persisted to Google Drive when needed.
+- `src/app/api/meta-analysis/full-text/analyze/route.ts`
+  - Saves source file before analysis/history save.
+  - History summaries now return `sourceFileSaved` and `sourceStorage`.
+- `src/lib/meta-full-text-history.ts`
+  - History records now include `sourceFile`.
+  - Legacy records read safely with `sourceFile: null`.
+  - Reanalysis updates the same record and archives the previous analysis in `analysisArchive` instead of creating a duplicate paper count.
+- Added `POST /api/meta-analysis/full-text/history/[id]/reanalyze`.
+  - Reads the saved source file.
+  - Verifies the saved source SHA-256 checksum before reanalysis.
+  - Runs analysis again with the current AI settings/model slots.
+  - Keeps the same saved paper record and preserves previous analysis versions.
+- Backend specialist review found one must-fix before commit: reanalysis had to confirm that stored bytes still match the originally saved source checksum. Fixed by adding read-time checksum verification and by checking existing local/Google Drive source files before reuse.
+- `src/components/MetaFullTextAssistant.tsx`
+  - Saved article list shows whether the source file is saved.
+  - Current saved record card has `Re-analyze saved source with current AI`.
+  - Legacy records without a persisted source are clearly marked and require a one-time reupload only for those older records.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.42`
+  - UI label: `Ver 1.77 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npm.cmd run lint: passed.
+npx.cmd tsc --noEmit --pretty false: passed.
+npm.cmd run build: passed.
+Production build includes /api/meta-analysis/full-text/history/[id]/reanalyze.
+Browser check on local Meta mode: Ver 1.77 visible; Screening saved article list shows legacy/no source for old records; Re-analyze saved source with current AI button appears and is disabled for records without a persisted source; console errors=[].
+Temporary API flow test with isolated local history/source paths: analyze saved one source file; savedRecord.sourceFileSaved=true; reanalyze kept the same history id; analysisArchive count became 1; history record count stayed 1; tampered stored source file was blocked with checksum mismatch before analysis.
+```
+
+Regular Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 ## 2026-06-16 Screening project-folder export storage
 
 User asked where Screening-generated Excel/CSV/data files are saved and requested a folder option or per-project folders.
