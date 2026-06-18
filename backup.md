@@ -20,7 +20,82 @@ C:\Users\HyunJK\Documents\GitHub\meta.wiregene.com
 - 작업 시작 전 `git -C C:\Users\HyunJK\Documents\GitHub\meta.wiregene.com status --short`와 `git -C C:\Users\HyunJK\Documents\GitHub\meta.wiregene.com pull --ff-only origin main`을 확인한다.
 - 작업 종료 전 lint/typecheck/build, `backup.md` 업데이트, commit/push, Synology 작업스케줄러 명령 확인을 수행한다.
 
+## 2026-06-18 v1.77 Save CSV browser download fallback (Vercel 서버리스 대응)
+
+User issue:
+
+- `meta.wiregene.com` (Vercel 배포)에서 RIS 업로드 후 "Save master CSV" 클릭 시 즉시 에러 발생.
+
+Root cause:
+
+- Vercel 서버리스 환경은 파일시스템이 읽기 전용이라 `saveMetaProjectTextFile`이 항상 "read-only serverless filesystem" 에러를 던짐.
+- body size가 아닌 파일시스템 제한이 진짜 원인.
+
+Fix:
+
+- `downloadFileToBrowser()` 헬퍼 추가: Blob URL로 브라우저 파일 다운로드 트리거.
+- `isServerlessStorageError()` 헬퍼 추가: "serverless", "read-only", "Synology", "writable" 키워드 감지.
+- `ProjectFileSaveButton`: 서버 저장 실패가 서버리스 환경 에러인 경우 자동으로 브라우저 다운로드로 fallback.
+  - 버튼 상태: `"downloaded"` 추가, "Downloaded ↓" 표시.
+  - 노란색 안내 메시지 3초 표시: "서버 저장 불가 (Vercel 환경) — 파일이 브라우저로 다운로드됐습니다."
+  - Google Drive / Synology 환경에서는 기존과 동일하게 서버 저장.
+
+Verification:
+
+```text
+npx tsc --noEmit: pass.
+git push: 34b2982..f8305c5 main -> main.
+```
+
+Commits:
+- `34b2982` Fix: gzip compression to bypass 4.5MB request body limit
+- `f8305c5` Fix: browser download fallback when server save fails on Vercel serverless
+
+Synology deploy/run command:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+---
+
+## 2026-06-18 v1.76 Gzip compression for large payloads (body size 초과 대응)
+
+User issue:
+
+- RIS 파일 5개 업로드(13,047개 레코드) 후 "Save master CSV" 시 "Project file could not be saved" 에러.
+
+Root cause analysis:
+
+- master CSV가 ~10MB 이상이 되어 서버 요청 body 크기 제한 초과.
+
+Fix:
+
+- **Client (MetaStudyWorkspace.tsx)**:
+  - `compressPayload()` 함수 추가: 브라우저 `CompressionStream` API로 gzip 압축, 미지원 시 uncompressed fallback.
+  - `saveProjectTextFile`, `saveProjectWorkspaceState`, `saveUserProjects` 세 함수에 압축 적용.
+- **Server (meta-project-storage.ts)**:
+  - `parseRequestJson()` 함수 추가: `Content-Encoding: gzip` 헤더 감지 시 Node.js `zlib.gunzipSync`로 압축 해제.
+- **API Routes**: `/files`, `/state`, `/projects` 세 라우트에 `parseRequestJson` 적용.
+
+Verification:
+
+```text
+npx tsc --noEmit: pass.
+npm run build: TypeScript pass. 빌드 워커 크래시는 기존 Windows 환경 문제 (원본 코드도 동일 오류).
+git push: 77dcecb..34b2982 main -> main.
+```
+
+Synology deploy/run command:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+---
+
 ## 2026-06-17 v1.75 Study list duplicate cleanup and archive/delete controls
+
 
 User issue:
 
