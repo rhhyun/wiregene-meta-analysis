@@ -135,6 +135,7 @@ export type AnalyzeMetaFullTextInput = {
   mimeType?: string;
   referenceRecord?: string | null;
   extractionColumns: string[];
+  reviewerIds?: string[] | null;
 };
 
 type AiMetaFullTextReviewEvaluation = Partial<{
@@ -495,11 +496,21 @@ export async function analyzeMetaFullTextUpload(input: AnalyzeMetaFullTextInput)
     return withAiWarning(fallback, reviewerConfigResult.warning, null);
   }
 
-  const enabledReviewers = reviewerConfigResult.configs.filter((reviewer) => reviewer.enabled && reviewer.apiKey);
+  const selectedReviewerIds = normalizeReviewerIds(input.reviewerIds);
+  const enabledReviewers = reviewerConfigResult.configs.filter(
+    (reviewer) =>
+      reviewer.enabled &&
+      reviewer.apiKey &&
+      (selectedReviewerIds.length === 0 || selectedReviewerIds.includes(reviewer.id)),
+  );
   if (enabledReviewers.length === 0) {
+    const selectedWarning = selectedReviewerIds.length
+      ? `Selected AI reviewer slot(s) are not ready or do not have usable API keys: ${selectedReviewerIds.join(", ")}.`
+      : null;
     return withAiWarning(
       fallback,
-      reviewerConfigResult.warning ??
+      selectedWarning ??
+        reviewerConfigResult.warning ??
         "No enabled AI model reviewer has a usable API key. Save at least one AI reviewer key in AI settings or set OPENAI_API_KEY for reviewer 1.",
       "missing",
     );
@@ -626,6 +637,17 @@ function formatAiSettingsError(error: unknown) {
 
   if (parts.length > 0) return parts.join("; ");
   return error instanceof Error ? error.message : String(error);
+}
+
+function normalizeReviewerIds(value: string[] | null | undefined) {
+  if (!Array.isArray(value)) return [];
+  return Array.from(
+    new Set(
+      value
+        .map((item) => (typeof item === "string" ? item.replace(/[^a-zA-Z0-9_-]/g, "").trim() : ""))
+        .filter(Boolean),
+    ),
+  ).slice(0, 3);
 }
 
 function detectFileType(fileName: string, mimeType = ""): MetaFullTextFileType {

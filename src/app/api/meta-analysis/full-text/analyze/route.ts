@@ -29,6 +29,11 @@ const columnsSchema = z
       .filter(Boolean),
   );
 
+const reviewerIdsSchema = z
+  .string()
+  .optional()
+  .transform((value) => normalizeReviewerIds((value ?? "").split(/[\n,]+/)));
+
 type FullTextUploadSource = "multipart" | "google-drive";
 
 type AnalyzeRequestContext = {
@@ -54,6 +59,7 @@ type AnalyzeRequestInput = {
   reviewerOneName: string;
   reviewerTwoName: string;
   extractionColumns: string[];
+  reviewerIds: string[];
   driveFileId: string | null;
 };
 
@@ -82,6 +88,13 @@ function payloadColumns(payload: unknown) {
     return allowedExtractionColumns(value.map((column) => String(column).trim()).filter(Boolean));
   }
   return allowedExtractionColumns(columnsSchema.parse(typeof value === "string" ? value : ""));
+}
+
+function payloadReviewerIds(payload: unknown) {
+  if (!payload || typeof payload !== "object") return [];
+  const value = (payload as Record<string, unknown>).reviewerIds;
+  if (Array.isArray(value)) return normalizeReviewerIds(value);
+  return reviewerIdsSchema.parse(typeof value === "string" ? value : "");
 }
 
 function allowedExtractionColumns(requestedColumns: string[]) {
@@ -168,6 +181,7 @@ async function parseMultipartAnalyzeRequest(
     reviewerOneName: formString(formData, "reviewerOneName"),
     reviewerTwoName: formString(formData, "reviewerTwoName"),
     extractionColumns: allowedExtractionColumns(columnsSchema.parse(formString(formData, "extractionColumns"))),
+    reviewerIds: reviewerIdsSchema.parse(formString(formData, "reviewerIds")),
     driveFileId: null,
   };
 }
@@ -211,6 +225,7 @@ async function parseGoogleDriveAnalyzeRequest(
     reviewerOneName: payloadString(payload, "reviewerOneName"),
     reviewerTwoName: payloadString(payload, "reviewerTwoName"),
     extractionColumns: payloadColumns(payload),
+    reviewerIds: payloadReviewerIds(payload),
     driveFileId,
   };
 }
@@ -232,6 +247,7 @@ async function analyzeAndSave(input: AnalyzeRequestInput, context: AnalyzeReques
     mimeType: input.mimeType,
     referenceRecord: input.referenceRecord,
     extractionColumns: input.extractionColumns,
+    reviewerIds: input.reviewerIds,
   });
 
   console.info("[meta-full-text/analyze] analysis completed", {
@@ -332,6 +348,16 @@ function diagnostics(context: AnalyzeRequestContext) {
     contentLength: context.contentLength,
     elapsedMs: Date.now() - context.startedAt,
   };
+}
+
+function normalizeReviewerIds(value: unknown[]) {
+  return Array.from(
+    new Set(
+      value
+        .map((item) => (typeof item === "string" ? item.replace(/[^a-zA-Z0-9_-]/g, "").trim() : ""))
+        .filter(Boolean),
+    ),
+  ).slice(0, 3);
 }
 
 function errorDiagnostics(error: unknown, context: AnalyzeRequestContext) {

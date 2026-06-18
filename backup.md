@@ -2544,6 +2544,52 @@ Regular Synology deploy/run command after GitHub push:
 git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
 ```
 
+## 2026-06-18 Screening AI reviewer slot selection and saved-source comparison rerun
+
+User issue:
+
+- AI settings can store three AI reviewer engines, but Screening only showed the previous `gpt-5-nano` result.
+- There was no clear menu in Screening to select reviewer 2/3 and run them against an already-uploaded full-text source.
+
+Implemented in the app repo:
+
+- Screening full-text assistant now loads AI reviewer slots from `/api/meta-analysis/ai-settings`.
+- Added `AI model reviewers for this run` panel directly in Screening.
+  - Shows each slot label, model, provider, Base URL, key source, and readiness.
+  - Researchers can select one or more ready reviewer slots.
+  - OpenAI reviewers do not require Base URL; OpenAI-compatible reviewers require Base URL.
+- New upload analysis sends selected `reviewerIds` to `/api/meta-analysis/full-text/analyze`.
+- Saved full-text records now have a `Run selected AI on saved full text` button.
+  - Uses the already-saved PDF/Word/TXT source file.
+  - Does not require reupload.
+  - Runs only the selected AI reviewer slots.
+  - Merges selected model review results into the existing comparison table instead of deleting prior reviewer results.
+- Reanalysis API `POST /api/meta-analysis/full-text/history/[id]/reanalyze` now accepts JSON body:
+
+```json
+{ "reviewerIds": ["ai_reviewer_2", "ai_reviewer_3"] }
+```
+
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.43`
+  - UI label: `Ver 1.78 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npm.cmd run lint: passed.
+npx.cmd tsc --noEmit --pretty false: passed.
+npm.cmd run build: passed.
+Temporary selected-reviewer API test: upload saved one source file; POST /reanalyze with reviewerIds ["ai_reviewer_2","ai_reviewer_3"] kept the same history id, kept history record count at 1, archived the previous analysis, and returned the selected reviewer ids in diagnostics.
+Browser check in local Meta mode: Ver 1.78 visible; Screening shows AI model reviewers for this run; Refresh AI slots visible; selected reviewer summary visible; upload panel shows AI reviewer run; saved-record card shows Run selected AI on saved full text; legacy/no source records keep that button disabled; console errors=[].
+```
+
+Regular Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 ## 2026-06-18 Antigravity previous-PC handoff warning
 
 User note:

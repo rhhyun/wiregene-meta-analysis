@@ -94,6 +94,17 @@ type MetaFullTextHistoryStats = {
   verificationCompletedCount: number;
 };
 
+type MetaAiReviewerSlotSummary = {
+  id: string;
+  label: string;
+  providerType: "OPENAI" | "OPENAI_COMPATIBLE";
+  enabled: boolean;
+  modelName: string;
+  baseUrl: string | null;
+  apiKeyMasked: string | null;
+  apiKeySource: "saved" | "environment" | "missing";
+};
+
 type MetaFullTextHistoryRecord = {
   id: string;
   fileName: string;
@@ -257,6 +268,17 @@ async function readReviewerSettingsPayload(response: Response) {
     records: MetaFullTextHistorySummary[];
     reviewerSettings: MetaFullTextReviewerSettings;
     stats: MetaFullTextHistoryStats;
+  };
+}
+
+async function readAiSettingsPayload(response: Response) {
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(apiErrorMessage(payload, "AI reviewer settings could not be loaded."));
+  }
+  const settings = (payload as { settings?: { modelReviewers?: MetaAiReviewerSlotSummary[] } }).settings;
+  return {
+    reviewerSlots: Array.isArray(settings?.modelReviewers) ? settings.modelReviewers : [],
   };
 }
 
@@ -457,6 +479,21 @@ const fixedExclusionReasons = [
   "duplicate/overlap cohort",
 ];
 
+function aiReviewerRunnable(slot: MetaAiReviewerSlotSummary) {
+  return Boolean(
+    slot.enabled &&
+      slot.apiKeySource !== "missing" &&
+      (slot.providerType === "OPENAI" || slot.baseUrl),
+  );
+}
+
+function aiReviewerStatus(slot: MetaAiReviewerSlotSummary) {
+  if (!slot.enabled) return "disabled in AI settings";
+  if (slot.apiKeySource === "missing") return "missing API key";
+  if (slot.providerType === "OPENAI_COMPATIBLE" && !slot.baseUrl) return "missing Base URL";
+  return "ready";
+}
+
 export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptions = [] }: MetaFullTextAssistantProps) {
   const analyzingRef = useRef(false);
   const [files, setFiles] = useState<File[]>([]);
@@ -488,6 +525,10 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
   const [isSavingVerification, setIsSavingVerification] = useState(false);
   const [isSavingReviewerSettings, setIsSavingReviewerSettings] = useState(false);
   const [isReanalyzingSavedSource, setIsReanalyzingSavedSource] = useState(false);
+  const [aiReviewerSlots, setAiReviewerSlots] = useState<MetaAiReviewerSlotSummary[]>([]);
+  const [selectedAiReviewerIds, setSelectedAiReviewerIds] = useState<string[]>([]);
+  const [aiSettingsLoading, setAiSettingsLoading] = useState(true);
+  const [aiSettingsError, setAiSettingsError] = useState("");
   const [reviewerNamesSaved, setReviewerNamesSaved] = useState(false);
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("all");
 
@@ -507,6 +548,16 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
       : files.length === 1 && firstSelectedFile
         ? formatFileSize(firstSelectedFile.size)
         : `${files.length.toLocaleString("ko-KR")} files - ${formatFileSize(selectedFileSize)} total`;
+  const runnableAiReviewerSlots = useMemo(() => aiReviewerSlots.filter(aiReviewerRunnable), [aiReviewerSlots]);
+  const selectedRunnableAiReviewerIds = useMemo(
+    () => selectedAiReviewerIds.filter((id) => runnableAiReviewerSlots.some((slot) => slot.id === id)),
+    [runnableAiReviewerSlots, selectedAiReviewerIds],
+  );
+  const selectedAiReviewerLabel = selectedRunnableAiReviewerIds.length
+    ? selectedRunnableAiReviewerIds
+        .map((id) => aiReviewerSlots.find((slot) => slot.id === id)?.label ?? id)
+        .join(", ")
+    : "no runnable AI reviewer selected";
   const batchSavedCount = batchResults.filter((item) => item.status === "saved").length;
   const batchAnalyzedNotSavedCount = batchResults.filter((item) => item.status === "analyzed_not_saved").length;
   const batchFailedCount = batchResults.filter((item) => item.status === "failed").length;
@@ -719,6 +770,26 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
     }
   }, [applyHistoryOverview]);
 
+  const loadAiReviewerSettings = useCallback(async () => {
+    setAiSettingsLoading(true);
+    setAiSettingsError("");
+    try {
+      const payload = await readAiSettingsPayload(
+        await fetch("/api/meta-analysis/ai-settings", { cache: "no-store" }),
+      );
+      setAiReviewerSlots(payload.reviewerSlots);
+      const runnableIds = payload.reviewerSlots.filter(aiReviewerRunnable).map((slot) => slot.id);
+      setSelectedAiReviewerIds((current) => {
+        const currentRunnable = current.filter((id) => runnableIds.includes(id));
+        return currentRunnable.length ? currentRunnable : runnableIds;
+      });
+    } catch (caught) {
+      setAiSettingsError(caught instanceof Error ? caught.message : "AI reviewer settings could not be loaded.");
+    } finally {
+      setAiSettingsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -742,6 +813,10 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
       cancelled = true;
     };
   }, [applyHistoryOverview]);
+
+  useEffect(() => {
+    void loadAiReviewerSettings();
+  }, [loadAiReviewerSettings]);
 
   async function loadSavedAnalysis(id: string) {
     setError("");
@@ -787,6 +862,13 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
     } finally {
       setIsSavingReviewerSettings(false);
     }
+  }
+
+  function toggleAiReviewerSelection(slotId: string, checked: boolean) {
+    setSelectedAiReviewerIds((current) => {
+      if (checked) return Array.from(new Set([...current, slotId]));
+      return current.filter((id) => id !== slotId);
+    });
   }
 
   async function saveVerification() {
@@ -837,6 +919,10 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
       setError("Open a saved full-text record before reanalyzing.");
       return;
     }
+    if (selectedRunnableAiReviewerIds.length === 0) {
+      setError("Select at least one ready AI reviewer model before running saved full-text comparison.");
+      return;
+    }
     setIsReanalyzingSavedSource(true);
     setError("");
     setNotice("");
@@ -844,6 +930,8 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
       const payload = await readHistoryRecordPayload(
         await fetch(`/api/meta-analysis/full-text/history/${encodeURIComponent(currentHistoryId)}/reanalyze`, {
           method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reviewerIds: selectedRunnableAiReviewerIds }),
         }),
       );
       const record = payload.record;
@@ -856,7 +944,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
         await fetch(fullTextHistoryListUrl, { cache: "no-store" }),
       );
       applyHistoryOverview(overview);
-      setNotice(`Re-analyzed saved full-text source with the current AI model settings: ${record.fileName}`);
+      setNotice(`Ran selected AI reviewer(s) on saved full-text source: ${selectedAiReviewerLabel}.`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Saved full-text source could not be reanalyzed.");
     } finally {
@@ -918,6 +1006,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
     formData.set("reviewMode", selectedWorksheet?.reviewMode ?? "");
     formData.set("reviewerOneName", reviewerOneName);
     formData.set("reviewerTwoName", reviewerTwoName);
+    formData.set("reviewerIds", selectedRunnableAiReviewerIds.join(","));
     return formData;
   }
 
@@ -943,6 +1032,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
       reviewMode: selectedWorksheet?.reviewMode ?? "",
       reviewerOneName,
       reviewerTwoName,
+      reviewerIds: selectedRunnableAiReviewerIds,
     };
   }
 
@@ -990,6 +1080,10 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
     if (analyzingRef.current || files.length === 0) return;
     if (!reviewerSettingsReady) {
       setError("Save reviewer 1 and reviewer 2 names before full-text analysis.");
+      return;
+    }
+    if (selectedRunnableAiReviewerIds.length === 0) {
+      setError("Select at least one ready AI reviewer model before full-text analysis.");
       return;
     }
     const queuedFiles = files;
@@ -1184,6 +1278,88 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
       </section>
 
       <section className="mt-4 rounded-md border border-emerald-200 bg-white p-3">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-zinc-950">AI model reviewers for this run</p>
+            <p className="mt-1 text-xs leading-5 text-zinc-500">
+              Select the AI engines to run on uploaded or already-saved full-text source files. Saved-source runs add or replace only those model drafts in the comparison table.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void loadAiReviewerSettings()}
+            disabled={aiSettingsLoading}
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-xs font-semibold text-zinc-700 transition hover:border-emerald-300 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${aiSettingsLoading ? "animate-spin" : ""}`} aria-hidden />
+            Refresh AI slots
+          </button>
+        </div>
+        {aiSettingsError ? (
+          <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-950">
+            {aiSettingsError}
+          </div>
+        ) : null}
+        <div className="mt-3 grid gap-2 xl:grid-cols-3">
+          {aiReviewerSlots.length ? (
+            aiReviewerSlots.map((slot) => {
+              const runnable = aiReviewerRunnable(slot);
+              const selected = selectedAiReviewerIds.includes(slot.id);
+              return (
+                <label
+                  key={slot.id}
+                  className={`grid gap-2 rounded-md border p-3 text-sm ${
+                    runnable ? "border-emerald-200 bg-emerald-50" : "border-zinc-200 bg-zinc-50"
+                  }`}
+                >
+                  <span className="flex items-start justify-between gap-3">
+                    <span className="flex min-w-0 items-start gap-2">
+                      <input
+                        type="checkbox"
+                        checked={selected && runnable}
+                        disabled={!runnable}
+                        onChange={(event) => toggleAiReviewerSelection(slot.id, event.target.checked)}
+                        className="mt-1 h-4 w-4 accent-emerald-700 disabled:opacity-40"
+                      />
+                      <span className="min-w-0">
+                        <span className="block truncate font-semibold text-zinc-950">{slot.label}</span>
+                        <span className="mt-1 block truncate text-xs font-semibold text-zinc-700">{slot.modelName}</span>
+                      </span>
+                    </span>
+                    <span className={`shrink-0 rounded-md px-2 py-1 text-xs font-semibold ${runnable ? "bg-white text-emerald-800 ring-1 ring-emerald-200" : "bg-white text-zinc-500 ring-1 ring-zinc-200"}`}>
+                      {aiReviewerStatus(slot)}
+                    </span>
+                  </span>
+                  <span className="text-xs leading-5 text-zinc-600">
+                    {slot.providerType}
+                    {slot.baseUrl ? ` · ${slot.baseUrl}` : ""}
+                    {slot.apiKeySource !== "missing" ? ` · key ${slot.apiKeySource}` : " · no key"}
+                  </span>
+                </label>
+              );
+            })
+          ) : (
+            <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3 text-xs font-semibold text-zinc-600">
+              No AI reviewer slots loaded. Open AI settings, save at least one reviewer, then refresh.
+            </div>
+          )}
+        </div>
+        <div className="mt-3 flex flex-col gap-2 rounded-md border border-zinc-200 bg-zinc-50 p-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs font-semibold leading-5 text-zinc-700">
+            Selected runnable reviewer(s): {selectedAiReviewerLabel}
+          </p>
+          <button
+            type="button"
+            onClick={() => setSelectedAiReviewerIds(runnableAiReviewerSlots.map((slot) => slot.id))}
+            disabled={runnableAiReviewerSlots.length === 0}
+            className="inline-flex h-8 items-center justify-center rounded-md border border-zinc-300 bg-white px-3 text-xs font-semibold text-zinc-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Select all ready
+          </button>
+        </div>
+      </section>
+
+      <section className="mt-4 rounded-md border border-emerald-200 bg-white p-3">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
             <History className="h-4 w-4 text-emerald-700" aria-hidden />
@@ -1353,11 +1529,15 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
                     <button
                       type="button"
                       onClick={() => void reanalyzeSavedSource()}
-                      disabled={isReanalyzingSavedSource || !currentHistoryItem.sourceFileSaved}
+                      disabled={
+                        isReanalyzingSavedSource ||
+                        !currentHistoryItem.sourceFileSaved ||
+                        selectedRunnableAiReviewerIds.length === 0
+                      }
                       className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-emerald-300 bg-white px-3 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:border-zinc-200 disabled:text-zinc-400"
                     >
                       {isReanalyzingSavedSource ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden />}
-                      Re-analyze saved source with current AI
+                      Run selected AI on saved full text
                     </button>
                   </div>
                   <p className="text-xs font-medium leading-5 text-zinc-600">
@@ -1400,7 +1580,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
             <button
               type="button"
               onClick={analyzeFullText}
-              disabled={isAnalyzing || files.length === 0 || !reviewerSettingsReady}
+              disabled={isAnalyzing || files.length === 0 || !reviewerSettingsReady || selectedRunnableAiReviewerIds.length === 0}
               className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
             >
               {isAnalyzing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <SearchCheck className="h-4 w-4" aria-hidden />}
@@ -1408,6 +1588,9 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
             </button>
             <p className="mt-2 text-xs font-semibold leading-5 text-zinc-600">
               Select multiple PDF, Word, TXT, or MD files once. The app analyzes them one by one and saves each result as a separate history record.
+            </p>
+            <p className="mt-2 text-xs font-semibold leading-5 text-zinc-600">
+              AI reviewer run: {selectedAiReviewerLabel}
             </p>
           </div>
         </label>
