@@ -299,6 +299,8 @@ async function analyzeAndSave(input: AnalyzeRequestInput, context: AnalyzeReques
         sourceFileSaved: Boolean(savedRecord.sourceFile),
         sourceStorage: savedRecord.sourceFile?.storage ?? null,
         verificationComplete: false,
+        verificationMode: savedRecord.verification.verificationMode,
+        reviewerReviewSkippedAt: savedRecord.verification.reviewerReviewSkippedAt,
         reviewerOneName: savedRecord.verification.reviewerOneName,
         reviewerTwoName: savedRecord.verification.reviewerTwoName,
         reviewerOneDecision: savedRecord.verification.reviewerOneDecision,

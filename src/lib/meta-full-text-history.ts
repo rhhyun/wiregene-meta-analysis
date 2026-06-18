@@ -13,6 +13,7 @@ import {
 } from "./meta-full-text-source-files";
 
 export type MetaFullTextVerification = {
+  verificationMode: "dual_reviewer" | "ai_only";
   reviewerOneName: string;
   reviewerTwoName: string;
   reviewerOneDecision: string;
@@ -20,6 +21,8 @@ export type MetaFullTextVerification = {
   fixedExclusionReason: string;
   conflictStatus: string;
   reviewerNotes: string;
+  reviewerReviewSkippedAt: string | null;
+  reviewerReviewSkipReason: string;
   piName: string;
   piFinalDecision: string;
   piFinalReason: string;
@@ -78,6 +81,8 @@ export type MetaFullTextHistorySummary = {
   sourceFileSaved: boolean;
   sourceStorage: MetaFullTextSourceFile["storage"] | null;
   verificationComplete: boolean;
+  verificationMode: MetaFullTextVerification["verificationMode"];
+  reviewerReviewSkippedAt: string | null;
   reviewerOneName: string;
   reviewerTwoName: string;
   reviewerOneDecision: string;
@@ -202,19 +207,32 @@ export async function updateMetaFullTextVerification(id: string, verification: P
   const data = await readHistoryData();
   const index = data.records.findIndex((record) => record.id === id);
   if (index < 0) return null;
+  const currentVerification = data.records[index].verification;
+  const nextVerificationMode =
+    verification.verificationMode === "ai_only" || verification.verificationMode === "dual_reviewer"
+      ? verification.verificationMode
+      : currentVerification.verificationMode;
   const adjudicatedAt =
     verification.piFinalDecision && verification.piFinalDecision !== "pending" && verification.piName
       ? new Date().toISOString()
       : verification.piFinalDecision === "pending"
         ? null
         : data.records[index].verification.piAdjudicatedAt;
+  const reviewerReviewSkippedAt =
+    nextVerificationMode === "ai_only"
+      ? currentVerification.reviewerReviewSkippedAt ?? new Date().toISOString()
+      : null;
 
   data.records[index] = {
     ...data.records[index],
     verification: normalizeVerification({
       ...data.records[index].verification,
       ...verification,
+      verificationMode: nextVerificationMode,
       piAdjudicatedAt: adjudicatedAt,
+      reviewerReviewSkippedAt,
+      reviewerReviewSkipReason:
+        nextVerificationMode === "ai_only" ? verification.reviewerReviewSkipReason ?? currentVerification.reviewerReviewSkipReason : "",
       updatedAt: new Date().toISOString(),
     }),
   };
@@ -327,6 +345,8 @@ function toSummary(record: MetaFullTextHistoryRecord): MetaFullTextHistorySummar
     sourceFileSaved: Boolean(record.sourceFile),
     sourceStorage: record.sourceFile?.storage ?? null,
     verificationComplete: isVerificationComplete(record.verification),
+    verificationMode: record.verification.verificationMode,
+    reviewerReviewSkippedAt: record.verification.reviewerReviewSkippedAt,
     reviewerOneName: record.verification.reviewerOneName,
     reviewerTwoName: record.verification.reviewerTwoName,
     reviewerOneDecision: record.verification.reviewerOneDecision,
@@ -349,6 +369,7 @@ function emptyReviewerSettings(): MetaFullTextReviewerSettings {
 
 function emptyVerification(settings: MetaFullTextReviewerSettings = emptyReviewerSettings()): MetaFullTextVerification {
   return {
+    verificationMode: "dual_reviewer",
     reviewerOneName: settings.reviewerOneName,
     reviewerTwoName: settings.reviewerTwoName,
     reviewerOneDecision: "pending",
@@ -356,6 +377,8 @@ function emptyVerification(settings: MetaFullTextReviewerSettings = emptyReviewe
     fixedExclusionReason: "해당 없음",
     conflictStatus: "needs human verification",
     reviewerNotes: "",
+    reviewerReviewSkippedAt: null,
+    reviewerReviewSkipReason: "",
     piName: "",
     piFinalDecision: "pending",
     piFinalReason: "",
@@ -378,6 +401,7 @@ function emptyExtractionReview(): MetaFullTextExtractionReview {
 function normalizeVerification(value: Partial<MetaFullTextVerification>): MetaFullTextVerification {
   const fallback = emptyVerification();
   return {
+    verificationMode: value.verificationMode === "ai_only" ? "ai_only" : "dual_reviewer",
     reviewerOneName: cleanString(value.reviewerOneName) || fallback.reviewerOneName,
     reviewerTwoName: cleanString(value.reviewerTwoName) || fallback.reviewerTwoName,
     reviewerOneDecision: cleanString(value.reviewerOneDecision) || fallback.reviewerOneDecision,
@@ -385,6 +409,8 @@ function normalizeVerification(value: Partial<MetaFullTextVerification>): MetaFu
     fixedExclusionReason: cleanString(value.fixedExclusionReason) || fallback.fixedExclusionReason,
     conflictStatus: cleanString(value.conflictStatus) || fallback.conflictStatus,
     reviewerNotes: cleanString(value.reviewerNotes),
+    reviewerReviewSkippedAt: cleanOptional(value.reviewerReviewSkippedAt),
+    reviewerReviewSkipReason: cleanString(value.reviewerReviewSkipReason),
     piName: cleanString(value.piName),
     piFinalDecision: cleanString(value.piFinalDecision) || fallback.piFinalDecision,
     piFinalReason: cleanString(value.piFinalReason),
@@ -436,6 +462,14 @@ function normalizeReviewerSettings(value: unknown): MetaFullTextReviewerSettings
 }
 
 function isVerificationComplete(verification: MetaFullTextVerification) {
+  if (verification.verificationMode === "ai_only") {
+    return (
+      verification.piFinalDecision !== "pending" &&
+      Boolean(verification.piName.trim()) &&
+      Boolean(verification.piAdjudicatedAt)
+    );
+  }
+
   return (
     Boolean(verification.reviewerOneName.trim()) &&
     Boolean(verification.reviewerTwoName.trim()) &&

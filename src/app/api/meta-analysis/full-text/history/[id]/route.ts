@@ -36,6 +36,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 
   try {
     const record = await updateMetaFullTextVerification(id, {
+      verificationMode: payload.verificationMode,
       reviewerOneName: payload.reviewerOneName,
       reviewerTwoName: payload.reviewerTwoName,
       reviewerOneDecision: payload.reviewerOneDecision,
@@ -43,6 +44,7 @@ export async function PATCH(request: Request, context: RouteContext) {
       fixedExclusionReason: payload.fixedExclusionReason,
       conflictStatus: payload.conflictStatus,
       reviewerNotes: payload.reviewerNotes,
+      reviewerReviewSkipReason: payload.reviewerReviewSkipReason,
       piName: payload.piName,
       piFinalDecision: payload.piFinalDecision,
       piFinalReason: payload.piFinalReason,

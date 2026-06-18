@@ -44,6 +44,8 @@ const auditColumns = [
   "saved_at",
   "analyzed_at",
   "final_decision",
+  "verification_mode",
+  "reviewer_review_skipped_at",
   "reviewer_1_name",
   "reviewer_2_name",
   "reviewer_conflict_status",
@@ -150,6 +152,8 @@ function datasetRecordsForHistoryRecord(record: MetaFullTextHistoryRecord, colum
       saved_at: record.savedAt,
       analyzed_at: record.analysis.analyzedAt,
       final_decision: finalDecision(record),
+      verification_mode: record.verification.verificationMode,
+      reviewer_review_skipped_at: record.verification.reviewerReviewSkippedAt ?? "",
       reviewer_1_name: record.verification.reviewerOneName,
       reviewer_2_name: record.verification.reviewerTwoName,
       reviewer_conflict_status: record.verification.conflictStatus,
@@ -190,6 +194,10 @@ function datasetRecordsForHistoryRecord(record: MetaFullTextHistoryRecord, colum
 }
 
 function isIncludedRecord(record: MetaFullTextHistoryRecord) {
+  if (record.verification.verificationMode === "ai_only") {
+    return record.verification.piFinalDecision === "include_quantitative" || record.verification.piFinalDecision === "include_narrative_support";
+  }
+
   const decisions = [record.verification.reviewerOneDecision, record.verification.reviewerTwoDecision];
   return (
     ["agreement", "resolved"].includes(record.verification.conflictStatus) &&
@@ -198,6 +206,12 @@ function isIncludedRecord(record: MetaFullTextHistoryRecord) {
 }
 
 function finalDecision(record: MetaFullTextHistoryRecord) {
+  if (record.verification.verificationMode === "ai_only") {
+    return record.verification.piFinalDecision !== "pending"
+      ? record.verification.piFinalDecision
+      : `ai_only_pending:${record.analysis.eligibility.decision}`;
+  }
+
   if (record.verification.reviewerOneDecision === record.verification.reviewerTwoDecision) {
     return record.verification.reviewerOneDecision;
   }

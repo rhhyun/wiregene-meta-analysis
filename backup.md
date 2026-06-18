@@ -2544,6 +2544,49 @@ Regular Synology deploy/run command after GitHub push:
 git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
 ```
 
+## 2026-06-18 AI-only verification skip for reviewer 1/2 workflow
+
+User requirement:
+
+- AI model comparison is only an additional screening aid.
+- The default two-human-reviewer process must remain intact.
+- If the researcher explicitly decides to use AI-model-only screening, the app must provide a button to skip reviewer 1/2 verification for that record.
+
+Implemented:
+
+- Added verification mode to full-text history:
+  - `dual_reviewer` remains the default and keeps the existing reviewer 1/2 + PI workflow.
+  - `ai_only` records store `reviewerReviewSkippedAt` and `reviewerReviewSkipReason`.
+- Human verification worksheet now has:
+  - `Skip reviewer 1/2: AI-only`
+  - `Restore reviewer 1/2 workflow`
+- In AI-only mode:
+  - reviewer 1/2 decision controls and conflict workflow are disabled for that record.
+  - PI final adjudication remains visible and required for the record to count as verification complete.
+  - reviewer 1/2 decisions are not faked as human decisions.
+- Saved analysis lists and current record card show whether a record is `AI-only verification` or `2-reviewer verification`.
+- Extraction dataset logic now includes AI-only records only when PI final decision is include quantitative or include narrative/support.
+- Verification CSV and extraction dataset audit columns include verification mode and reviewer-skip timestamp/reason.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.44`
+  - UI label: `Ver 1.79 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npm.cmd run lint: passed.
+npx.cmd tsc --noEmit --pretty false: passed.
+npm.cmd run build: passed.
+Temporary AI-only API workflow test: upload saved one source file; PATCH verificationMode=ai_only kept reviewer 1/2 decisions pending, set reviewerReviewSkippedAt, counted the record as verification complete only with PI final decision/name, and included it in extraction dataset with verification_mode=ai_only.
+Browser check in local Meta mode: Ver 1.79 visible; Human verification worksheet shows Skip reviewer 1/2: AI-only; default banner keeps two-reviewer workflow as default; console errors=[].
+```
+
+Regular Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 ## 2026-06-18 Screening AI reviewer slot selection and saved-source comparison rerun
 
 User issue:

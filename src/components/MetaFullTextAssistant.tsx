@@ -57,6 +57,8 @@ type MetaFullTextHistorySummary = {
   sourceFileSaved: boolean;
   sourceStorage: string | null;
   verificationComplete: boolean;
+  verificationMode: "dual_reviewer" | "ai_only";
+  reviewerReviewSkippedAt: string | null;
   reviewerOneName: string;
   reviewerTwoName: string;
   reviewerOneDecision: string;
@@ -69,6 +71,7 @@ type MetaFullTextHistorySummary = {
 };
 
 type MetaFullTextVerification = {
+  verificationMode: "dual_reviewer" | "ai_only";
   reviewerOneName: string;
   reviewerTwoName: string;
   reviewerOneDecision: string;
@@ -76,6 +79,8 @@ type MetaFullTextVerification = {
   fixedExclusionReason: string;
   conflictStatus: string;
   reviewerNotes: string;
+  reviewerReviewSkippedAt: string | null;
+  reviewerReviewSkipReason: string;
   piName: string;
   piFinalDecision: string;
   piFinalReason: string;
@@ -436,6 +441,11 @@ function batchStatusTone(status: BatchAnalysisStatus) {
 
 function humanDecisionBucket(item: MetaFullTextHistorySummary) {
   if (!item.verificationComplete) return "pending";
+  if (item.verificationMode === "ai_only") {
+    if (item.piFinalDecision === "include_quantitative" || item.piFinalDecision === "include_narrative_support") return "include";
+    if (item.piFinalDecision === "exclude") return "exclude";
+    return "pending";
+  }
   const decisions = [item.reviewerOneDecision, item.reviewerTwoDecision];
   if (decisions.every((decision) => decision === "include_quantitative" || decision === "include_narrative_support")) {
     return "include";
@@ -516,6 +526,9 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
   const [fixedExclusionReason, setFixedExclusionReason] = useState(fixedExclusionReasons[0]);
   const [conflictStatus, setConflictStatus] = useState("needs human verification");
   const [reviewerNotes, setReviewerNotes] = useState("");
+  const [verificationMode, setVerificationMode] = useState<"dual_reviewer" | "ai_only">("dual_reviewer");
+  const [reviewerReviewSkippedAt, setReviewerReviewSkippedAt] = useState<string | null>(null);
+  const [reviewerReviewSkipReason, setReviewerReviewSkipReason] = useState("");
   const [piName, setPiName] = useState("");
   const [piFinalDecision, setPiFinalDecision] = useState<PiFinalDecision>("pending");
   const [piFinalReason, setPiFinalReason] = useState("");
@@ -566,6 +579,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
     () => historyItems.find((item) => item.id === currentHistoryId) ?? null,
     [currentHistoryId, historyItems],
   );
+  const aiOnlyVerificationMode = verificationMode === "ai_only";
   const historyDecisionCounts = useMemo(
     () => ({
       all: historyItems.length,
@@ -655,6 +669,9 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
         "ai_model_reviews_json",
         "ai_config_source",
         "ai_warning",
+        "verification_mode",
+        "reviewer_review_skipped_at",
+        "reviewer_review_skip_reason",
         "reviewer_1_name",
         "reviewer_2_name",
         "reviewer_1_decision",
@@ -681,6 +698,9 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
           ai_model_reviews_json: JSON.stringify(analysis.modelReviews),
           ai_config_source: analysis.aiConfigSource ?? "",
           ai_warning: analysis.aiWarning ?? "",
+          verification_mode: verificationMode,
+          reviewer_review_skipped_at: reviewerReviewSkippedAt ?? "",
+          reviewer_review_skip_reason: reviewerReviewSkipReason,
           reviewer_1_name: reviewerOneName,
           reviewer_2_name: reviewerTwoName,
           reviewer_1_decision: reviewerOneDecision,
@@ -699,6 +719,9 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
     analysis,
     conflictStatus,
     fixedExclusionReason,
+    verificationMode,
+    reviewerReviewSkippedAt,
+    reviewerReviewSkipReason,
     reviewerNotes,
     reviewerOneDecision,
     reviewerOneName,
@@ -711,11 +734,14 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
   ]);
 
   function resetVerificationState() {
+    setVerificationMode("dual_reviewer");
     setReviewerOneDecision("pending");
     setReviewerTwoDecision("pending");
     setFixedExclusionReason(fixedExclusionReasons[0]);
     setConflictStatus("needs human verification");
     setReviewerNotes("");
+    setReviewerReviewSkippedAt(null);
+    setReviewerReviewSkipReason("");
     setPiName("");
     setPiFinalDecision("pending");
     setPiFinalReason("");
@@ -724,11 +750,14 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
   function applyVerification(verification?: Partial<MetaFullTextVerification> | null) {
     if (verification?.reviewerOneName) setReviewerOneName(verification.reviewerOneName);
     if (verification?.reviewerTwoName) setReviewerTwoName(verification.reviewerTwoName);
+    setVerificationMode(verification?.verificationMode === "ai_only" ? "ai_only" : "dual_reviewer");
     setReviewerOneDecision((verification?.reviewerOneDecision as ReviewerDecision) || "pending");
     setReviewerTwoDecision((verification?.reviewerTwoDecision as ReviewerDecision) || "pending");
     setFixedExclusionReason(verification?.fixedExclusionReason || fixedExclusionReasons[0]);
     setConflictStatus(verification?.conflictStatus || "needs human verification");
     setReviewerNotes(verification?.reviewerNotes || "");
+    setReviewerReviewSkippedAt(verification?.reviewerReviewSkippedAt ?? null);
+    setReviewerReviewSkipReason(verification?.reviewerReviewSkipReason || "");
     setPiName(verification?.piName || "");
     setPiFinalDecision((verification?.piFinalDecision as PiFinalDecision) || "pending");
     setPiFinalReason(verification?.piFinalReason || "");
@@ -886,6 +915,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            verificationMode,
             reviewerOneDecision,
             reviewerTwoDecision,
             reviewerOneName,
@@ -893,6 +923,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
             fixedExclusionReason,
             conflictStatus,
             reviewerNotes,
+            reviewerReviewSkipReason,
             piName,
             piFinalDecision,
             piFinalReason,
@@ -909,6 +940,112 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
       );
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Reviewer verification could not be saved.");
+    } finally {
+      setIsSavingVerification(false);
+    }
+  }
+
+  async function skipReviewerWorkflowForAiOnly() {
+    if (!currentHistoryId || !analysis) {
+      setError("Open a saved full-text analysis before switching to AI-only verification.");
+      return;
+    }
+
+    const aiFinalDecision =
+      analysis.eligibility.decision === "uncertain" ? "pending" : (analysis.eligibility.decision as PiFinalDecision);
+    const nextPiFinalDecision = piFinalDecision !== "pending" ? piFinalDecision : aiFinalDecision;
+    const skipReason =
+      reviewerReviewSkipReason ||
+      `Researcher selected AI-only verification after comparing ${analysis.modelReviews.length || 1} AI model reviewer draft(s).`;
+    const nextPiFinalReason =
+      piFinalReason ||
+      (nextPiFinalDecision !== "pending"
+        ? `AI-only workflow selected. PI final decision follows AI/model comparison draft: ${nextPiFinalDecision}.`
+        : "");
+    const nextReviewerNotes = [
+      reviewerNotes,
+      `Reviewer 1/2 independent verification skipped. ${skipReason}`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    setIsSavingVerification(true);
+    setError("");
+    setNotice("");
+    try {
+      const payload = await readHistoryRecordPayload(
+        await fetch(`/api/meta-analysis/full-text/history/${encodeURIComponent(currentHistoryId)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            verificationMode: "ai_only",
+            reviewerOneName,
+            reviewerTwoName,
+            reviewerOneDecision: "pending",
+            reviewerTwoDecision: "pending",
+            fixedExclusionReason,
+            conflictStatus: "ai-only model review",
+            reviewerNotes: nextReviewerNotes,
+            reviewerReviewSkipReason: skipReason,
+            piName,
+            piFinalDecision: nextPiFinalDecision,
+            piFinalReason: nextPiFinalReason,
+          }),
+        }),
+      );
+      applyVerification(payload.record.verification);
+      const overview = await readHistoryListPayload(
+        await fetch(fullTextHistoryListUrl, { cache: "no-store" }),
+      );
+      applyHistoryOverview(overview);
+      setNotice(
+        `AI-only workflow saved. Reviewer 1/2 verification is skipped for this record. Saved files: ${overview.stats.totalCount}; verification completed: ${overview.stats.verificationCompletedCount}.`,
+      );
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "AI-only reviewer skip could not be saved.");
+    } finally {
+      setIsSavingVerification(false);
+    }
+  }
+
+  async function restoreDualReviewerWorkflow() {
+    if (!currentHistoryId) {
+      setError("Open a saved full-text analysis before restoring reviewer workflow.");
+      return;
+    }
+
+    setIsSavingVerification(true);
+    setError("");
+    setNotice("");
+    try {
+      const payload = await readHistoryRecordPayload(
+        await fetch(`/api/meta-analysis/full-text/history/${encodeURIComponent(currentHistoryId)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            verificationMode: "dual_reviewer",
+            reviewerOneName,
+            reviewerTwoName,
+            reviewerOneDecision,
+            reviewerTwoDecision,
+            fixedExclusionReason,
+            conflictStatus: "needs human verification",
+            reviewerNotes,
+            reviewerReviewSkipReason: "",
+            piName,
+            piFinalDecision,
+            piFinalReason,
+          }),
+        }),
+      );
+      applyVerification(payload.record.verification);
+      const overview = await readHistoryListPayload(
+        await fetch(fullTextHistoryListUrl, { cache: "no-store" }),
+      );
+      applyHistoryOverview(overview);
+      setNotice("Reviewer 1/2 workflow restored for this record.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Reviewer workflow could not be restored.");
     } finally {
       setIsSavingVerification(false);
     }
@@ -1491,6 +1628,9 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
                             <span className="rounded-md bg-zinc-100 px-2 py-1">{decisionLabel(item.decision)}</span>
                             <span className="rounded-md bg-zinc-100 px-2 py-1">confidence {item.confidence}</span>
                             <span className="rounded-md bg-zinc-100 px-2 py-1">
+                              {item.verificationMode === "ai_only" ? "AI-only verification" : "2-reviewer verification"}
+                            </span>
+                            <span className="rounded-md bg-zinc-100 px-2 py-1">
                               {item.sourceFileSaved ? `source saved: ${item.sourceStorage}` : "legacy/no source"}
                             </span>
                             <span className="rounded-md bg-zinc-100 px-2 py-1">{new Date(item.savedAt).toLocaleString("ko-KR")}</span>
@@ -1514,7 +1654,8 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
                     <p className="text-xs font-semibold text-zinc-500">{new Date(currentHistoryItem.savedAt).toLocaleString("ko-KR")}</p>
                   </div>
                   <p className="mt-1 text-xs font-semibold leading-5 text-zinc-700">
-                    {currentHistoryItem.verificationComplete ? "verification complete" : "verification pending"} · reviewer 1:{" "}
+                    {currentHistoryItem.verificationComplete ? "verification complete" : "verification pending"} ·{" "}
+                    {currentHistoryItem.verificationMode === "ai_only" ? "AI-only verification" : "2-reviewer verification"} · reviewer 1:{" "}
                     {currentHistoryItem.reviewerOneName || "not set"} · reviewer 2: {currentHistoryItem.reviewerTwoName || "not set"}
                   </p>
                   <p className="text-xs font-semibold leading-5 text-zinc-600">
@@ -1885,6 +2026,25 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
                 {isSavingVerification ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Save className="h-4 w-4" aria-hidden />}
                 Save verification
               </button>
+              {aiOnlyVerificationMode ? (
+                <button
+                  type="button"
+                  onClick={() => void restoreDualReviewerWorkflow()}
+                  disabled={isSavingVerification || !currentHistoryId}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-sky-200 bg-white px-3 text-sm font-semibold text-sky-800 transition hover:bg-sky-50 disabled:cursor-not-allowed disabled:text-zinc-400"
+                >
+                  Restore reviewer 1/2 workflow
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void skipReviewerWorkflowForAiOnly()}
+                  disabled={isSavingVerification || !currentHistoryId || !analysis}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 text-sm font-semibold text-amber-950 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:border-zinc-200 disabled:bg-zinc-50 disabled:text-zinc-400"
+                >
+                  Skip reviewer 1/2: AI-only
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => void copyToClipboard(verificationCsv, "Verification CSV")}
@@ -1894,12 +2054,31 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
                 <span>Copy verification CSV (not saved)</span>
               </button>
             </div>
+            <div
+              className={`mt-3 rounded-md border p-3 text-xs font-semibold leading-5 ${
+                aiOnlyVerificationMode
+                  ? "border-amber-200 bg-amber-50 text-amber-950"
+                  : "border-zinc-200 bg-zinc-50 text-zinc-700"
+              }`}
+            >
+              {aiOnlyVerificationMode ? (
+                <span>
+                  AI-only workflow is active for this record. Reviewer 1/2 independent decisions are skipped; PI final adjudication below remains required before this record is treated as complete.
+                  {reviewerReviewSkippedAt ? ` Skipped at ${new Date(reviewerReviewSkippedAt).toLocaleString("ko-KR")}.` : ""}
+                </span>
+              ) : (
+                <span>
+                  Default workflow remains two independent human reviewers plus PI final adjudication. Use the AI-only skip button only when the researcher explicitly chooses model-only screening.
+                </span>
+              )}
+            </div>
             <div className="mt-3 grid gap-3 lg:grid-cols-4">
               <label className="grid gap-1 text-xs font-semibold uppercase text-zinc-500">
                 reviewer 1 {reviewerOneName ? `(${reviewerOneName})` : ""}
                 <select
                   value={reviewerOneDecision}
                   onChange={(event) => setReviewerOneDecision(event.target.value as ReviewerDecision)}
+                  disabled={aiOnlyVerificationMode}
                   className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-semibold normal-case text-zinc-900"
                 >
                   {reviewerDecisionOptions.map((option) => (
@@ -1914,6 +2093,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
                 <select
                   value={reviewerTwoDecision}
                   onChange={(event) => setReviewerTwoDecision(event.target.value as ReviewerDecision)}
+                  disabled={aiOnlyVerificationMode}
                   className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-semibold normal-case text-zinc-900"
                 >
                   {reviewerDecisionOptions.map((option) => (
@@ -1942,6 +2122,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
                 <select
                   value={conflictStatus}
                   onChange={(event) => setConflictStatus(event.target.value)}
+                  disabled={aiOnlyVerificationMode}
                   className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-semibold normal-case text-zinc-900"
                 >
                   <option value="needs human verification">needs human verification</option>
@@ -1961,6 +2142,18 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
                 placeholder="page/table 확인 내용, conflict resolution, Excel 수정 사항을 기록하세요."
               />
             </label>
+            {aiOnlyVerificationMode ? (
+              <label className="mt-3 grid gap-1 text-xs font-semibold uppercase text-zinc-500">
+                AI-only skip reason
+                <textarea
+                  value={reviewerReviewSkipReason}
+                  onChange={(event) => setReviewerReviewSkipReason(event.target.value)}
+                  rows={2}
+                  className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-normal normal-case leading-6 text-amber-950"
+                  placeholder="Why reviewer 1/2 verification was omitted for this record."
+                />
+              </label>
+            ) : null}
             <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 p-3">
               <p className="text-sm font-semibold text-zinc-950">PI final adjudication</p>
               <div className="mt-3 grid gap-3 lg:grid-cols-[0.8fr_1fr]">
