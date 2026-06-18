@@ -43,6 +43,9 @@ export async function PATCH(request: Request, context: RouteContext) {
       fixedExclusionReason: payload.fixedExclusionReason,
       conflictStatus: payload.conflictStatus,
       reviewerNotes: payload.reviewerNotes,
+      piName: payload.piName,
+      piFinalDecision: payload.piFinalDecision,
+      piFinalReason: payload.piFinalReason,
     });
     if (!record) return NextResponse.json({ error: "Saved full-text analysis was not found." }, { status: 404 });
     return NextResponse.json({ record });

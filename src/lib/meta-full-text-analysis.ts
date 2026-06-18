@@ -1,6 +1,11 @@
+import crypto from "crypto";
 import OpenAI from "openai";
 import { z } from "zod";
-import { metaAiSettingsErrorDetails, resolveMetaOpenAIConfig } from "./meta-ai-settings";
+import {
+  metaAiSettingsErrorDetails,
+  resolveMetaAiReviewerConfigs,
+  type MetaAiReviewerConfig,
+} from "./meta-ai-settings";
 import { extractPdfTextWithPdfParse } from "./pdf-text";
 import { extractWordTextWithWordExtractor } from "./word-text";
 
@@ -41,11 +46,43 @@ export type MetaFullTextReviewEvaluation = {
   modelName: string | null;
 };
 
+export type MetaFullTextModelReview = {
+  reviewerId: string;
+  label: string;
+  providerType: "OPENAI" | "OPENAI_COMPATIBLE";
+  modelName: string;
+  baseUrl: string | null;
+  analysisSchemaVersion: string;
+  analyzedAt: string;
+  sourceFileSha256: string;
+  inputTextLength: number;
+  truncated: boolean;
+  aiUsed: boolean;
+  decision: MetaFullTextDecision;
+  confidence: number;
+  summary: string;
+  reasons: string[];
+  exclusionReasons: string[];
+  reviewerChecks: MetaFullTextAnalysis["eligibility"]["reviewerChecks"];
+  reviewScore: number;
+  reviewGrade: string;
+  extractionRowCount: number;
+  missingCriticalFieldCount: number;
+  validationIssueCount: number;
+  extractionRows: Record<string, string>[];
+  fieldEvidence: MetaFullTextFieldEvidence[];
+  missingCriticalFields: string[];
+  validationIssues: string[];
+  warning: string | null;
+};
+
 export type MetaFullTextAnalysis = {
   fileName: string;
   fileType: MetaFullTextFileType;
   extractedTextLength: number;
   truncated: boolean;
+  analysisSchemaVersion: string;
+  sourceFileSha256: string;
   analyzedAt: string;
   aiUsed: boolean;
   model: string | null;
@@ -89,6 +126,7 @@ export type MetaFullTextAnalysis = {
   evidence: MetaFullTextEvidence[];
   nextActions: string[];
   reviewEvaluation: MetaFullTextReviewEvaluation;
+  modelReviews: MetaFullTextModelReview[];
 };
 
 export type AnalyzeMetaFullTextInput = {
@@ -115,6 +153,7 @@ type AiMetaFullTextAnalysis = Partial<
 >;
 
 const primitiveCellSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
+const metaFullTextAnalysisSchemaVersion = "2026-06-18-multi-ai-v1";
 const aiReviewCriterionSchema = z
   .object({
     score: z.coerce.number().optional(),
@@ -429,6 +468,7 @@ export function createMetaFullTextResponseFormat(extractionColumns: string[]) {
 
 export async function analyzeMetaFullTextUpload(input: AnalyzeMetaFullTextInput) {
   const fileType = detectFileType(input.fileName, input.mimeType);
+  const sourceFileSha256 = crypto.createHash("sha256").update(input.buffer).digest("hex");
   const extracted = await extractFullText(input.buffer, fileType);
   const text = extracted.text;
   if (!text.trim()) {
@@ -445,75 +485,85 @@ export async function analyzeMetaFullTextUpload(input: AnalyzeMetaFullTextInput)
     referenceRecord: input.referenceRecord ?? null,
     text,
     analysisText,
+    sourceFileSha256,
     extractionColumns: input.extractionColumns,
     extractionWarnings,
   });
 
-  const openaiConfig = await resolveOpenAIConfigForFullText();
-  if (!openaiConfig.config) {
-    return withAiWarning(fallback, openaiConfig.warning, null);
+  const reviewerConfigResult = await resolveAiReviewerConfigsForFullText();
+  if (!reviewerConfigResult.configs) {
+    return withAiWarning(fallback, reviewerConfigResult.warning, null);
   }
 
-  if (!openaiConfig.config.enabled || !openaiConfig.config.apiKey) {
+  const enabledReviewers = reviewerConfigResult.configs.filter((reviewer) => reviewer.enabled && reviewer.apiKey);
+  if (enabledReviewers.length === 0) {
     return withAiWarning(
       fallback,
-      openaiConfig.warning ??
-        (openaiConfig.config.source === "missing"
-          ? "OpenAI key was not available to the analysis server. Save the key in AI settings and confirm the settings page shows Source = saved encrypted key, or set OPENAI_API_KEY in the deployment environment and redeploy."
-          : "OpenAI full-text evaluation is disabled in AI settings."),
-      openaiConfig.config.source,
+      reviewerConfigResult.warning ??
+        "No enabled AI model reviewer has a usable API key. Save at least one AI reviewer key in AI settings or set OPENAI_API_KEY for reviewer 1.",
+      "missing",
     );
   }
 
-  const ai = await analyzeWithOpenAI({
-    fileName: input.fileName,
-    fileType,
-    referenceRecord: input.referenceRecord ?? null,
-    text: openAiText.text,
-    extractionColumns: input.extractionColumns,
-    fallback,
-    openaiApiKey: openaiConfig.config.apiKey,
-    openaiModel: openaiConfig.config.modelName,
-  });
+  const modelReviews: MetaFullTextModelReview[] = [];
+  let primaryAi: { analysis: AiMetaFullTextAnalysis; reviewer: MetaAiReviewerConfig } | null = null;
 
-  if (!ai.analysis) {
-    return withAiWarning(
+  for (const reviewer of enabledReviewers) {
+    const ai = await analyzeWithAiReviewer({
+      fileName: input.fileName,
+      fileType,
+      referenceRecord: input.referenceRecord ?? null,
+      text: openAiText.text,
+      extractionColumns: input.extractionColumns,
       fallback,
-      ai.warning ??
-        "OpenAI full-text analysis did not return a valid structured result, so fallback rules were used. Check the OpenAI key/model and retry.",
-      openaiConfig.config.source,
+      reviewer,
+    });
+    modelReviews.push(createModelReviewSummary(reviewer, ai.analysis, ai.warning, fallback));
+    if (ai.analysis && !primaryAi) primaryAi = { analysis: ai.analysis, reviewer };
+  }
+
+  if (!primaryAi) {
+    const warnings = modelReviews.map((item) => item.warning).filter(Boolean).join(" | ");
+    return withAiWarning(
+      {
+        ...fallback,
+        modelReviews,
+      },
+      warnings || "AI model reviewers did not return a valid structured result, so fallback rules were used.",
+      "missing",
     );
   }
 
-  const aiInstruments = normalizeList(ai.analysis.study?.instruments);
+  const aiInstruments = normalizeList(primaryAi.analysis.study?.instruments);
   const normalized = normalizeAnalysis({
     ...fallback,
-    ...ai.analysis,
+    ...primaryAi.analysis,
     eligibility: {
       ...fallback.eligibility,
-      ...ai.analysis.eligibility,
+      ...primaryAi.analysis.eligibility,
       reviewerChecks: {
         ...fallback.eligibility.reviewerChecks,
-        ...ai.analysis.eligibility?.reviewerChecks,
+        ...primaryAi.analysis.eligibility?.reviewerChecks,
       },
     },
     study: {
       ...fallback.study,
-      ...ai.analysis.study,
+      ...primaryAi.analysis.study,
       instruments: (aiInstruments.length > 0 ? aiInstruments : fallback.study.instruments).slice(0, 16),
     },
-    extraction: normalizeExtraction(ai.analysis.extraction, fallback.extraction, input.extractionColumns),
-    evidence: normalizeEvidence([...(ai.analysis.evidence ?? []), ...fallback.evidence]).slice(0, 10),
-    nextActions: normalizeList([...(ai.analysis.nextActions ?? []), ...fallback.nextActions]).slice(0, 8),
+    extraction: normalizeExtraction(primaryAi.analysis.extraction, fallback.extraction, input.extractionColumns),
+    evidence: normalizeEvidence([...(primaryAi.analysis.evidence ?? []), ...fallback.evidence]).slice(0, 10),
+    nextActions: normalizeList([...(primaryAi.analysis.nextActions ?? []), ...fallback.nextActions]).slice(0, 8),
     reviewEvaluation: normalizeReviewEvaluation(
-      ai.analysis.reviewEvaluation,
+      primaryAi.analysis.reviewEvaluation,
       fallback.reviewEvaluation,
-      openaiConfig.config.modelName,
+      primaryAi.reviewer.modelName,
     ),
     aiUsed: true,
-    model: openaiConfig.config.modelName,
-    aiConfigSource: openaiConfig.config.source,
+    model: primaryAi.reviewer.modelName,
+    aiConfigSource: primaryAi.reviewer.apiKeySource,
     aiWarning: null,
+    modelReviews,
   });
   return {
     ...normalized,
@@ -524,16 +574,16 @@ export async function analyzeMetaFullTextUpload(input: AnalyzeMetaFullTextInput)
   };
 }
 
-async function resolveOpenAIConfigForFullText() {
+async function resolveAiReviewerConfigsForFullText() {
   try {
     return {
-      config: await resolveMetaOpenAIConfig(),
+      configs: await resolveMetaAiReviewerConfigs(),
       warning: null,
     };
   } catch (error) {
     return {
-      config: null,
-      warning: `OpenAI settings could not be read, so fallback rules were used. Details: ${formatAiSettingsError(error)}`,
+      configs: null,
+      warning: `AI reviewer settings could not be read, so fallback rules were used. Details: ${formatAiSettingsError(error)}`,
     };
   }
 }
@@ -610,6 +660,7 @@ function fallbackAnalyzeFullText({
   referenceRecord,
   text,
   analysisText,
+  sourceFileSha256,
   extractionColumns,
   extractionWarnings,
 }: {
@@ -618,6 +669,7 @@ function fallbackAnalyzeFullText({
   referenceRecord: string | null;
   text: string;
   analysisText: string;
+  sourceFileSha256: string;
   extractionColumns: string[];
   extractionWarnings: string[];
 }): MetaFullTextAnalysis {
@@ -648,6 +700,8 @@ function fallbackAnalyzeFullText({
     fileType,
     extractedTextLength: text.length,
     truncated: extractionWarnings.length > 0,
+    analysisSchemaVersion: metaFullTextAnalysisSchemaVersion,
+    sourceFileSha256,
     analyzedAt: new Date().toISOString(),
     aiUsed: false,
     model: null,
@@ -708,6 +762,7 @@ function fallbackAnalyzeFullText({
       "스캔 PDF 또는 표 구조가 무너진 PDF는 OCR/table extraction 후 다시 분석하세요.",
       "AI 결과는 최종판정이 아니라 reviewer verification 초안으로만 사용하세요.",
     ],
+    modelReviews: [],
     reviewEvaluation: {
       score: 25,
       grade: "fallback-human-verification-required",
@@ -728,15 +783,14 @@ function fallbackAnalyzeFullText({
   });
 }
 
-async function analyzeWithOpenAI({
+async function analyzeWithAiReviewer({
   fileName,
   fileType,
   referenceRecord,
   text,
   extractionColumns,
   fallback,
-  openaiApiKey,
-  openaiModel,
+  reviewer,
 }: {
   fileName: string;
   fileType: MetaFullTextFileType;
@@ -744,17 +798,16 @@ async function analyzeWithOpenAI({
   text: string;
   extractionColumns: string[];
   fallback: MetaFullTextAnalysis;
-  openaiApiKey: string;
-  openaiModel: string;
+  reviewer: MetaAiReviewerConfig;
 }): Promise<{ analysis: AiMetaFullTextAnalysis | null; warning: string | null }> {
-  const openai = new OpenAI({ apiKey: openaiApiKey, maxRetries: 0, timeout: 45_000 });
+  const openai = new OpenAI({
+    apiKey: reviewer.apiKey,
+    baseURL: reviewer.baseUrl ?? undefined,
+    maxRetries: 0,
+    timeout: 45_000,
+  });
   try {
-    const response = await openai.responses.create({
-      model: openaiModel,
-      text: {
-        format: createMetaFullTextResponseFormat(extractionColumns),
-      },
-      input: `You are a meticulous systematic-review and meta-analysis extraction assistant.
+    const prompt = `You are a meticulous systematic-review and meta-analysis extraction assistant.
 
 Task:
 Analyze the uploaded full-text article for a systematic review/meta-analysis on instrument-imposed postural asymmetry and region/laterality-specific playing-related musculoskeletal pain (PRMD) in instrumental/orchestral musicians.
@@ -903,7 +956,7 @@ Return this JSON schema:
       "reviewer_actionability": {"score": 0, "status": "pass|partial|fail|unclear", "comment": "Korean comment"},
       "risk_visibility": {"score": 0, "status": "pass|partial|fail|unclear", "comment": "Korean comment"}
     },
-    "modelName": "${openaiModel}"
+    "modelName": "${reviewer.modelName}"
   }
 }
 
@@ -928,10 +981,13 @@ File: ${fileName}
 File type: ${fileType}
 
 Full-text:
-${text}`,
-    });
+${text}`;
 
-    const outputText = extractOpenAiOutputText(response);
+    const outputText =
+      reviewer.providerType === "OPENAI"
+        ? await analyzeWithOpenAiResponses(openai, reviewer.modelName, extractionColumns, prompt)
+        : await analyzeWithOpenAiCompatibleChat(openai, reviewer.modelName, prompt);
+
     if (!outputText.trim()) throw new Error("OpenAI returned an empty full-text analysis response.");
     const parsed = JSON.parse(extractJson(outputText)) as unknown;
     const validated = aiMetaFullTextAnalysisSchema.safeParse(parsed);
@@ -945,12 +1001,91 @@ ${text}`,
     }
     return { analysis: validated.data as AiMetaFullTextAnalysis, warning: null };
   } catch (error) {
-    console.error("Meta full-text OpenAI analysis failed; using fallback.", error);
+    console.error("Meta full-text AI reviewer analysis failed; using fallback.", {
+      reviewerId: reviewer.id,
+      label: reviewer.label,
+      providerType: reviewer.providerType,
+      modelName: reviewer.modelName,
+      error,
+    });
     return {
       analysis: null,
-      warning: `OpenAI request failed, so fallback rules were used. Details: ${formatOpenAIError(error)}`,
+      warning: `${reviewer.label} (${reviewer.modelName}) request failed. Details: ${formatOpenAIError(error)}`,
     };
   }
+}
+
+async function analyzeWithOpenAiResponses(
+  openai: OpenAI,
+  modelName: string,
+  extractionColumns: string[],
+  prompt: string,
+) {
+  const response = await openai.responses.create({
+    model: modelName,
+    text: {
+      format: createMetaFullTextResponseFormat(extractionColumns),
+    },
+    input: prompt,
+  });
+  return extractOpenAiOutputText(response);
+}
+
+async function analyzeWithOpenAiCompatibleChat(openai: OpenAI, modelName: string, prompt: string) {
+  const response = await openai.chat.completions.create({
+    model: modelName,
+    messages: [{ role: "user", content: prompt }],
+    response_format: { type: "json_object" },
+    temperature: 0,
+  });
+  return response.choices[0]?.message?.content ?? "";
+}
+
+function createModelReviewSummary(
+  reviewer: MetaAiReviewerConfig,
+  analysis: AiMetaFullTextAnalysis | null,
+  warning: string | null,
+  fallback: MetaFullTextAnalysis,
+): MetaFullTextModelReview {
+  const eligibility = {
+    ...fallback.eligibility,
+    ...analysis?.eligibility,
+  };
+  const extraction = normalizeExtraction(analysis?.extraction, fallback.extraction, fallback.extraction.columns);
+  const reviewEvaluation = normalizeReviewEvaluation(
+    analysis?.reviewEvaluation,
+    fallback.reviewEvaluation,
+    reviewer.modelName,
+  );
+  return {
+    reviewerId: reviewer.id,
+    label: reviewer.label,
+    providerType: reviewer.providerType,
+    modelName: reviewer.modelName,
+    baseUrl: reviewer.baseUrl,
+    analysisSchemaVersion: fallback.analysisSchemaVersion,
+    analyzedAt: new Date().toISOString(),
+    sourceFileSha256: fallback.sourceFileSha256,
+    inputTextLength: fallback.extractedTextLength,
+    truncated: fallback.truncated,
+    aiUsed: Boolean(analysis),
+    decision: analysis?.eligibility?.decision ?? "uncertain",
+    confidence: clamp(Number(eligibility.confidence) || 0, 0, 100),
+    summary: eligibility.summary || warning || "No structured result returned.",
+    reasons: normalizeList(eligibility.reasons).slice(0, 8),
+    exclusionReasons: normalizeList(eligibility.exclusionReasons).slice(0, 8),
+    reviewerChecks: eligibility.reviewerChecks,
+    reviewScore: reviewEvaluation.score,
+    reviewGrade: reviewEvaluation.grade,
+    extractionRowCount: extraction.rows.length,
+    missingCriticalFieldCount: extraction.missingCriticalFields.length,
+    validationIssueCount: extraction.validationIssues.length,
+    extractionRows: extraction.rows,
+    fieldEvidence: extraction.fieldEvidence,
+    missingCriticalFields: extraction.missingCriticalFields,
+    validationIssues: extraction.validationIssues,
+    warning,
+  };
 }
 
 function formatOpenAIError(error: unknown) {
@@ -971,6 +1106,8 @@ function normalizeAnalysis(analysis: MetaFullTextAnalysis): MetaFullTextAnalysis
   );
   return {
     ...analysis,
+    analysisSchemaVersion: analysis.analysisSchemaVersion || metaFullTextAnalysisSchemaVersion,
+    sourceFileSha256: analysis.sourceFileSha256 || "",
     eligibility: safety.eligibility,
     study: {
       ...analysis.study,
@@ -982,12 +1119,84 @@ function normalizeAnalysis(analysis: MetaFullTextAnalysis): MetaFullTextAnalysis
     },
     evidence: normalizeEvidence(analysis.evidence),
     nextActions: normalizeList(analysis.nextActions),
+    modelReviews: Array.isArray(analysis.modelReviews)
+      ? analysis.modelReviews.map(normalizeModelReview)
+      : [],
     reviewEvaluation: normalizeReviewEvaluation(
       analysis.reviewEvaluation,
       defaultReviewEvaluation(analysis.model),
       analysis.reviewEvaluation.modelName ?? analysis.model,
     ),
   };
+}
+
+const allowedMetaFullTextDecisions: MetaFullTextDecision[] = [
+  "include_quantitative",
+  "include_narrative_support",
+  "exclude",
+  "uncertain",
+];
+
+function normalizeModelReview(review: MetaFullTextModelReview): MetaFullTextModelReview {
+  const decision = allowedMetaFullTextDecisions.includes(review.decision) ? review.decision : "uncertain";
+  return {
+    reviewerId: String(review.reviewerId || "ai_reviewer"),
+    label: String(review.label || review.modelName || "AI reviewer").replace(/\s+/g, " ").trim().slice(0, 100),
+    providerType: review.providerType === "OPENAI_COMPATIBLE" ? "OPENAI_COMPATIBLE" : "OPENAI",
+    modelName: String(review.modelName || "unknown-model").replace(/\s+/g, "").trim().slice(0, 120),
+    baseUrl: typeof review.baseUrl === "string" && review.baseUrl.trim() ? review.baseUrl.trim() : null,
+    analysisSchemaVersion: conciseReviewText(review.analysisSchemaVersion || metaFullTextAnalysisSchemaVersion, 80),
+    analyzedAt: conciseReviewText(review.analyzedAt || new Date().toISOString(), 80),
+    sourceFileSha256: conciseReviewText(review.sourceFileSha256 || "", 80),
+    inputTextLength: Math.max(0, Number(review.inputTextLength) || 0),
+    truncated: Boolean(review.truncated),
+    aiUsed: Boolean(review.aiUsed),
+    decision,
+    confidence: clamp(Number(review.confidence) || 0, 0, 100),
+    summary: conciseReviewText(review.summary || "", 720),
+    reasons: normalizeList(review.reasons).slice(0, 8),
+    exclusionReasons: normalizeList(review.exclusionReasons).slice(0, 8),
+    reviewerChecks: normalizeReviewerChecks(review.reviewerChecks),
+    reviewScore: clamp(Number(review.reviewScore) || 0, 0, 100),
+    reviewGrade: conciseReviewText(review.reviewGrade || "unknown", 80),
+    extractionRowCount: Math.max(0, Number(review.extractionRowCount) || 0),
+    missingCriticalFieldCount: Math.max(0, Number(review.missingCriticalFieldCount) || 0),
+    validationIssueCount: Math.max(0, Number(review.validationIssueCount) || 0),
+    extractionRows: Array.isArray(review.extractionRows)
+      ? review.extractionRows.map((row) => normalizeExtractionRow(row))
+      : [],
+    fieldEvidence: normalizeFieldEvidence(review.fieldEvidence ?? [], review.extractionRows ?? []),
+    missingCriticalFields: normalizeList(review.missingCriticalFields),
+    validationIssues: normalizeList(review.validationIssues),
+    warning: review.warning ? conciseReviewText(review.warning, 800) : null,
+  };
+}
+
+function normalizeReviewerChecks(
+  value: MetaFullTextAnalysis["eligibility"]["reviewerChecks"] | undefined,
+): MetaFullTextAnalysis["eligibility"]["reviewerChecks"] {
+  return {
+    originalObservationalData: normalizeNullableBoolean(value?.originalObservationalData),
+    instrumentOrGroupSpecificData: normalizeNullableBoolean(value?.instrumentOrGroupSpecificData),
+    regionSpecificPainOutcome: normalizeNullableBoolean(value?.regionSpecificPainOutcome),
+    extractableNumeratorDenominator: normalizeNullableBoolean(value?.extractableNumeratorDenominator),
+    treatmentOrInterventionStudy: normalizeNullableBoolean(value?.treatmentOrInterventionStudy),
+    nonEnglishFullText: normalizeNullableBoolean(value?.nonEnglishFullText),
+  };
+}
+
+function normalizeNullableBoolean(value: boolean | null | undefined) {
+  return typeof value === "boolean" ? value : null;
+}
+
+function normalizeExtractionRow(value: Record<string, string>) {
+  if (!value || typeof value !== "object") return {};
+  return Object.fromEntries(
+    Object.entries(value).map(([key, cell]) => [
+      String(key),
+      cell === null || cell === undefined ? "" : String(cell),
+    ]),
+  );
 }
 
 function normalizeExtraction(

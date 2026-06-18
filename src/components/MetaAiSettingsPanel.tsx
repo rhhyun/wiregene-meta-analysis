@@ -10,10 +10,27 @@ type MetaAiSettingsSummary = {
   modelName: string;
   apiKeyMasked: string | null;
   apiKeySource: "saved" | "environment" | "missing";
+  modelReviewers: MetaAiReviewerSlotSummary[];
   storageBackend: "local-json" | "google-drive";
   storagePath: string;
   updatedAt: string | null;
   updatedBy: string | null;
+};
+
+type MetaAiReviewerSlotSummary = {
+  id: string;
+  label: string;
+  providerType: "OPENAI" | "OPENAI_COMPATIBLE";
+  enabled: boolean;
+  modelName: string;
+  baseUrl: string | null;
+  apiKeyMasked: string | null;
+  apiKeySource: "saved" | "environment" | "missing";
+};
+
+type ReviewerSlotForm = MetaAiReviewerSlotSummary & {
+  apiKeyInput: string;
+  clearApiKey: boolean;
 };
 
 const sourceLabels: Record<MetaAiSettingsSummary["apiKeySource"], string> = {
@@ -22,12 +39,48 @@ const sourceLabels: Record<MetaAiSettingsSummary["apiKeySource"], string> = {
   missing: "not configured",
 };
 
+function defaultReviewerSlots(settings: MetaAiSettingsSummary): MetaAiReviewerSlotSummary[] {
+  return [
+    {
+      id: "ai_reviewer_1",
+      label: "AI reviewer 1",
+      providerType: "OPENAI",
+      enabled: settings.enabled,
+      modelName: settings.modelName,
+      baseUrl: null,
+      apiKeyMasked: settings.apiKeyMasked,
+      apiKeySource: settings.apiKeySource,
+    },
+    {
+      id: "ai_reviewer_2",
+      label: "AI reviewer 2",
+      providerType: "OPENAI_COMPATIBLE",
+      enabled: false,
+      modelName: "gpt-5-nano",
+      baseUrl: null,
+      apiKeyMasked: null,
+      apiKeySource: "missing",
+    },
+    {
+      id: "ai_reviewer_3",
+      label: "AI reviewer 3",
+      providerType: "OPENAI_COMPATIBLE",
+      enabled: false,
+      modelName: "gemini-3.5",
+      baseUrl: null,
+      apiKeyMasked: null,
+      apiKeySource: "missing",
+    },
+  ];
+}
+
 export function MetaAiSettingsPanel() {
   const [settings, setSettings] = useState<MetaAiSettingsSummary | null>(null);
   const [enabled, setEnabled] = useState(true);
   const [modelName, setModelName] = useState("gpt-5-nano");
   const [apiKey, setApiKey] = useState("");
   const [clearApiKey, setClearApiKey] = useState(false);
+  const [reviewerSlots, setReviewerSlots] = useState<ReviewerSlotForm[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
@@ -63,6 +116,27 @@ export function MetaAiSettingsPanel() {
     setModelName(next.modelName);
     setApiKey("");
     setClearApiKey(false);
+    setReviewerSlots(
+      (next.modelReviewers.length ? next.modelReviewers : defaultReviewerSlots(next)).map((slot) => ({
+        ...slot,
+        apiKeyInput: "",
+        clearApiKey: false,
+      })),
+    );
+  }
+
+  function updateReviewerSlot(id: string, patch: Partial<ReviewerSlotForm>) {
+    setReviewerSlots((current) =>
+      current.map((slot, index) => {
+        if (slot.id !== id) return slot;
+        const nextSlot = { ...slot, ...patch };
+        if (index === 0) {
+          setEnabled(nextSlot.enabled);
+          setModelName(nextSlot.modelName);
+        }
+        return nextSlot;
+      }),
+    );
   }
 
   async function saveSettings() {
@@ -80,6 +154,16 @@ export function MetaAiSettingsPanel() {
           modelName,
           apiKey: apiKey.trim() || undefined,
           clearApiKey,
+          modelReviewers: reviewerSlots.map((slot, index) => ({
+            id: slot.id,
+            label: slot.label,
+            providerType: slot.providerType,
+            enabled: index === 0 ? enabled : slot.enabled,
+            modelName: index === 0 ? modelName : slot.modelName,
+            baseUrl: slot.baseUrl || null,
+            apiKey: index === 0 ? apiKey.trim() || slot.apiKeyInput.trim() || undefined : slot.apiKeyInput.trim() || undefined,
+            clearApiKey: index === 0 ? clearApiKey || slot.clearApiKey : slot.clearApiKey,
+          })),
         }),
       });
       const payload = await response.json().catch(() => ({}));
@@ -178,6 +262,124 @@ export function MetaAiSettingsPanel() {
             />
             저장된 OpenAI API key 삭제
           </label>
+
+          <section className="rounded-md border border-emerald-200 bg-emerald-50 p-4">
+            <div>
+              <p className="text-sm font-semibold text-emerald-900">AI model reviewer slots</p>
+              <p className="mt-1 text-sm leading-6 text-zinc-700">
+                원문 1개를 여러 AI 모델이 독립적으로 판정하고, 결과 비교 후 연구책임자가 최종 include/exclude를 선택합니다.
+                OpenAI-compatible slot은 provider의 base URL과 model명을 직접 입력합니다.
+              </p>
+            </div>
+            <div className="mt-4 grid gap-3 xl:grid-cols-3">
+              {reviewerSlots.map((slot, index) => (
+                <article key={slot.id} className="rounded-md border border-emerald-200 bg-white p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <label className="flex items-center gap-2 text-sm font-semibold text-zinc-800">
+                      <input
+                        type="checkbox"
+                        checked={index === 0 ? enabled : slot.enabled}
+                        onChange={(event) => updateReviewerSlot(slot.id, { enabled: event.target.checked })}
+                        className="h-4 w-4 accent-emerald-700"
+                      />
+                      {slot.label}
+                    </label>
+                    <span className="rounded-md bg-zinc-100 px-2 py-1 text-xs font-semibold text-zinc-600">
+                      {slot.apiKeyMasked ?? "no key"}
+                    </span>
+                  </div>
+                  <div className="mt-3 grid gap-2">
+                    <label className="grid gap-1 text-xs font-semibold uppercase text-zinc-500">
+                      Label
+                      <input
+                        value={slot.label}
+                        onChange={(event) => updateReviewerSlot(slot.id, { label: event.target.value })}
+                        className="h-9 rounded-md border border-zinc-300 px-2 text-sm font-normal normal-case text-zinc-900 outline-none focus:border-emerald-500"
+                      />
+                    </label>
+                    <label className="grid gap-1 text-xs font-semibold uppercase text-zinc-500">
+                      Provider
+                      <select
+                        value={slot.providerType}
+                        onChange={(event) =>
+                          updateReviewerSlot(slot.id, { providerType: event.target.value as ReviewerSlotForm["providerType"] })
+                        }
+                        className="h-9 rounded-md border border-zinc-300 bg-white px-2 text-sm font-normal normal-case text-zinc-900 outline-none focus:border-emerald-500"
+                      >
+                        <option value="OPENAI">OpenAI Responses</option>
+                        <option value="OPENAI_COMPATIBLE">OpenAI-compatible Chat</option>
+                      </select>
+                    </label>
+                    <label className="grid gap-1 text-xs font-semibold uppercase text-zinc-500">
+                      Model
+                      <input
+                        value={index === 0 ? modelName : slot.modelName}
+                        onChange={(event) =>
+                          index === 0
+                            ? setModelName(event.target.value)
+                            : updateReviewerSlot(slot.id, { modelName: event.target.value })
+                        }
+                        placeholder={index === 0 ? "gpt-5-nano" : "provider-model-name"}
+                        className="h-9 rounded-md border border-zinc-300 px-2 text-sm font-normal normal-case text-zinc-900 outline-none focus:border-emerald-500"
+                      />
+                    </label>
+                    <label className="grid gap-1 text-xs font-semibold uppercase text-zinc-500">
+                      Base URL
+                      <input
+                        value={slot.baseUrl ?? ""}
+                        onChange={(event) => updateReviewerSlot(slot.id, { baseUrl: event.target.value || null })}
+                        placeholder={slot.providerType === "OPENAI" ? "OpenAI default" : "https://provider.example/v1"}
+                        className="h-9 rounded-md border border-zinc-300 px-2 text-sm font-normal normal-case text-zinc-900 outline-none focus:border-emerald-500"
+                      />
+                    </label>
+                    <label className="grid gap-1 text-xs font-semibold uppercase text-zinc-500">
+                      API key
+                      <input
+                        value={index === 0 ? apiKey || slot.apiKeyInput : slot.apiKeyInput}
+                        onChange={(event) => {
+                          if (index === 0) {
+                            setApiKey(event.target.value);
+                            setClearApiKey(false);
+                          }
+                          updateReviewerSlot(slot.id, { apiKeyInput: event.target.value, clearApiKey: false });
+                        }}
+                        type="password"
+                        autoComplete="off"
+                        placeholder={slot.apiKeyMasked ? "Enter only to replace saved key" : "API key"}
+                        className="h-9 rounded-md border border-zinc-300 px-2 text-sm font-normal normal-case text-zinc-900 outline-none focus:border-emerald-500"
+                      />
+                    </label>
+                    <label className="flex items-center gap-2 rounded-md border border-rose-100 bg-rose-50 p-2 text-xs font-semibold text-rose-900">
+                      <input
+                        type="checkbox"
+                        checked={index === 0 ? clearApiKey || slot.clearApiKey : slot.clearApiKey}
+                        onChange={(event) => {
+                          if (index === 0) {
+                            setClearApiKey(event.target.checked);
+                            if (event.target.checked) setApiKey("");
+                          }
+                          updateReviewerSlot(slot.id, {
+                            clearApiKey: event.target.checked,
+                            apiKeyInput: event.target.checked ? "" : slot.apiKeyInput,
+                          });
+                        }}
+                        className="h-4 w-4 accent-rose-700"
+                      />
+                      Clear saved key for this slot
+                    </label>
+                    <p className="text-xs leading-5 text-zinc-500">
+                      Source: {sourceLabels[slot.apiKeySource]}. {slot.providerType === "OPENAI_COMPATIBLE" ? "Use provider OpenAI-compatible chat endpoint." : "Uses OpenAI Responses API."}
+                    </p>
+                    {slot.providerType === "OPENAI_COMPATIBLE" && slot.enabled && !slot.baseUrl ? (
+                      <p className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs font-semibold leading-5 text-amber-950">
+                        Base URL is required before this compatible reviewer can run.
+                      </p>
+                    ) : null}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
 
           {error ? (
             <div className="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-950" role="alert">

@@ -11,6 +11,21 @@ const updateSchema = z.object({
   modelName: z.string().trim().min(1).max(120).optional(),
   apiKey: z.string().optional(),
   clearApiKey: z.boolean().optional(),
+  modelReviewers: z
+    .array(
+      z.object({
+        id: z.string().trim().min(1).max(80).optional(),
+        label: z.string().trim().min(1).max(80).optional(),
+        providerType: z.enum(["OPENAI", "OPENAI_COMPATIBLE"]).optional(),
+        enabled: z.boolean().optional(),
+        modelName: z.string().trim().min(1).max(120).optional(),
+        baseUrl: z.string().trim().max(240).nullable().optional(),
+        apiKey: z.string().optional(),
+        clearApiKey: z.boolean().optional(),
+      }),
+    )
+    .max(3)
+    .optional(),
 });
 
 export async function GET(request: Request) {

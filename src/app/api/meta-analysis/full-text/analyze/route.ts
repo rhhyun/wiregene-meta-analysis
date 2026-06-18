@@ -269,6 +269,13 @@ async function analyzeAndSave(input: AnalyzeRequestInput, context: AnalyzeReques
         verificationComplete: false,
         reviewerOneName: savedRecord.verification.reviewerOneName,
         reviewerTwoName: savedRecord.verification.reviewerTwoName,
+        reviewerOneDecision: savedRecord.verification.reviewerOneDecision,
+        reviewerTwoDecision: savedRecord.verification.reviewerTwoDecision,
+        fixedExclusionReason: savedRecord.verification.fixedExclusionReason,
+        conflictStatus: savedRecord.verification.conflictStatus,
+        piName: savedRecord.verification.piName,
+        piFinalDecision: savedRecord.verification.piFinalDecision,
+        piAdjudicatedAt: savedRecord.verification.piAdjudicatedAt,
       },
       diagnostics: {
         ...diagnostics(context),

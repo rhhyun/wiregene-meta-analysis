@@ -16,6 +16,10 @@ export type MetaFullTextVerification = {
   fixedExclusionReason: string;
   conflictStatus: string;
   reviewerNotes: string;
+  piName: string;
+  piFinalDecision: string;
+  piFinalReason: string;
+  piAdjudicatedAt: string | null;
   updatedAt: string | null;
 };
 
@@ -67,6 +71,9 @@ export type MetaFullTextHistorySummary = {
   reviewerTwoDecision: string;
   fixedExclusionReason: string;
   conflictStatus: string;
+  piName: string;
+  piFinalDecision: string;
+  piAdjudicatedAt: string | null;
 };
 
 export type MetaFullTextReviewerSettings = {
@@ -179,12 +186,19 @@ export async function updateMetaFullTextVerification(id: string, verification: P
   const data = await readHistoryData();
   const index = data.records.findIndex((record) => record.id === id);
   if (index < 0) return null;
+  const adjudicatedAt =
+    verification.piFinalDecision && verification.piFinalDecision !== "pending" && verification.piName
+      ? new Date().toISOString()
+      : verification.piFinalDecision === "pending"
+        ? null
+        : data.records[index].verification.piAdjudicatedAt;
 
   data.records[index] = {
     ...data.records[index],
     verification: normalizeVerification({
       ...data.records[index].verification,
       ...verification,
+      piAdjudicatedAt: adjudicatedAt,
       updatedAt: new Date().toISOString(),
     }),
   };
@@ -280,6 +294,9 @@ function toSummary(record: MetaFullTextHistoryRecord): MetaFullTextHistorySummar
     reviewerTwoDecision: record.verification.reviewerTwoDecision,
     fixedExclusionReason: record.verification.fixedExclusionReason,
     conflictStatus: record.verification.conflictStatus,
+    piName: record.verification.piName,
+    piFinalDecision: record.verification.piFinalDecision,
+    piAdjudicatedAt: record.verification.piAdjudicatedAt,
   };
 }
 
@@ -300,6 +317,10 @@ function emptyVerification(settings: MetaFullTextReviewerSettings = emptyReviewe
     fixedExclusionReason: "해당 없음",
     conflictStatus: "needs human verification",
     reviewerNotes: "",
+    piName: "",
+    piFinalDecision: "pending",
+    piFinalReason: "",
+    piAdjudicatedAt: null,
     updatedAt: null,
   };
 }
@@ -325,6 +346,10 @@ function normalizeVerification(value: Partial<MetaFullTextVerification>): MetaFu
     fixedExclusionReason: cleanString(value.fixedExclusionReason) || fallback.fixedExclusionReason,
     conflictStatus: cleanString(value.conflictStatus) || fallback.conflictStatus,
     reviewerNotes: cleanString(value.reviewerNotes),
+    piName: cleanString(value.piName),
+    piFinalDecision: cleanString(value.piFinalDecision) || fallback.piFinalDecision,
+    piFinalReason: cleanString(value.piFinalReason),
+    piAdjudicatedAt: cleanOptional(value.piAdjudicatedAt),
     updatedAt: cleanOptional(value.updatedAt),
   };
 }
@@ -377,7 +402,10 @@ function isVerificationComplete(verification: MetaFullTextVerification) {
     Boolean(verification.reviewerTwoName.trim()) &&
     verification.reviewerOneDecision !== "pending" &&
     verification.reviewerTwoDecision !== "pending" &&
-    ["agreement", "resolved"].includes(verification.conflictStatus)
+    ["agreement", "resolved"].includes(verification.conflictStatus) &&
+    verification.piFinalDecision !== "pending" &&
+    Boolean(verification.piName.trim()) &&
+    Boolean(verification.piAdjudicatedAt)
   );
 }
 
@@ -393,7 +421,7 @@ function normalizeRecord(value: unknown): MetaFullTextHistoryRecord | null {
   const record = value as Partial<MetaFullTextHistoryRecord>;
   if (!record.analysis || typeof record.analysis !== "object") return null;
   const id = cleanString(record.id) || crypto.randomUUID();
-  const analysis = record.analysis as MetaFullTextAnalysis;
+  const analysis = normalizeStoredAnalysis(record.analysis as Partial<MetaFullTextAnalysis>);
   return {
     id,
     fileName: cleanString(record.fileName) || analysis.fileName || "full-text",
@@ -405,6 +433,15 @@ function normalizeRecord(value: unknown): MetaFullTextHistoryRecord | null {
     analysis,
     verification: normalizeVerification(record.verification ?? {}),
     extractionReview: normalizeExtractionReview(record.extractionReview),
+  };
+}
+
+function normalizeStoredAnalysis(analysis: Partial<MetaFullTextAnalysis>): MetaFullTextAnalysis {
+  return {
+    ...(analysis as MetaFullTextAnalysis),
+    analysisSchemaVersion: cleanString(analysis.analysisSchemaVersion) || "legacy",
+    sourceFileSha256: cleanString(analysis.sourceFileSha256),
+    modelReviews: Array.isArray(analysis.modelReviews) ? analysis.modelReviews : [],
   };
 }
 

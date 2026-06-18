@@ -805,6 +805,68 @@ Regular Synology deploy/run command after GitHub push:
 git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
 ```
 
+## 2026-06-18 Multi-AI model reviewer workflow for full-text screening
+
+Actual working repository:
+
+```text
+C:\Users\rhhyu\Documents\GitHub\wiregene-meta-analysis
+```
+
+User goal:
+
+- Use two or three AI models as independent full-text reviewers before human/PI adjudication.
+- Compare model-level eligibility and extraction results, then let the principal investigator make the final include/exclude decision.
+- Preserve results so another PC can continue the same meta-analysis workflow.
+
+Implemented:
+
+- `src/lib/meta-ai-settings.ts`, `src/app/api/meta-analysis/ai-settings/route.ts`
+  - AI settings now support three reviewer slots.
+  - Slot 1 remains OpenAI/Responses-compatible with existing `OPENAI_API_KEY` fallback.
+  - Slots 2 and 3 support OpenAI-compatible Chat providers with custom `baseUrl`, model name, key, enabled flag, and label.
+  - Existing `enabled: false` settings are preserved during migration.
+  - OpenAI-compatible slots without a valid base URL are not run.
+- `src/components/MetaAiSettingsPanel.tsx`
+  - Added editable AI model reviewer slots in the AI settings screen.
+  - Shows provider, model, base URL, saved key source, replacement key input, clear-key option, and base-URL warning.
+- `src/lib/meta-full-text-analysis.ts`
+  - Full-text analysis now runs all enabled AI reviewer slots sequentially.
+  - The first valid structured result remains the primary draft used by the existing screen.
+  - Each model reviewer output is saved in `analysis.modelReviews` with model/provider, decision, confidence, summary, reasons, reviewer checks, review score/grade, extraction rows, cell evidence, missing fields, validation issues, schema version, file SHA-256, truncation flag, and warnings.
+  - Fallback mode now preserves the same `modelReviews` structure.
+- `src/components/MetaFullTextAssistant.tsx`
+  - Added visible `AI model reviewer comparison` table to saved/current analysis results.
+  - Verification CSV now includes `ai_model_reviews_json`.
+  - Added PI final adjudication fields: PI name, final decision, and rationale.
+- `src/lib/meta-full-text-history.ts`, `src/app/api/meta-analysis/full-text/history/[id]/route.ts`
+  - Saved verification records now include PI final adjudication fields and adjudication timestamp.
+  - Verification is considered complete only after reviewer decisions and PI final adjudication are saved.
+- `src/app/api/meta-analysis/full-text/analyze/route.ts`
+  - Saved-record summaries returned immediately after analysis now include reviewer decisions and PI final fields.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.29`
+  - UI label: `Ver 1.64 | 2026 copyright by JK Hyun`
+
+Important product note:
+
+- This implementation stores full per-model reviewer drafts and PI final fields.
+- A future improvement should add a dedicated disagreement matrix that highlights cell-by-cell extraction differences and immutable event logs for every reviewer/PI edit.
+
+Verification:
+
+```text
+npm.cmd run lint: passed.
+npx.cmd tsc --noEmit --pretty false: passed.
+npm.cmd run build: passed.
+```
+
+Regular Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 ## 2026-06-14 Meta workflow UX pass for protocol/search/screening verification
 
 Actual working repository:

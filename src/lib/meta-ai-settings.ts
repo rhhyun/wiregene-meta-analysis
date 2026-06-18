@@ -8,12 +8,26 @@ import {
   writeTextFileToGoogleDrive,
 } from "./google-drive-storage";
 
+export type MetaAiProviderType = "OPENAI" | "OPENAI_COMPATIBLE";
+
+export type MetaAiReviewerSlotSummary = {
+  id: string;
+  label: string;
+  providerType: MetaAiProviderType;
+  enabled: boolean;
+  modelName: string;
+  baseUrl: string | null;
+  apiKeyMasked: string | null;
+  apiKeySource: "saved" | "environment" | "missing";
+};
+
 export type MetaAiSettingsSummary = {
   providerType: "OPENAI";
   enabled: boolean;
   modelName: string;
   apiKeyMasked: string | null;
   apiKeySource: "saved" | "environment" | "missing";
+  modelReviewers: MetaAiReviewerSlotSummary[];
   storageBackend: "local-json" | "google-drive";
   storagePath: string;
   updatedAt: string | null;
@@ -27,13 +41,45 @@ export type MetaOpenAIConfig = {
   source: MetaAiSettingsSummary["apiKeySource"];
 };
 
+export type MetaAiReviewerConfig = MetaAiReviewerSlotSummary & {
+  apiKey: string;
+};
+
+type StoredMetaAiReviewerSlot = {
+  id: string;
+  label: string;
+  providerType: MetaAiProviderType;
+  enabled: boolean;
+  modelName: string;
+  baseUrl: string | null;
+  apiKeyEncrypted: string | null;
+};
+
 type StoredMetaAiSettings = {
   providerType: "OPENAI";
   enabled: boolean;
   modelName: string;
   apiKeyEncrypted: string | null;
+  modelReviewers: StoredMetaAiReviewerSlot[];
   updatedAt: string | null;
   updatedBy: string | null;
+};
+
+type ReviewerDefaultsInput = {
+  apiKeyEncrypted: string | null;
+  primaryModelName: string;
+  primaryEnabled: boolean;
+};
+
+type MetaAiReviewerSlotUpdate = {
+  id?: string;
+  label?: string;
+  providerType?: MetaAiProviderType;
+  enabled?: boolean;
+  modelName?: string;
+  baseUrl?: string | null;
+  apiKey?: string;
+  clearApiKey?: boolean;
 };
 
 type MetaAiSettingsUpdate = {
@@ -41,6 +87,7 @@ type MetaAiSettingsUpdate = {
   modelName?: string;
   apiKey?: string;
   clearApiKey?: boolean;
+  modelReviewers?: MetaAiReviewerSlotUpdate[];
   updatedBy?: string | null;
 };
 
@@ -91,6 +138,7 @@ export async function updateMetaAiSettings(input: MetaAiSettingsUpdate): Promise
     enabled: typeof input.enabled === "boolean" ? input.enabled : current.enabled,
     modelName: nextModel,
     apiKeyEncrypted,
+    modelReviewers: normalizeReviewerSlotUpdates(input.modelReviewers, current, nextModel, apiKeyEncrypted),
     updatedAt: new Date().toISOString(),
     updatedBy: input.updatedBy?.trim() || current.updatedBy || null,
   };
@@ -112,6 +160,33 @@ export async function resolveMetaOpenAIConfig(): Promise<MetaOpenAIConfig> {
     enabled: settings.enabled && Boolean(apiKey),
     source,
   };
+}
+
+export async function resolveMetaAiReviewerConfigs(): Promise<MetaAiReviewerConfig[]> {
+  const settings = await readStoredMetaAiSettings();
+  return normalizeStoredReviewers(settings).map((slot, index) => {
+    const savedKey = decryptSecret(slot.apiKeyEncrypted);
+    const envKey = index === 0 ? config.openaiApiKey.trim() : "";
+    const apiKey = savedKey || envKey;
+    const apiKeySource: MetaAiSettingsSummary["apiKeySource"] = savedKey
+      ? "saved"
+      : envKey
+        ? "environment"
+        : "missing";
+    const baseUrl = normalizeBaseUrl(slot.baseUrl);
+    const providerReady = slot.providerType === "OPENAI" || Boolean(baseUrl);
+    return {
+      id: slot.id,
+      label: slot.label,
+      providerType: slot.providerType,
+      enabled: slot.enabled && Boolean(apiKey) && providerReady,
+      modelName: normalizeModelName(slot.modelName || config.openaiModel),
+      baseUrl,
+      apiKey,
+      apiKeyMasked: maskSecret(apiKey),
+      apiKeySource,
+    };
+  });
 }
 
 export function metaAiSettingsErrorDetails(error: unknown) {
@@ -278,6 +353,26 @@ function toSummary(settings: StoredMetaAiSettings): MetaAiSettingsSummary {
     modelName: normalizeModelName(settings.modelName || config.openaiModel),
     apiKeyMasked,
     apiKeySource,
+    modelReviewers: normalizeStoredReviewers(settings).map((slot, index) => {
+      const slotSavedKey = decryptSecret(slot.apiKeyEncrypted);
+      const slotEnvKey = index === 0 ? config.openaiApiKey.trim() : "";
+      const slotKey = slotSavedKey || slotEnvKey;
+      const slotSource: MetaAiSettingsSummary["apiKeySource"] = slotSavedKey
+        ? "saved"
+        : slotEnvKey
+          ? "environment"
+          : "missing";
+      return {
+        id: slot.id,
+        label: slot.label,
+        providerType: slot.providerType,
+        enabled: slot.enabled,
+        modelName: normalizeModelName(slot.modelName || config.openaiModel),
+        baseUrl: normalizeBaseUrl(slot.baseUrl),
+        apiKeyMasked: maskSecret(slotKey),
+        apiKeySource: slotSource,
+      };
+    }),
     storageBackend: metaAiSettingsStorageBackend(),
     storagePath: metaAiSettingsStorageLocation(),
     updatedAt: settings.updatedAt,
@@ -286,11 +381,17 @@ function toSummary(settings: StoredMetaAiSettings): MetaAiSettingsSummary {
 }
 
 function emptySettings(): StoredMetaAiSettings {
+  const enabled = Boolean(config.openaiApiKey.trim());
   return {
     providerType: "OPENAI",
-    enabled: Boolean(config.openaiApiKey.trim()),
+    enabled,
     modelName: normalizeModelName(config.openaiModel || defaultModelName),
     apiKeyEncrypted: null,
+    modelReviewers: defaultReviewerSlots({
+      apiKeyEncrypted: null,
+      primaryModelName: normalizeModelName(config.openaiModel || defaultModelName),
+      primaryEnabled: enabled,
+    }),
     updatedAt: null,
     updatedBy: null,
   };
@@ -299,14 +400,145 @@ function emptySettings(): StoredMetaAiSettings {
 function normalizeStoredSettings(value: unknown): StoredMetaAiSettings {
   if (!value || typeof value !== "object") return emptySettings();
   const record = value as Partial<StoredMetaAiSettings>;
+  const enabled = typeof record.enabled === "boolean" ? record.enabled : Boolean(config.openaiApiKey.trim());
+  const modelName = normalizeModelName(record.modelName || config.openaiModel || defaultModelName);
+  const apiKeyEncrypted = typeof record.apiKeyEncrypted === "string" && record.apiKeyEncrypted ? record.apiKeyEncrypted : null;
   return {
     providerType: "OPENAI",
-    enabled: typeof record.enabled === "boolean" ? record.enabled : Boolean(config.openaiApiKey.trim()),
-    modelName: normalizeModelName(record.modelName || config.openaiModel || defaultModelName),
-    apiKeyEncrypted: typeof record.apiKeyEncrypted === "string" && record.apiKeyEncrypted ? record.apiKeyEncrypted : null,
+    enabled,
+    modelName,
+    apiKeyEncrypted,
+    modelReviewers: normalizeStoredReviewers({
+      enabled,
+      modelName,
+      apiKeyEncrypted,
+      modelReviewers: Array.isArray(record.modelReviewers)
+        ? (record.modelReviewers as StoredMetaAiReviewerSlot[])
+        : [],
+    }),
     updatedAt: typeof record.updatedAt === "string" && record.updatedAt ? record.updatedAt : null,
     updatedBy: typeof record.updatedBy === "string" && record.updatedBy ? record.updatedBy : null,
   };
+}
+
+function defaultReviewerSlots({
+  apiKeyEncrypted,
+  primaryModelName,
+  primaryEnabled,
+}: ReviewerDefaultsInput): StoredMetaAiReviewerSlot[] {
+  return [
+    {
+      id: "ai_reviewer_1",
+      label: "AI reviewer 1",
+      providerType: "OPENAI",
+      enabled: primaryEnabled,
+      modelName: normalizeModelName(primaryModelName || config.openaiModel || defaultModelName),
+      baseUrl: null,
+      apiKeyEncrypted,
+    },
+    {
+      id: "ai_reviewer_2",
+      label: "AI reviewer 2",
+      providerType: "OPENAI_COMPATIBLE",
+      enabled: false,
+      modelName: "gpt-5-nano",
+      baseUrl: null,
+      apiKeyEncrypted: null,
+    },
+    {
+      id: "ai_reviewer_3",
+      label: "AI reviewer 3",
+      providerType: "OPENAI_COMPATIBLE",
+      enabled: false,
+      modelName: "gemini-3.5",
+      baseUrl: null,
+      apiKeyEncrypted: null,
+    },
+  ];
+}
+
+function normalizeStoredReviewers(
+  settings: Pick<StoredMetaAiSettings, "enabled" | "modelName" | "apiKeyEncrypted" | "modelReviewers">,
+): StoredMetaAiReviewerSlot[] {
+  const defaults = defaultReviewerSlots({
+    apiKeyEncrypted: settings.apiKeyEncrypted,
+    primaryModelName: settings.modelName,
+    primaryEnabled: settings.enabled,
+  });
+  const saved = Array.isArray(settings.modelReviewers) ? settings.modelReviewers : [];
+  return defaults.map((fallback, index) => {
+    const raw = saved.find((slot) => slot?.id === fallback.id) ?? saved[index];
+    if (!raw || typeof raw !== "object") return fallback;
+    return {
+      id: cleanSlotId(raw.id, fallback.id),
+      label: cleanSlotLabel(raw.label, fallback.label),
+      providerType: raw.providerType === "OPENAI_COMPATIBLE" ? "OPENAI_COMPATIBLE" : "OPENAI",
+      enabled: typeof raw.enabled === "boolean" ? raw.enabled : fallback.enabled,
+      modelName: normalizeModelName(raw.modelName || fallback.modelName),
+      baseUrl: normalizeBaseUrl(raw.baseUrl),
+      apiKeyEncrypted:
+        typeof raw.apiKeyEncrypted === "string" && raw.apiKeyEncrypted ? raw.apiKeyEncrypted : fallback.apiKeyEncrypted,
+    };
+  });
+}
+
+function normalizeReviewerSlotUpdates(
+  updates: MetaAiReviewerSlotUpdate[] | undefined,
+  current: StoredMetaAiSettings,
+  nextModel: string,
+  primaryApiKeyEncrypted: string | null,
+): StoredMetaAiReviewerSlot[] {
+  const currentSlots = normalizeStoredReviewers({
+    ...current,
+    modelName: nextModel,
+    apiKeyEncrypted: primaryApiKeyEncrypted,
+  });
+  if (!updates) {
+    return currentSlots.map((slot, index) =>
+      index === 0
+        ? { ...slot, modelName: nextModel, apiKeyEncrypted: primaryApiKeyEncrypted }
+        : slot,
+    );
+  }
+
+  return currentSlots.map((slot, index) => {
+    const update = updates.find((item) => item.id === slot.id) ?? updates[index];
+    if (!update) return slot;
+    const nextApiKey = update.apiKey?.trim();
+    const apiKeyEncrypted = update.clearApiKey
+      ? null
+      : nextApiKey
+        ? encryptSecret(nextApiKey)
+        : slot.apiKeyEncrypted;
+    const providerType: MetaAiProviderType =
+      update.providerType === "OPENAI_COMPATIBLE" ? "OPENAI_COMPATIBLE" : "OPENAI";
+    return {
+      id: slot.id,
+      label: cleanSlotLabel(update.label, slot.label),
+      providerType,
+      enabled: typeof update.enabled === "boolean" ? update.enabled : slot.enabled,
+      modelName: normalizeModelName(update.modelName || slot.modelName),
+      baseUrl: normalizeBaseUrl(update.baseUrl),
+      apiKeyEncrypted,
+    };
+  });
+}
+
+function cleanSlotId(value: string | undefined, fallback: string) {
+  const normalized = (value ?? "").replace(/[^a-zA-Z0-9_-]/g, "").trim();
+  return normalized || fallback;
+}
+
+function cleanSlotLabel(value: string | undefined, fallback: string) {
+  const normalized = (value ?? "").replace(/\s+/g, " ").trim();
+  return normalized.slice(0, 80) || fallback;
+}
+
+function normalizeBaseUrl(value: string | null | undefined) {
+  const normalized = (value ?? "").trim().replace(/\/+$/, "");
+  if (!normalized) return null;
+  if (!/^https?:\/\//i.test(normalized)) return null;
+  return normalized;
 }
 
 function normalizeModelName(value: string) {

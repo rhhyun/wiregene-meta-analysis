@@ -28,6 +28,7 @@ type MetaFullTextAssistantProps = {
 };
 
 type ReviewerDecision = "pending" | "include_quantitative" | "include_narrative_support" | "exclude" | "conflict";
+type PiFinalDecision = "pending" | "include_quantitative" | "include_narrative_support" | "exclude";
 type HistoryFilter =
   | "all"
   | "verification_pending"
@@ -60,6 +61,9 @@ type MetaFullTextHistorySummary = {
   reviewerTwoDecision: string;
   fixedExclusionReason: string;
   conflictStatus: string;
+  piName: string;
+  piFinalDecision: string;
+  piAdjudicatedAt: string | null;
 };
 
 type MetaFullTextVerification = {
@@ -70,6 +74,10 @@ type MetaFullTextVerification = {
   fixedExclusionReason: string;
   conflictStatus: string;
   reviewerNotes: string;
+  piName: string;
+  piFinalDecision: string;
+  piFinalReason: string;
+  piAdjudicatedAt: string | null;
   updatedAt: string | null;
 };
 
@@ -417,6 +425,13 @@ const reviewerDecisionOptions: { value: ReviewerDecision; label: string }[] = [
   { value: "conflict", label: "불일치/논의" },
 ];
 
+const piFinalDecisionOptions: { value: PiFinalDecision; label: string }[] = [
+  { value: "pending", label: "PI final pending" },
+  { value: "include_quantitative", label: "PI include quantitative" },
+  { value: "include_narrative_support", label: "PI include narrative/support" },
+  { value: "exclude", label: "PI exclude" },
+];
+
 const fixedExclusionReasons = [
   "해당 없음",
   "wrong population",
@@ -451,6 +466,9 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
   const [fixedExclusionReason, setFixedExclusionReason] = useState(fixedExclusionReasons[0]);
   const [conflictStatus, setConflictStatus] = useState("needs human verification");
   const [reviewerNotes, setReviewerNotes] = useState("");
+  const [piName, setPiName] = useState("");
+  const [piFinalDecision, setPiFinalDecision] = useState<PiFinalDecision>("pending");
+  const [piFinalReason, setPiFinalReason] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -569,6 +587,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
         "ai_review_summary",
         "ai_review_improvement",
         "ai_review_criteria_json",
+        "ai_model_reviews_json",
         "ai_config_source",
         "ai_warning",
         "reviewer_1_name",
@@ -578,6 +597,9 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
         "fixed_exclusion_reason",
         "conflict_status",
         "reviewer_notes",
+        "pi_name",
+        "pi_final_decision",
+        "pi_final_reason",
         "analyzed_at",
       ],
       [
@@ -591,6 +613,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
           ai_review_summary: analysis.reviewEvaluation.summary,
           ai_review_improvement: analysis.reviewEvaluation.improvement,
           ai_review_criteria_json: JSON.stringify(analysis.reviewEvaluation.criteria),
+          ai_model_reviews_json: JSON.stringify(analysis.modelReviews),
           ai_config_source: analysis.aiConfigSource ?? "",
           ai_warning: analysis.aiWarning ?? "",
           reviewer_1_name: reviewerOneName,
@@ -600,6 +623,9 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
           fixed_exclusion_reason: fixedExclusionReason,
           conflict_status: conflictStatus,
           reviewer_notes: reviewerNotes,
+          pi_name: piName,
+          pi_final_decision: piFinalDecision,
+          pi_final_reason: piFinalReason,
           analyzed_at: analysis.analyzedAt,
         },
       ],
@@ -613,6 +639,9 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
     reviewerOneName,
     reviewerTwoDecision,
     reviewerTwoName,
+    piName,
+    piFinalDecision,
+    piFinalReason,
     selectedWorksheet,
   ]);
 
@@ -622,6 +651,9 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
     setFixedExclusionReason(fixedExclusionReasons[0]);
     setConflictStatus("needs human verification");
     setReviewerNotes("");
+    setPiName("");
+    setPiFinalDecision("pending");
+    setPiFinalReason("");
   }
 
   function applyVerification(verification?: Partial<MetaFullTextVerification> | null) {
@@ -632,6 +664,9 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
     setFixedExclusionReason(verification?.fixedExclusionReason || fixedExclusionReasons[0]);
     setConflictStatus(verification?.conflictStatus || "needs human verification");
     setReviewerNotes(verification?.reviewerNotes || "");
+    setPiName(verification?.piName || "");
+    setPiFinalDecision((verification?.piFinalDecision as PiFinalDecision) || "pending");
+    setPiFinalReason(verification?.piFinalReason || "");
   }
 
   function upsertHistoryItem(item: MetaFullTextHistorySummary) {
@@ -762,6 +797,9 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
             fixedExclusionReason,
             conflictStatus,
             reviewerNotes,
+            piName,
+            piFinalDecision,
+            piFinalReason,
           }),
         }),
       );
@@ -1254,6 +1292,9 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
                     {currentHistoryItem.verificationComplete ? "verification complete" : "verification pending"} · reviewer 1:{" "}
                     {currentHistoryItem.reviewerOneName || "not set"} · reviewer 2: {currentHistoryItem.reviewerTwoName || "not set"}
                   </p>
+                  <p className="text-xs font-semibold leading-5 text-zinc-600">
+                    PI final: {currentHistoryItem.piFinalDecision || "pending"} · {currentHistoryItem.piName || "PI not set"}
+                  </p>
                   <p className="text-xs font-medium leading-5 text-zinc-600">
                     {currentHistoryItem.sourceSheet ?? "no sheet"} · {decisionLabel(currentHistoryItem.decision)} · confidence{" "}
                     {currentHistoryItem.confidence} · {currentHistoryItem.aiUsed ? `AI ${currentHistoryItem.model}` : "fallback"} · review{" "}
@@ -1480,6 +1521,73 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
             </div>
           </section>
 
+          {(analysis.modelReviews?.length ?? 0) > 0 ? (
+            <section className="rounded-md border border-zinc-200 bg-white p-4">
+              <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-zinc-950">AI model reviewer comparison</p>
+                  <p className="mt-1 text-xs leading-5 text-zinc-500">
+                    Each enabled AI model is stored as an independent reviewer draft. The primary result above uses the first valid structured response; PI adjudication below remains the final decision.
+                  </p>
+                </div>
+                <span className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-semibold text-zinc-700">
+                  {(analysis.modelReviews?.length ?? 0).toLocaleString("ko-KR")} model reviewer(s)
+                </span>
+              </div>
+              <div className="mt-3 overflow-x-auto rounded-md border border-zinc-200">
+                <table className="w-full min-w-[920px] border-collapse text-left text-xs">
+                  <thead className="bg-zinc-50 text-zinc-500">
+                    <tr>
+                      <th className="border-b border-zinc-200 px-3 py-2">Reviewer</th>
+                      <th className="border-b border-zinc-200 px-3 py-2">Model</th>
+                      <th className="border-b border-zinc-200 px-3 py-2">Decision</th>
+                      <th className="border-b border-zinc-200 px-3 py-2">Confidence</th>
+                      <th className="border-b border-zinc-200 px-3 py-2">Quality</th>
+                      <th className="border-b border-zinc-200 px-3 py-2">Extraction</th>
+                      <th className="border-b border-zinc-200 px-3 py-2">Summary / warning</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(analysis.modelReviews ?? []).map((review) => (
+                      <tr key={`${review.reviewerId}-${review.modelName}`} className="align-top">
+                        <td className="border-b border-zinc-100 px-3 py-2 font-semibold text-zinc-950">
+                          {review.label}
+                          <span className="mt-1 block text-[11px] font-medium text-zinc-500">
+                            {review.aiUsed ? "structured" : "fallback/failed"}
+                          </span>
+                        </td>
+                        <td className="border-b border-zinc-100 px-3 py-2 text-zinc-700">
+                          <span className="font-semibold">{review.modelName}</span>
+                          <span className="mt-1 block text-[11px] text-zinc-500">{review.providerType}</span>
+                        </td>
+                        <td className="border-b border-zinc-100 px-3 py-2">
+                          <span className={`rounded-md px-2 py-1 font-semibold ${decisionTone(review.decision)}`}>
+                            {decisionLabel(review.decision)}
+                          </span>
+                        </td>
+                        <td className="border-b border-zinc-100 px-3 py-2 font-semibold text-zinc-800">{review.confidence}</td>
+                        <td className="border-b border-zinc-100 px-3 py-2 text-zinc-700">
+                          {review.reviewScore}/{review.reviewGrade}
+                        </td>
+                        <td className="border-b border-zinc-100 px-3 py-2 text-zinc-700">
+                          rows {review.extractionRowCount}; missing {review.missingCriticalFieldCount}; issues {review.validationIssueCount}
+                        </td>
+                        <td className="border-b border-zinc-100 px-3 py-2 text-zinc-700">
+                          <p className="line-clamp-3 leading-5">{review.warning || review.summary || "No model summary returned."}</p>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {(analysis.modelReviews ?? []).some((review) => review.warning) ? (
+                <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-950">
+                  One or more AI reviewer models failed or returned an invalid structured response. The failed reviewer is preserved in history and should be rerun or adjudicated manually.
+                </div>
+              ) : null}
+            </section>
+          ) : null}
+
           <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
             <ResultPanel title="Eligibility reasons" items={analysis.eligibility.reasons} />
             <ResultPanel
@@ -1605,6 +1713,44 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
                 placeholder="page/table 확인 내용, conflict resolution, Excel 수정 사항을 기록하세요."
               />
             </label>
+            <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 p-3">
+              <p className="text-sm font-semibold text-zinc-950">PI final adjudication</p>
+              <div className="mt-3 grid gap-3 lg:grid-cols-[0.8fr_1fr]">
+                <label className="grid gap-1 text-xs font-semibold uppercase text-zinc-500">
+                  PI name
+                  <input
+                    value={piName}
+                    onChange={(event) => setPiName(event.target.value)}
+                    className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-semibold normal-case text-zinc-900"
+                    placeholder="Principal investigator"
+                  />
+                </label>
+                <label className="grid gap-1 text-xs font-semibold uppercase text-zinc-500">
+                  final decision
+                  <select
+                    value={piFinalDecision}
+                    onChange={(event) => setPiFinalDecision(event.target.value as PiFinalDecision)}
+                    className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-semibold normal-case text-zinc-900"
+                  >
+                    {piFinalDecisionOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <label className="mt-3 grid gap-1 text-xs font-semibold uppercase text-zinc-500">
+                PI rationale
+                <textarea
+                  value={piFinalReason}
+                  onChange={(event) => setPiFinalReason(event.target.value)}
+                  rows={3}
+                  className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-normal normal-case leading-6 text-zinc-900"
+                  placeholder="Model disagreement, reviewer conflict resolution, and final include/exclude rationale."
+                />
+              </label>
+            </div>
           </section>
 
           <section className="rounded-md border border-zinc-200 bg-white p-4">
