@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   getMetaProjectStorageSummary,
   saveMetaProjectTextFile,
+  parseRequestJson,
 } from "@/lib/meta-project-storage";
 
 export const runtime = "nodejs";
@@ -27,7 +28,7 @@ export async function GET(_request: Request, context: RouteContext) {
 
 export async function POST(request: Request, context: RouteContext) {
   const { projectId } = await context.params;
-  const payload = await request.json().catch(() => null);
+  const payload = await parseRequestJson(request).catch(() => null);
 
   if (!payload || typeof payload !== "object") {
     return NextResponse.json({ error: "JSON body is required." }, { status: 400 });

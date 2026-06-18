@@ -4,6 +4,7 @@ import {
   getMetaProjectStorageSummary,
   readMetaProjectWorkspaceState,
   writeMetaProjectWorkspaceState,
+  parseRequestJson,
 } from "@/lib/meta-project-storage";
 
 export const runtime = "nodejs";
@@ -37,7 +38,7 @@ export async function GET(_request: Request, context: RouteContext) {
 
 export async function PATCH(request: Request, context: RouteContext) {
   const { projectId } = await context.params;
-  const patch = statePatchFromPayload(await request.json().catch(() => null));
+  const patch = statePatchFromPayload(await parseRequestJson(request).catch(() => null));
   if (!patch) return NextResponse.json({ error: "A JSON object body is required." }, { status: 400 });
 
   try {
@@ -54,7 +55,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 
 export async function PUT(request: Request, context: RouteContext) {
   const { projectId } = await context.params;
-  const nextState = statePatchFromPayload(await request.json().catch(() => null));
+  const nextState = statePatchFromPayload(await parseRequestJson(request).catch(() => null));
   if (!nextState) return NextResponse.json({ error: "A JSON object body is required." }, { status: 400 });
 
   try {

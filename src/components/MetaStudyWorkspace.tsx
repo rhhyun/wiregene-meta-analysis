@@ -1340,6 +1340,19 @@ function searchUploadMasterCsv(summary: SearchUploadSummary | null) {
   ]);
 }
 
+async function compressPayload(raw: string): Promise<{ body: BodyInit; headers: Record<string, string> }> {
+  if (typeof CompressionStream !== "undefined") {
+    try {
+      const stream = new Blob([raw]).stream().pipeThrough(new CompressionStream("gzip"));
+      const body = await new Response(stream).arrayBuffer();
+      return { body, headers: { "Content-Type": "application/octet-stream", "Content-Encoding": "gzip" } };
+    } catch {
+      // fall through to uncompressed
+    }
+  }
+  return { body: raw, headers: { "Content-Type": "application/json" } };
+}
+
 export function MetaStudyWorkspace({
   initialSearchQuery,
   currentUser,
@@ -1371,10 +1384,11 @@ export function MetaStudyWorkspace({
 
   const saveUserProjects = useCallback(async (projects: MetaStudyProject[]) => {
     try {
+      const { body, headers } = await compressPayload(JSON.stringify({ projects }));
       const response = await fetch("/api/meta-analysis/projects", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projects }),
+        headers,
+        body,
       });
       const payload = (await response.json().catch(() => ({}))) as UserMetaProjectsResponse;
       if (!response.ok) throw new Error(payload.error || "Failed to save meta study projects.");
@@ -3618,10 +3632,11 @@ async function loadProjectStorage(projectId: string) {
 }
 
 async function saveProjectTextFile(projectId: string, fileName: string, contents: string) {
+  const { body, headers } = await compressPayload(JSON.stringify({ fileName, contents }));
   const response = await fetch(`/api/meta-analysis/projects/${encodeURIComponent(projectId)}/files`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ fileName, contents }),
+    headers,
+    body,
   });
   const payload = (await response.json().catch(() => ({}))) as Partial<ProjectFileSaveResponse> & {
     error?: string;
@@ -3644,10 +3659,11 @@ async function loadProjectWorkspaceState(projectId: string) {
 }
 
 async function saveProjectWorkspaceState(projectId: string, patch: ProjectWorkspaceState) {
+  const { body, headers } = await compressPayload(JSON.stringify(patch));
   const response = await fetch(`/api/meta-analysis/projects/${encodeURIComponent(projectId)}/state`, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(patch),
+    headers,
+    body,
   });
   const payload = (await response.json().catch(() => ({}))) as ProjectWorkspaceStateResponse;
   if (!response.ok || !payload.state) {

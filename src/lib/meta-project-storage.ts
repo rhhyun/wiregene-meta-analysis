@@ -1,6 +1,7 @@
 import type { Dirent } from "fs";
 import { promises as fs } from "fs";
 import path from "path";
+import zlib from "zlib";
 import { getGoogleDriveAuthMode } from "./google-drive-config";
 import {
   listTextFilesFromGoogleDriveByNamePrefix,
@@ -565,4 +566,16 @@ function synologyProjectPathHint(folderName: string) {
 
 function isServerlessRuntime() {
   return Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+}
+
+export async function parseRequestJson(request: Request): Promise<any> {
+  const contentEncoding = request.headers.get("content-encoding");
+  if (contentEncoding === "gzip") {
+    const arrayBuffer = await request.arrayBuffer();
+    if (arrayBuffer.byteLength === 0) return {};
+    const buffer = Buffer.from(arrayBuffer);
+    const decompressed = zlib.gunzipSync(buffer).toString("utf8");
+    return JSON.parse(decompressed);
+  }
+  return request.json();
 }

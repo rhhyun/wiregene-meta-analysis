@@ -5,6 +5,7 @@ import {
   getMetaUserProjectsStorageSummary,
   readStoredMetaStudyProjects,
   writeStoredMetaStudyProjects,
+  parseRequestJson,
 } from "@/lib/meta-project-storage";
 import type { MetaStudyProject } from "@/lib/meta-projects";
 
@@ -41,9 +42,8 @@ export async function GET() {
     );
   }
 }
-
-export async function PUT(request: Request) {
-  const parsed = projectsSchema.safeParse(await request.json().catch(() => ({})));
+export async function PUT(request: Request) {
+  const parsed = projectsSchema.safeParse(await parseRequestJson(request).catch(() => ({})));
   if (!parsed.success) {
     return NextResponse.json(
       { error: "Invalid meta study project payload.", details: parsed.error.flatten() },
