@@ -164,17 +164,22 @@ export async function resolveMetaOpenAIConfig(): Promise<MetaOpenAIConfig> {
 
 export async function resolveMetaAiReviewerConfigs(): Promise<MetaAiReviewerConfig[]> {
   const settings = await readStoredMetaAiSettings();
+  const primarySavedKey = decryptSecret(settings.apiKeyEncrypted);
+  const primaryEnvKey = config.openaiApiKey.trim();
+  const primaryApiKey = primarySavedKey || primaryEnvKey;
   return normalizeStoredReviewers(settings).map((slot, index) => {
     const savedKey = decryptSecret(slot.apiKeyEncrypted);
-    const envKey = index === 0 ? config.openaiApiKey.trim() : "";
-    const apiKey = savedKey || envKey;
+    const inheritsOpenAiKey = index === 0 || slot.providerType === "OPENAI" || looksLikeOpenAiModel(slot.modelName);
+    const apiKey = savedKey || (inheritsOpenAiKey ? primaryApiKey : "");
     const apiKeySource: MetaAiSettingsSummary["apiKeySource"] = savedKey
       ? "saved"
-      : envKey
-        ? "environment"
+      : apiKey
+        ? primarySavedKey
+          ? "saved"
+          : "environment"
         : "missing";
     const baseUrl = normalizeBaseUrl(slot.baseUrl);
-    const providerReady = slot.providerType === "OPENAI" || Boolean(baseUrl);
+    const providerReady = slot.providerType === "OPENAI" || Boolean(baseUrl) || looksLikeOpenAiModel(slot.modelName);
     return {
       id: slot.id,
       label: slot.label,
@@ -340,6 +345,7 @@ async function moveCorruptGoogleDriveSettingsAside(fileName: string, raw: string
 function toSummary(settings: StoredMetaAiSettings): MetaAiSettingsSummary {
   const savedKey = decryptSecret(settings.apiKeyEncrypted);
   const envKey = config.openaiApiKey.trim();
+  const primaryKey = savedKey || envKey;
   const apiKeyMasked = maskSecret(savedKey) ?? maskSecret(envKey);
   const apiKeySource: MetaAiSettingsSummary["apiKeySource"] = savedKey
     ? "saved"
@@ -355,12 +361,14 @@ function toSummary(settings: StoredMetaAiSettings): MetaAiSettingsSummary {
     apiKeySource,
     modelReviewers: normalizeStoredReviewers(settings).map((slot, index) => {
       const slotSavedKey = decryptSecret(slot.apiKeyEncrypted);
-      const slotEnvKey = index === 0 ? config.openaiApiKey.trim() : "";
-      const slotKey = slotSavedKey || slotEnvKey;
+      const inheritsOpenAiKey = index === 0 || slot.providerType === "OPENAI" || looksLikeOpenAiModel(slot.modelName);
+      const slotKey = slotSavedKey || (inheritsOpenAiKey ? primaryKey : "");
       const slotSource: MetaAiSettingsSummary["apiKeySource"] = slotSavedKey
         ? "saved"
-        : slotEnvKey
-          ? "environment"
+        : slotKey
+          ? savedKey
+            ? "saved"
+            : "environment"
           : "missing";
       return {
         id: slot.id,
@@ -544,6 +552,10 @@ function normalizeBaseUrl(value: string | null | undefined) {
 function normalizeModelName(value: string) {
   const normalized = value.replace(/\s+/g, "").trim();
   return normalized || defaultModelName;
+}
+
+function looksLikeOpenAiModel(modelName: string) {
+  return /^(gpt-|o\d|o-|chatgpt-|ft:)/i.test(modelName.trim());
 }
 
 function encryptSecret(value: string) {

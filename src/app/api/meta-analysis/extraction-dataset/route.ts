@@ -3,14 +3,26 @@ import {
   getMetaExtractionDatasetOverview,
   saveMetaExtractionDatasetRecord,
 } from "@/lib/meta-extraction-dataset";
+import { createMetaExtractionDatasetXlsx } from "@/lib/meta-extraction-xlsx";
 import { metaFullTextHistoryStorageErrorDetails } from "@/lib/meta-full-text-history";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const overview = await getMetaExtractionDatasetOverview();
+    const format = new URL(request.url).searchParams.get("format");
+    if (format === "xlsx") {
+      const workbook = await createMetaExtractionDatasetXlsx(overview);
+      return new NextResponse(new Uint8Array(workbook), {
+        headers: {
+          "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "content-disposition": `attachment; filename="wiregene-meta-extraction-dataset.xlsx"`,
+          "cache-control": "no-store",
+        },
+      });
+    }
     return NextResponse.json(overview);
   } catch (error) {
     return NextResponse.json(

@@ -57,7 +57,7 @@ export async function POST(request: Request, context: RouteContext) {
       reviewerIds: reanalyzeRequest.reviewerIds,
     });
     const nextAnalysis = reanalyzeRequest.reviewerIds.length
-      ? mergeSelectedModelReviews(record.analysis, analysis)
+      ? mergeSelectedModelReviewsIntoPrimary(record.analysis, analysis)
       : analysis;
     const updated = await replaceMetaFullTextHistoryAnalysis(id, nextAnalysis);
     if (!updated) return NextResponse.json({ error: "Saved full-text analysis was not found." }, { status: 404 });
@@ -101,12 +101,14 @@ function normalizeReviewerIds(value: unknown) {
   ).slice(0, 3);
 }
 
-function mergeSelectedModelReviews(current: MetaFullTextAnalysis, selected: MetaFullTextAnalysis): MetaFullTextAnalysis {
-  if (!selected.modelReviews.length) {
+function mergeSelectedModelReviewsIntoPrimary(current: MetaFullTextAnalysis, selected: MetaFullTextAnalysis): MetaFullTextAnalysis {
+  const selectedHasUsableAi = selected.aiUsed && selected.modelReviews.some((review) => review.aiUsed);
+  if (!selected.modelReviews.length || !selectedHasUsableAi) {
     return {
       ...current,
       analyzedAt: new Date().toISOString(),
       aiWarning: selected.aiWarning ?? current.aiWarning,
+      modelReviews: mergeModelReviews(current.modelReviews ?? [], selected.modelReviews ?? []),
       extraction: {
         ...current.extraction,
         validationIssues: Array.from(
@@ -119,34 +121,33 @@ function mergeSelectedModelReviews(current: MetaFullTextAnalysis, selected: Meta
     };
   }
 
-  const mergedReviews: MetaFullTextModelReview[] = [];
-  const reviewById = new Map<string, MetaFullTextModelReview>();
-  for (const review of current.modelReviews ?? []) {
-    reviewById.set(review.reviewerId, review);
-  }
-  for (const review of selected.modelReviews) {
-    reviewById.set(review.reviewerId, review);
-  }
-  const preferredOrder = [...(current.modelReviews ?? []), ...selected.modelReviews].map((review) => review.reviewerId);
-  for (const reviewerId of preferredOrder) {
-    const review = reviewById.get(reviewerId);
-    if (review && !mergedReviews.some((item) => item.reviewerId === reviewerId)) mergedReviews.push(review);
-  }
-
   return {
-    ...current,
+    ...selected,
     analyzedAt: new Date().toISOString(),
     aiWarning: selected.aiWarning ?? current.aiWarning,
-    modelReviews: mergedReviews,
+    modelReviews: mergeModelReviews(current.modelReviews ?? [], selected.modelReviews),
     nextActions: Array.from(new Set([...selected.nextActions, ...current.nextActions].filter(Boolean))).slice(0, 8),
     extraction: {
-      ...current.extraction,
+      ...selected.extraction,
       validationIssues: Array.from(
         new Set([
-          ...current.extraction.validationIssues,
           ...selected.extraction.validationIssues,
+          ...current.extraction.validationIssues,
         ].filter(Boolean)),
       ),
     },
   };
+}
+
+function mergeModelReviews(current: MetaFullTextModelReview[], selected: MetaFullTextModelReview[]) {
+  const mergedReviews: MetaFullTextModelReview[] = [];
+  const reviewById = new Map<string, MetaFullTextModelReview>();
+  for (const review of current) reviewById.set(review.reviewerId, review);
+  for (const review of selected) reviewById.set(review.reviewerId, review);
+  const preferredOrder = [...current, ...selected].map((review) => review.reviewerId);
+  for (const reviewerId of preferredOrder) {
+    const review = reviewById.get(reviewerId);
+    if (review && !mergedReviews.some((item) => item.reviewerId === reviewerId)) mergedReviews.push(review);
+  }
+  return mergedReviews;
 }

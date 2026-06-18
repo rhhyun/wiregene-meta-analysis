@@ -1,3 +1,61 @@
+# 2026-06-18 AI reviewer rerun controls and Excel dataset workbook export
+
+Current actual implementation repository:
+
+```text
+C:\Users\rhhyu\Documents\GitHub\wiregene-meta-analysis
+```
+
+User issue:
+
+- Screening showed AI reviewer 1/2/3, but reviewer 3 could remain disabled when the researcher entered an OpenAI model without a Base URL.
+- Saved full-text records from the previous `gpt-5-nano` run could not be clearly rerun with two or more new AI models.
+- The selected-model rerun updated model comparison drafts but could leave the old primary AI decision/extraction row visible.
+- Included-paper Excel dataset verification emphasized manual-required fields and CSV copy, while researchers need to see which Excel fields are AI-filled, evidence-backed, blank, or truly manual, then generate an actual Excel file.
+
+Implemented:
+
+- AI reviewer readiness:
+  - OpenAI-like model names such as `gpt-*`, `o*`, `chatgpt-*`, and `ft:*` can run without a Base URL.
+  - OpenAI-like reviewer slots inherit the primary OpenAI key when a slot-specific key is not set.
+  - A reviewer slot that is off by default can still be selected for a specific run if it has a usable key/provider.
+- Screening UI:
+  - Added a visible `Run selected AI reviewers on saved full text` button directly inside the `AI model reviewers for this run` panel.
+  - The button uses the already-saved source file and does not require reupload.
+  - The panel shows whether the selected saved record has a reusable source or is legacy/no-source.
+- Reanalysis behavior:
+  - Selected saved-source reanalysis now promotes the new selected-run result to the current primary AI decision/extraction when the selected run produces usable AI output.
+  - Existing and new model-review drafts are merged for comparison.
+  - The UI notice warns the researcher to recheck reviewer/PI adjudication if the primary AI decision changed.
+- Excel dataset:
+  - Added per-record `fieldCoverage` and `coverageCounts`.
+  - Field coverage status values: `audit`, `evidence-backed`, `auto-filled`, `manual-required`, `blank`.
+  - Added aggregate stats for evidence-backed fields, AI auto-filled fields, blank editable fields, and editable field cells.
+  - Added `Excel field coverage map` table.
+  - Added status badges beside each Excel field editor.
+  - Added real `.xlsx` workbook download via `GET /api/meta-analysis/extraction-dataset?format=xlsx`.
+  - The workbook includes `Dataset` and `Field_Coverage` sheets and is generated with existing `jszip`.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.45`
+  - UI label: `Ver 1.80 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npm.cmd run lint: passed.
+npx.cmd tsc --noEmit --pretty false: passed after clearing stale .next/dev generated route cache.
+npm.cmd run build: passed.
+AI reviewer slot test: OpenAI-like reviewer 3 with model gpt-5.5 inherits the environment OpenAI key and no Base URL is required; slot remains off by default but selectable for a specific run.
+XLSX generator test: createMetaExtractionDatasetXlsx returned a valid PK zip/xlsx signature.
+Browser check in local Meta mode on http://127.0.0.1:3221: Ver 1.80 visible; Screening shows Run selected AI reviewers on saved full text; Included-paper Excel dataset verification shows Download Excel workbook (.xlsx), Excel field coverage map, and field coverage metrics; browser console errors=[].
+```
+
+Regular Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 # Wiregene Meta 작업 백업
 
 작성일: 2026-06-12

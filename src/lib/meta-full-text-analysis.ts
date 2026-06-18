@@ -499,9 +499,9 @@ export async function analyzeMetaFullTextUpload(input: AnalyzeMetaFullTextInput)
   const selectedReviewerIds = normalizeReviewerIds(input.reviewerIds);
   const enabledReviewers = reviewerConfigResult.configs.filter(
     (reviewer) =>
-      reviewer.enabled &&
       reviewer.apiKey &&
-      (selectedReviewerIds.length === 0 || selectedReviewerIds.includes(reviewer.id)),
+      reviewerProviderReady(reviewer) &&
+      (selectedReviewerIds.length > 0 ? selectedReviewerIds.includes(reviewer.id) : reviewer.enabled),
   );
   if (enabledReviewers.length === 0) {
     const selectedWarning = selectedReviewerIds.length
@@ -648,6 +648,14 @@ function normalizeReviewerIds(value: string[] | null | undefined) {
         .filter(Boolean),
     ),
   ).slice(0, 3);
+}
+
+function reviewerProviderReady(reviewer: MetaAiReviewerConfig) {
+  return reviewer.providerType === "OPENAI" || Boolean(reviewer.baseUrl) || looksLikeOpenAiModel(reviewer.modelName);
+}
+
+function looksLikeOpenAiModel(modelName: string) {
+  return /^(gpt-|o\d|o-|chatgpt-|ft:)/i.test(modelName.trim());
 }
 
 function detectFileType(fileName: string, mimeType = ""): MetaFullTextFileType {

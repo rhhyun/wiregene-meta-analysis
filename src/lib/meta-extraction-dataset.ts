@@ -21,7 +21,18 @@ export type MetaExtractionDatasetRecord = {
   validationIssues: string[];
   missingCriticalFields: string[];
   evidenceCount: number;
+  fieldCoverage: Record<string, MetaExtractionFieldCoverageStatus>;
+  coverageCounts: MetaExtractionCoverageCounts;
   row: Record<string, string>;
+};
+
+export type MetaExtractionFieldCoverageStatus = "audit" | "evidence-backed" | "auto-filled" | "manual-required" | "blank";
+
+export type MetaExtractionCoverageCounts = {
+  evidenceBacked: number;
+  autoFilled: number;
+  manualRequired: number;
+  blank: number;
 };
 
 export type MetaExtractionDatasetOverview = {
@@ -33,6 +44,10 @@ export type MetaExtractionDatasetOverview = {
     excelRowCount: number;
     verifiedRowCount: number;
     manualRequiredFieldCount: number;
+    evidenceBackedFieldCount: number;
+    autoFilledFieldCount: number;
+    blankFieldCount: number;
+    editableFieldCount: number;
   };
   updatedAt: string;
 };
@@ -114,6 +129,10 @@ export async function getMetaExtractionDatasetOverview(): Promise<MetaExtraction
       excelRowCount: records.length,
       verifiedRowCount: records.filter((record) => record.verified).length,
       manualRequiredFieldCount: records.reduce((total, record) => total + record.manualRequiredFields.length, 0),
+      evidenceBackedFieldCount: records.reduce((total, record) => total + record.coverageCounts.evidenceBacked, 0),
+      autoFilledFieldCount: records.reduce((total, record) => total + record.coverageCounts.autoFilled, 0),
+      blankFieldCount: records.reduce((total, record) => total + record.coverageCounts.blank, 0),
+      editableFieldCount: records.length * columns.filter((column) => !auditColumns.includes(column)).length,
     },
     updatedAt: new Date().toISOString(),
   };
@@ -144,6 +163,12 @@ function datasetRecordsForHistoryRecord(record: MetaFullTextHistoryRecord, colum
   return sourceRows.map((sourceRow, rowIndex) => {
     const normalizedSourceRow = normalizeRow(sourceRow);
     const manualRequiredFields = manualRequiredFieldsFor(record, normalizedSourceRow);
+    const manualRequiredFieldSet = new Set(manualRequiredFields);
+    const evidenceFieldSet = new Set(
+      record.analysis.extraction.fieldEvidence
+        .filter((item) => item.rowIndex === rowIndex)
+        .map((item) => item.field),
+    );
     const row = normalizeRow({
       ...normalizedSourceRow,
       history_id: record.id,
@@ -171,6 +196,13 @@ function datasetRecordsForHistoryRecord(record: MetaFullTextHistoryRecord, colum
       manual_required_fields: normalizedSourceRow.manual_required_fields || manualRequiredFields.join("; "),
       data_verified: record.extractionReview.verified ? "yes" : normalizedSourceRow.data_verified || "no",
     });
+    const fieldCoverage = Object.fromEntries(
+      columns.map((column) => [
+        column,
+        fieldCoverageStatus(column, row[column] ?? "", manualRequiredFieldSet, evidenceFieldSet),
+      ]),
+    ) as Record<string, MetaExtractionFieldCoverageStatus>;
+    const coverageCounts = coverageCountsFor(fieldCoverage);
 
     return {
       id: `${record.id}:${rowIndex}`,
@@ -188,9 +220,41 @@ function datasetRecordsForHistoryRecord(record: MetaFullTextHistoryRecord, colum
       validationIssues: record.analysis.extraction.validationIssues,
       missingCriticalFields: record.analysis.extraction.missingCriticalFields,
       evidenceCount: record.analysis.extraction.fieldEvidence.length,
+      fieldCoverage,
+      coverageCounts,
       row: Object.fromEntries(columns.map((column) => [column, row[column] ?? ""])),
     };
   });
+}
+
+function fieldCoverageStatus(
+  field: string,
+  value: string,
+  manualRequiredFieldSet: Set<string>,
+  evidenceFieldSet: Set<string>,
+): MetaExtractionFieldCoverageStatus {
+  if (auditColumns.includes(field)) return "audit";
+  if (manualRequiredFieldSet.has(field)) return "manual-required";
+  if (!value) return "blank";
+  if (evidenceFieldSet.has(field)) return "evidence-backed";
+  return "auto-filled";
+}
+
+function coverageCountsFor(fieldCoverage: Record<string, MetaExtractionFieldCoverageStatus>): MetaExtractionCoverageCounts {
+  const counts: MetaExtractionCoverageCounts = {
+    evidenceBacked: 0,
+    autoFilled: 0,
+    manualRequired: 0,
+    blank: 0,
+  };
+  for (const [field, status] of Object.entries(fieldCoverage)) {
+    if (auditColumns.includes(field)) continue;
+    if (status === "evidence-backed") counts.evidenceBacked += 1;
+    if (status === "auto-filled") counts.autoFilled += 1;
+    if (status === "manual-required") counts.manualRequired += 1;
+    if (status === "blank") counts.blank += 1;
+  }
+  return counts;
 }
 
 function isIncludedRecord(record: MetaFullTextHistoryRecord) {

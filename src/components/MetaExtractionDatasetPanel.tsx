@@ -1,6 +1,6 @@
-"use client";
+﻿"use client";
 
-import { AlertTriangle, CheckCircle2, FileSpreadsheet, Loader2, RefreshCw, Save } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Download, FileSpreadsheet, Loader2, RefreshCw, Save } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { apiErrorMessage } from "@/components/grant-error-message";
 
@@ -25,7 +25,18 @@ type DatasetRecord = {
   validationIssues: string[];
   missingCriticalFields: string[];
   evidenceCount: number;
+  fieldCoverage: Record<string, FieldCoverageStatus>;
+  coverageCounts: CoverageCounts;
   row: Record<string, string>;
+};
+
+type FieldCoverageStatus = "audit" | "evidence-backed" | "auto-filled" | "manual-required" | "blank";
+
+type CoverageCounts = {
+  evidenceBacked: number;
+  autoFilled: number;
+  manualRequired: number;
+  blank: number;
 };
 
 type DatasetOverview = {
@@ -37,6 +48,10 @@ type DatasetOverview = {
     excelRowCount: number;
     verifiedRowCount: number;
     manualRequiredFieldCount: number;
+    evidenceBackedFieldCount: number;
+    autoFilledFieldCount: number;
+    blankFieldCount: number;
+    editableFieldCount: number;
   };
   updatedAt: string;
 };
@@ -60,7 +75,11 @@ const auditSection: ExtractionSection = {
     "history_id",
     "file_name",
     "source_sheet",
+    "saved_at",
+    "analyzed_at",
     "final_decision",
+    "verification_mode",
+    "reviewer_review_skipped_at",
     "reviewer_1_name",
     "reviewer_2_name",
     "reviewer_conflict_status",
@@ -71,6 +90,7 @@ const auditSection: ExtractionSection = {
     "extraction_verified",
     "extraction_verified_at",
     "extraction_verified_by",
+    "extraction_verification_notes",
     "source_evidence_count",
     "missing_fields_count",
     "validation_issue_count",
@@ -84,6 +104,8 @@ const readOnlyFields = new Set([
   "saved_at",
   "analyzed_at",
   "final_decision",
+  "verification_mode",
+  "reviewer_review_skipped_at",
   "reviewer_1_name",
   "reviewer_2_name",
   "reviewer_conflict_status",
@@ -94,6 +116,7 @@ const readOnlyFields = new Set([
   "extraction_verified",
   "extraction_verified_at",
   "extraction_verified_by",
+  "extraction_verification_notes",
   "source_evidence_count",
   "missing_fields_count",
   "validation_issue_count",
@@ -111,11 +134,39 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [exportSaving, setExportSaving] = useState(false);
+  const [xlsxDownloading, setXlsxDownloading] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
   const sections = useMemo(() => [auditSection, ...extractionSections], [extractionSections]);
   const selectedRecord = overview?.records.find((record) => record.id === selectedId) ?? null;
+  const fieldSectionByName = useMemo(() => {
+    const sectionByField = new Map<string, string>();
+    for (const section of sections) {
+      for (const field of section.fields) sectionByField.set(field, section.section);
+    }
+    return sectionByField;
+  }, [sections]);
+  const coverageRows = useMemo(() => {
+    if (!overview) return [];
+    return overview.columns
+      .filter((field) => !readOnlyFields.has(field))
+      .map((field) => {
+        const counts: CoverageCounts = { evidenceBacked: 0, autoFilled: 0, manualRequired: 0, blank: 0 };
+        for (const record of overview.records) {
+          const status = record.fieldCoverage[field] ?? "blank";
+          if (status === "evidence-backed") counts.evidenceBacked += 1;
+          if (status === "auto-filled") counts.autoFilled += 1;
+          if (status === "manual-required") counts.manualRequired += 1;
+          if (status === "blank") counts.blank += 1;
+        }
+        return {
+          field,
+          section: fieldSectionByName.get(field) ?? "Other",
+          counts,
+        };
+      });
+  }, [fieldSectionByName, overview]);
 
   useEffect(() => {
     let cancelled = false;
@@ -200,7 +251,7 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
       const nextRecord = payload.records.find((record) => record.id === selectedRecord.id) ?? payload.records[0];
       if (nextRecord) selectRecord(nextRecord);
       setNotice(
-        `저장완료: Excel dataset saved. Excel rows: ${payload.stats.excelRowCount}; verified: ${payload.stats.verifiedRowCount}; manual fields: ${payload.stats.manualRequiredFieldCount}.`,
+        `??μ셿猷? Excel dataset saved. Excel rows: ${payload.stats.excelRowCount}; verified: ${payload.stats.verifiedRowCount}; manual fields: ${payload.stats.manualRequiredFieldCount}.`,
       );
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Extraction dataset could not be saved.");
@@ -242,6 +293,36 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
     }
   }
 
+  async function downloadXlsx() {
+    if (!overview?.records.length) return;
+    setXlsxDownloading(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch("/api/meta-analysis/extraction-dataset?format=xlsx", { cache: "no-store" });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(apiErrorMessage(payload, "Excel workbook could not be generated."));
+      }
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = "wiregene-meta-extraction-dataset.xlsx";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+      setNotice(
+        `Excel workbook generated. Excel rows: ${overview.stats.excelRowCount}; columns: ${overview.columns.length}; field coverage sheet included.`,
+      );
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Excel workbook could not be generated.");
+    } finally {
+      setXlsxDownloading(false);
+    }
+  }
+
   const selectedCsv = selectedRecord && overview ? csvRows(overview.columns, [editingRow]) : "";
 
   return (
@@ -249,10 +330,10 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
       <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
         <div>
           <p className="text-sm font-semibold text-emerald-900">Included-paper Excel dataset verification</p>
-          <h3 className="mt-1 text-lg font-semibold text-zinc-950">자동 추출값을 검증하고 Excel-ready 데이터로 저장합니다</h3>
+          <h3 className="mt-1 text-lg font-semibold text-zinc-950">AI가 채운 extraction field를 검증하고 실제 Excel workbook으로 생성합니다</h3>
           <p className="mt-2 max-w-4xl text-sm leading-6 text-zinc-700">
-            두 reviewer가 include로 검증한 full-text 기록만 모읍니다. 자동 입력된 값, RoB 근거, publication-bias 입력값,
-            수동 확인이 필요한 빈칸을 한 행 단위로 확인한 뒤 저장합니다.
+            Included로 확정된 full-text 기록에서 AI extraction row를 모으고, 근거가 붙은 field, AI가 자동 입력한 field,
+            수동 확인이 필요한 field, 빈 field를 나누어 보여줍니다. 검증 후에는 CSV 복사 없이 바로 .xlsx 파일로 내려받을 수 있습니다.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -267,12 +348,21 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
           </button>
           <button
             type="button"
-            onClick={() => void copyCsv(overview?.csv ?? "", "Draft Excel CSV")}
-            disabled={!overview?.records.length}
+            onClick={() => void downloadXlsx()}
+            disabled={!overview?.records.length || xlsxDownloading}
             className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-3 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
           >
+            {xlsxDownloading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Download className="h-4 w-4" aria-hidden />}
+            {xlsxDownloading ? "Generating..." : "Download Excel workbook (.xlsx)"}
+          </button>
+          <button
+            type="button"
+            onClick={() => void copyCsv(overview?.csv ?? "", "Draft Excel CSV")}
+            disabled={!overview?.records.length}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-sm font-semibold text-zinc-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
             <FileSpreadsheet className="h-4 w-4" aria-hidden />
-            Copy draft Excel CSV (not saved)
+            Copy CSV
           </button>
           <button
             type="button"
@@ -286,11 +376,15 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
         </div>
       </div>
 
-      <div className="mt-4 grid gap-3 lg:grid-cols-4">
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Metric label="Included records" value={loading ? "..." : String(overview?.stats.includedRecordCount ?? 0)} />
         <Metric label="Excel rows" value={loading ? "..." : String(overview?.stats.excelRowCount ?? 0)} />
         <Metric label="Verified rows" value={loading ? "..." : String(overview?.stats.verifiedRowCount ?? 0)} />
-        <Metric label="Manual fields" value={loading ? "..." : String(overview?.stats.manualRequiredFieldCount ?? 0)} />
+        <Metric label="Evidence-backed fields" value={loading ? "..." : String(overview?.stats.evidenceBackedFieldCount ?? 0)} />
+        <Metric label="AI auto-filled fields" value={loading ? "..." : String(overview?.stats.autoFilledFieldCount ?? 0)} />
+        <Metric label="Manual-required flags" value={loading ? "..." : String(overview?.stats.manualRequiredFieldCount ?? 0)} />
+        <Metric label="Blank editable fields" value={loading ? "..." : String(overview?.stats.blankFieldCount ?? 0)} />
+        <Metric label="Editable field cells" value={loading ? "..." : String(overview?.stats.editableFieldCount ?? 0)} />
       </div>
 
       {overview?.records.length ? (
@@ -298,8 +392,8 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
           <div className="border-b border-emerald-100 p-3">
             <p className="text-sm font-semibold text-zinc-950">Excel dataset preview before CSV copy</p>
             <p className="mt-1 text-xs leading-5 text-zinc-500">
-              현재 draft CSV에는 {overview.stats.excelRowCount.toLocaleString("ko-KR")} row, {overview.columns.length.toLocaleString("ko-KR")} columns가 있습니다.
-              아래는 첫 5개 row의 audit preview입니다.
+              Current workbook draft has {overview.stats.excelRowCount.toLocaleString("ko-KR")} row(s) and {overview.columns.length.toLocaleString("ko-KR")} column(s).
+              The first five rows are shown as an audit preview before download.
             </p>
           </div>
           <div className="overflow-x-auto">
@@ -310,6 +404,7 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
                   <th className="border-b border-zinc-200 px-3 py-2">Decision</th>
                   <th className="border-b border-zinc-200 px-3 py-2">Source sheet</th>
                   <th className="border-b border-zinc-200 px-3 py-2">Evidence</th>
+                  <th className="border-b border-zinc-200 px-3 py-2">AI filled</th>
                   <th className="border-b border-zinc-200 px-3 py-2">Manual fields</th>
                   <th className="border-b border-zinc-200 px-3 py-2">Verified</th>
                 </tr>
@@ -321,8 +416,48 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
                     <td className="border-b border-zinc-100 px-3 py-2 text-zinc-700">{record.finalDecision}</td>
                     <td className="border-b border-zinc-100 px-3 py-2 text-zinc-700">{record.sourceSheet ?? "no sheet"}</td>
                     <td className="border-b border-zinc-100 px-3 py-2 text-zinc-700">{record.evidenceCount}</td>
+                    <td className="border-b border-zinc-100 px-3 py-2 text-sky-800">
+                      {record.coverageCounts.evidenceBacked + record.coverageCounts.autoFilled}
+                    </td>
                     <td className="border-b border-zinc-100 px-3 py-2 text-zinc-700">{record.manualRequiredFields.length}</td>
                     <td className="border-b border-zinc-100 px-3 py-2 text-zinc-700">{record.verified ? "yes" : "no"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
+
+      {coverageRows.length ? (
+        <section className="mt-4 rounded-md border border-emerald-200 bg-white">
+          <div className="border-b border-emerald-100 p-3">
+            <p className="text-sm font-semibold text-zinc-950">Excel field coverage map</p>
+            <p className="mt-1 text-xs leading-5 text-zinc-500">
+              Each Excel column is classified across included rows so the extractor can see what AI filled, what has source evidence, and what still needs manual work.
+            </p>
+          </div>
+          <div className="max-h-[28rem] overflow-auto">
+            <table className="w-full min-w-[860px] border-collapse text-left text-xs">
+              <thead className="sticky top-0 bg-zinc-50 text-zinc-500">
+                <tr>
+                  <th className="border-b border-zinc-200 px-3 py-2">Field</th>
+                  <th className="border-b border-zinc-200 px-3 py-2">Section</th>
+                  <th className="border-b border-zinc-200 px-3 py-2">Evidence-backed</th>
+                  <th className="border-b border-zinc-200 px-3 py-2">AI auto-filled</th>
+                  <th className="border-b border-zinc-200 px-3 py-2">Manual required</th>
+                  <th className="border-b border-zinc-200 px-3 py-2">Blank</th>
+                </tr>
+              </thead>
+              <tbody>
+                {coverageRows.map((row) => (
+                  <tr key={row.field}>
+                    <td className="border-b border-zinc-100 px-3 py-2 font-semibold text-zinc-950">{row.field}</td>
+                    <td className="border-b border-zinc-100 px-3 py-2 text-zinc-600">{row.section}</td>
+                    <td className="border-b border-zinc-100 px-3 py-2 text-emerald-800">{row.counts.evidenceBacked}</td>
+                    <td className="border-b border-zinc-100 px-3 py-2 text-sky-800">{row.counts.autoFilled}</td>
+                    <td className="border-b border-zinc-100 px-3 py-2 text-amber-800">{row.counts.manualRequired}</td>
+                    <td className="border-b border-zinc-100 px-3 py-2 text-zinc-500">{row.counts.blank}</td>
                   </tr>
                 ))}
               </tbody>
@@ -338,7 +473,7 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
         <section className="rounded-md border border-emerald-200 bg-white">
           <div className="border-b border-emerald-100 p-3">
             <p className="text-sm font-semibold text-zinc-950">Included full-text records</p>
-            <p className="mt-1 text-xs leading-5 text-zinc-500">검증된 include 논문만 Excel row 후보로 나타납니다.</p>
+            <p className="mt-1 text-xs leading-5 text-zinc-500">寃利앸맂 include ?쇰Ц留?Excel row ?꾨낫濡??섑??⑸땲??</p>
           </div>
           <div className="max-h-[34rem] overflow-y-auto p-2">
             {overview?.records.length ? (
@@ -353,20 +488,20 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
                 >
                   <span className="truncate text-sm font-semibold text-zinc-950">{record.fileName}</span>
                   <span className="text-xs font-medium leading-5 text-zinc-600">
-                    {record.sourceSheet ?? "no sheet"} · {record.finalDecision} · evidence {record.evidenceCount}
+                    {record.sourceSheet ?? "no sheet"} 쨌 {record.finalDecision} 쨌 evidence {record.evidenceCount}
                   </span>
                   <span
                     className={`w-fit rounded-full px-2 py-1 text-xs font-semibold ${
                       record.verified ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-900"
                     }`}
                   >
-                    {record.verified ? "verified" : `${record.manualRequiredFields.length} manual fields`}
+                    {record.verified ? "verified" : `${record.coverageCounts.evidenceBacked} evidence, ${record.coverageCounts.autoFilled} AI-filled, ${record.manualRequiredFields.length} manual flags`}
                   </span>
                 </button>
               ))
             ) : (
               <p className="rounded-md border border-dashed border-zinc-200 bg-zinc-50 p-3 text-sm font-semibold text-zinc-500">
-                아직 include로 검증된 full-text 기록이 없습니다.
+                ?꾩쭅 include濡?寃利앸맂 full-text 湲곕줉???놁뒿?덈떎.
               </p>
             )}
           </div>
@@ -443,7 +578,7 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
                     onChange={(event) => setVerificationNotes(event.target.value)}
                     rows={3}
                     className="rounded-md border border-zinc-300 px-3 py-2 text-sm font-normal normal-case leading-6 text-zinc-900 outline-none focus:border-emerald-500"
-                    placeholder="원문 page/table, RoB 판단 근거, publication-bias 입력값 보완 사항을 기록하세요."
+                    placeholder="Record full-text page/table, RoB judgement evidence, publication-bias input notes, and manual corrections."
                   />
                 </label>
               </div>
@@ -467,6 +602,7 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
                           field={field}
                           value={editingRow[field] ?? ""}
                           readOnly={readOnlyFields.has(field)}
+                          status={selectedRecord.fieldCoverage[field] ?? (readOnlyFields.has(field) ? "audit" : "blank")}
                           onChange={(value) => updateField(field, value)}
                         />
                       ))}
@@ -476,7 +612,7 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
               </div>
             </>
           ) : (
-            <div className="p-4 text-sm font-semibold text-zinc-500">검증할 include 논문을 선택하세요.</div>
+            <div className="p-4 text-sm font-semibold text-zinc-500">Select an included paper to verify its Excel row.</div>
           )}
         </section>
       </div>
@@ -494,17 +630,25 @@ function FieldEditor({
   field,
   value,
   readOnly,
+  status,
   onChange,
 }: {
   field: string;
   value: string;
   readOnly: boolean;
+  status: FieldCoverageStatus;
   onChange: (value: string) => void;
 }) {
   const multiLine = /notes|quote|evidence|manual|required|covariates|definition|source|conflict|funding/i.test(field);
+  const statusStyle = coverageStatusStyle(status);
   return (
     <label className="grid gap-1 text-xs font-semibold uppercase text-zinc-500">
-      {field}
+      <span className="flex flex-wrap items-center gap-2">
+        <span>{field}</span>
+        <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold normal-case ${statusStyle}`}>
+          {coverageStatusLabel(status)}
+        </span>
+      </span>
       {multiLine ? (
         <textarea
           value={value}
@@ -527,6 +671,22 @@ function FieldEditor({
       )}
     </label>
   );
+}
+
+function coverageStatusLabel(status: FieldCoverageStatus) {
+  if (status === "evidence-backed") return "AI filled + evidence";
+  if (status === "auto-filled") return "AI filled";
+  if (status === "manual-required") return "manual check";
+  if (status === "audit") return "audit";
+  return "blank";
+}
+
+function coverageStatusStyle(status: FieldCoverageStatus) {
+  if (status === "evidence-backed") return "bg-emerald-100 text-emerald-800";
+  if (status === "auto-filled") return "bg-sky-100 text-sky-800";
+  if (status === "manual-required") return "bg-amber-100 text-amber-900";
+  if (status === "audit") return "bg-zinc-200 text-zinc-700";
+  return "bg-zinc-100 text-zinc-500";
 }
 
 function ValidationList({ title, items }: { title: string; items: string[] }) {
