@@ -3002,6 +3002,27 @@ function ProjectStoragePanel({ project }: { project: MetaStudyProject }) {
   );
 }
 
+function downloadFileToBrowser(fileName: string, text: string) {
+  const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function isServerlessStorageError(message: string) {
+  return (
+    message.includes("serverless") ||
+    message.includes("read-only") ||
+    message.includes("Synology") ||
+    message.includes("writable")
+  );
+}
+
 function ProjectFileSaveButton({
   projectId,
   fileName,
@@ -3013,22 +3034,42 @@ function ProjectFileSaveButton({
   contents: string | (() => string);
   label: string;
 }) {
-  const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [status, setStatus] = useState<"idle" | "saving" | "saved" | "downloaded" | "error">("idle");
   const [error, setError] = useState("");
 
   async function saveFile() {
     setStatus("saving");
     setError("");
+    const text = typeof contents === "function" ? contents() : contents;
     try {
-      await saveProjectTextFile(projectId, fileName, typeof contents === "function" ? contents() : contents);
+      await saveProjectTextFile(projectId, fileName, text);
       setStatus("saved");
       window.dispatchEvent(new CustomEvent(projectFileSavedEventName, { detail: { projectId } }));
       window.setTimeout(() => setStatus("idle"), 2500);
     } catch (caught) {
-      setStatus("error");
-      setError(caught instanceof Error ? caught.message : "Project file could not be saved.");
+      const message = caught instanceof Error ? caught.message : "Project file could not be saved.";
+      if (isServerlessStorageError(message)) {
+        // Vercel 등 서버리스 환경에서는 브라우저 다운로드로 자동 대체
+        downloadFileToBrowser(fileName, text);
+        setStatus("downloaded");
+        window.setTimeout(() => setStatus("idle"), 3000);
+      } else {
+        setStatus("error");
+        setError(message);
+      }
     }
   }
+
+  const icon =
+    status === "saved" || status === "downloaded"
+      ? <CheckCircle2 className="h-4 w-4" aria-hidden />
+      : <Save className="h-4 w-4" aria-hidden />;
+
+  const labelText =
+    status === "saving" ? "Saving..." :
+    status === "saved" ? "Saved" :
+    status === "downloaded" ? "Downloaded ↓" :
+    label;
 
   return (
     <div className="grid gap-1">
@@ -3038,13 +3079,19 @@ function ProjectFileSaveButton({
         disabled={status === "saving"}
         className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-sky-300 bg-white px-3 text-sm font-semibold text-sky-800 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {status === "saved" ? <CheckCircle2 className="h-4 w-4" aria-hidden /> : <FolderOpen className="h-4 w-4" aria-hidden />}
-        {status === "saving" ? "Saving..." : status === "saved" ? "Saved" : label}
+        {icon}
+        {labelText}
       </button>
+      {status === "downloaded" ? (
+        <p className="max-w-60 text-xs font-semibold text-amber-700">
+          서버 저장 불가 (Vercel 환경) — 파일이 브라우저로 다운로드됐습니다.
+        </p>
+      ) : null}
       {error ? <p className="max-w-60 text-xs font-semibold text-rose-700">{error}</p> : null}
     </div>
   );
 }
+
 
 type WorkbookBoardState = Record<
   string,
