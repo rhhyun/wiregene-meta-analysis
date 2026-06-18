@@ -2543,3 +2543,28 @@ Regular Synology deploy/run command after GitHub push:
 ```sh
 git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
 ```
+
+## 2026-06-18 Antigravity previous-PC handoff warning
+
+User note:
+
+- Some Meta work was also performed on the previous PC in Antigravity.
+- The exact Antigravity diff is not visible from this PC unless it was committed/pushed or copied into this workspace.
+
+Required rule before the next coding session:
+
+- Do not assume this PC has all latest work.
+- First check the actual app repository and GitHub for Antigravity-origin changes.
+- Run:
+
+```powershell
+git -C C:\Users\rhhyu\Documents\GitHub\wiregene-meta-analysis fetch --all --prune
+git -C C:\Users\rhhyu\Documents\GitHub\wiregene-meta-analysis status --short
+git -C C:\Users\rhhyu\Documents\GitHub\wiregene-meta-analysis branch -a
+git -C C:\Users\rhhyu\Documents\GitHub\wiregene-meta-analysis log --all --decorate --oneline -20
+```
+
+- If Antigravity work exists only on the previous PC and was not pushed, ask the user to push/copy that work before changing overlapping files.
+- If Antigravity commits are already on GitHub, pull/merge them first and preserve them.
+- Never overwrite or revert Antigravity changes unless the user explicitly asks.
+- After reconciling, update both backup files again with the exact Antigravity commits/files that were incorporated.
