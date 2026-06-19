@@ -1,7 +1,6 @@
 import crypto from "crypto";
 import { promises as fs } from "fs";
 import path from "path";
-import { getGoogleDriveAuthMode } from "./google-drive-config";
 import {
   deleteGoogleDriveFile,
   getGoogleDriveFileMetadata,
@@ -13,6 +12,7 @@ import {
   metaProjectScopedDriveFileName,
   metaProjectScopedLocalPath,
 } from "./meta-project-scope";
+import { isServerlessRuntime, resolveMetaSourceFileStorageBackend } from "./meta-storage-policy";
 
 export type MetaFullTextSourceFileStorage = "local-file" | "google-drive";
 
@@ -210,11 +210,7 @@ export async function deleteMetaFullTextSourceFile(
 }
 
 function sourceStorageBackend(): MetaFullTextSourceFileStorage {
-  const configured = process.env.META_FULL_TEXT_SOURCE_STORAGE_BACKEND?.trim().toLowerCase();
-  if (configured === "local-file" || configured === "local-files" || configured === "local-json") return "local-file";
-  if (configured === "google-drive") return metaGoogleDriveStorageAllowed() ? "google-drive" : "local-file";
-  if (isServerlessRuntime() && getGoogleDriveAuthMode()) return "google-drive";
-  return "local-file";
+  return resolveMetaSourceFileStorageBackend(process.env.META_FULL_TEXT_SOURCE_STORAGE_BACKEND);
 }
 
 function sourceFileRoot(projectId?: string | null) {
@@ -267,12 +263,3 @@ function parseDriveFileSize(value: string | undefined) {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
-function isServerlessRuntime() {
-  return Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
-}
-
-function metaGoogleDriveStorageAllowed() {
-  if (isServerlessRuntime()) return true;
-  const configured = (process.env.META_ALLOW_GOOGLE_DRIVE_STORAGE ?? "").trim().toLowerCase();
-  return ["1", "true", "yes", "on"].includes(configured);
-}

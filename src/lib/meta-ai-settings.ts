@@ -7,6 +7,7 @@ import {
   readTextFileFromGoogleDrive,
   writeTextFileToGoogleDrive,
 } from "./google-drive-storage";
+import { isServerlessRuntime, resolveMetaJsonStorageBackend } from "./meta-storage-policy";
 
 export type MetaAiProviderType = "OPENAI" | "OPENAI_COMPATIBLE";
 
@@ -206,11 +207,9 @@ function metaAiSettingsStoragePath() {
 }
 
 function metaAiSettingsStorageBackend(): MetaAiSettingsSummary["storageBackend"] {
-  const configured = process.env.META_AI_SETTINGS_STORAGE_BACKEND?.trim().toLowerCase();
-  if (configured === "local-json") return configured;
-  if (configured === "google-drive") return metaGoogleDriveStorageAllowed() ? "google-drive" : "local-json";
-  if (isServerlessRuntime() && getGoogleDriveAuthMode()) return "google-drive";
-  return "local-json";
+  return resolveMetaJsonStorageBackend({
+    configured: process.env.META_AI_SETTINGS_STORAGE_BACKEND,
+  });
 }
 
 function isGoogleDriveMetaAiStorage() {
@@ -623,16 +622,6 @@ function isServerlessReadOnlyPath(targetPath: string) {
     process.env.VERCEL ||
       process.env.AWS_LAMBDA_FUNCTION_NAME,
   );
-}
-
-function isServerlessRuntime() {
-  return Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
-}
-
-function metaGoogleDriveStorageAllowed() {
-  if (isServerlessRuntime()) return true;
-  const configured = (process.env.META_ALLOW_GOOGLE_DRIVE_STORAGE ?? "").trim().toLowerCase();
-  return ["1", "true", "yes", "on"].includes(configured);
 }
 
 function ensureGoogleDriveMetaAiStorageConfigured(

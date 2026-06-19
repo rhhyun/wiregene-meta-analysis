@@ -1,3 +1,44 @@
+# 2026-06-20 centralized Meta storage policy, no patchwork
+
+User issue:
+
+- Patchwork fixes are unacceptable; the Meta platform must be structurally reliable enough for competitive productization.
+- Google OAuth/storage failures must not reappear as repeated raw errors across Meta screens.
+- Storage behavior must be diagnosable after deployment.
+
+Implemented:
+
+- Added a centralized Meta storage policy module:
+  - `src/lib/meta-storage-policy.ts`
+  - single source of truth for serverless/local runtime detection.
+  - single source of truth for `META_ALLOW_GOOGLE_DRIVE_STORAGE`.
+  - single backend resolver for Meta JSON stores.
+  - single backend resolver for full-text source files.
+  - single Google Drive/OAuth storage error classifier.
+  - single UI fallback notice generator.
+  - redacted runtime policy summary.
+- Refactored storage users to consume the central policy:
+  - `meta-project-storage.ts`
+  - `meta-ai-settings.ts`
+  - `meta-full-text-history.ts`
+  - `meta-full-text-source-files.ts`
+  - `MetaStudyWorkspace.tsx`
+- Added runtime diagnostic API:
+  - `GET /api/meta-analysis/storage-policy`
+  - returns app version, runtime mode, Google Drive storage permission, auth configuration presence, and resolved Meta storage backends.
+- Removed duplicated local `metaGoogleDriveStorageAllowed`, `isServerlessRuntime`, and Google OAuth regex logic from individual storage modules.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.63`
+  - UI label: `Ver 1.98 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed
+npm.cmd run lint: passed
+npm.cmd run build: passed
+```
+
 # 2026-06-20 Google OAuth failure UI/API fallback for Meta workspace
 
 User issue:

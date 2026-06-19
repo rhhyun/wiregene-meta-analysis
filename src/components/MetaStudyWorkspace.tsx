@@ -47,6 +47,7 @@ import {
   type MetaStudyStage,
   type MetaWorkbookSheet,
 } from "@/lib/meta-projects";
+import { isGoogleOauthStorageProblem, storageFallbackNotice } from "@/lib/meta-storage-policy";
 
 const stageIcons: Record<MetaStudyStage, LucideIcon> = {
   overview: Target,
@@ -218,15 +219,6 @@ type UserMetaProjectsResponse = {
 };
 
 const projectFileSavedEventName = "wiregene-meta-project-file-saved";
-
-function isGoogleOauthStorageProblem(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-  return /Google OAuth|invalid_grant|invalid_client|GOOGLE_DRIVE|google-drive|Google Drive/i.test(message);
-}
-
-function storageFallbackNotice(action: string) {
-  return `${action}: Google Drive storage is unavailable, so this screen is staying in browser/local fallback mode. Run the Synology restart command to force Meta storage back to local Docker.`;
-}
 
 function browserFallbackProjectStorage(projectId: string, warning: string): ProjectStorageSummary {
   const folderName = projectId

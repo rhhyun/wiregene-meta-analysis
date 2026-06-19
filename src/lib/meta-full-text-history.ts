@@ -18,6 +18,7 @@ import {
   metaProjectScopedLocalPath,
   type MetaProjectScope,
 } from "./meta-project-scope";
+import { isServerlessRuntime, resolveMetaJsonStorageBackend } from "./meta-storage-policy";
 
 export type MetaFullTextVerification = {
   verificationMode: "dual_reviewer" | "ai_only";
@@ -953,16 +954,10 @@ async function backupCorruptHistory(raw: string, parseError: SyntaxError, scope:
 }
 
 function storageBackend(): "local-json" | "google-drive" {
-  const configured = process.env.META_FULL_TEXT_HISTORY_STORAGE_BACKEND?.trim().toLowerCase();
-  if (configured === "local-json") return configured;
-  if (configured === "google-drive") return metaGoogleDriveStorageAllowed() ? "google-drive" : "local-json";
-
-  const projectBackend = process.env.META_PROJECT_STORAGE_BACKEND?.trim().toLowerCase();
-  if (projectBackend === "local-json") return projectBackend;
-  if (projectBackend === "google-drive") return metaGoogleDriveStorageAllowed() ? "google-drive" : "local-json";
-
-  if (isServerlessRuntime() && getGoogleDriveAuthMode()) return "google-drive";
-  return "local-json";
+  return resolveMetaJsonStorageBackend({
+    configured: process.env.META_FULL_TEXT_HISTORY_STORAGE_BACKEND,
+    inherited: process.env.META_PROJECT_STORAGE_BACKEND,
+  });
 }
 
 function localStoragePath(scope: MetaFullTextHistoryScope = {}) {
@@ -1055,15 +1050,6 @@ function baseName(value: string) {
   return value.split(/[\\/]+/).filter(Boolean).at(-1) || value;
 }
 
-function isServerlessRuntime() {
-  return Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
-}
-
-function metaGoogleDriveStorageAllowed() {
-  if (isServerlessRuntime()) return true;
-  const configured = (process.env.META_ALLOW_GOOGLE_DRIVE_STORAGE ?? "").trim().toLowerCase();
-  return ["1", "true", "yes", "on"].includes(configured);
-}
 
 function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";

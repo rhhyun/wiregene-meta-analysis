@@ -8,6 +8,13 @@ import {
   readTextFileFromGoogleDrive,
   writeTextFileToGoogleDrive,
 } from "./google-drive-storage";
+import {
+  googleDriveFallbackWarning,
+  isRecoverableGoogleDriveStorageError,
+  isServerlessRuntime,
+  resolveMetaJsonStorageBackend,
+  type MetaJsonStorageBackend,
+} from "./meta-storage-policy";
 
 const defaultProjectStorageRoot = ".data/meta/projects";
 const defaultProjectDrivePrefix = "meta-projects";
@@ -17,7 +24,7 @@ const projectWorkspaceStateFileName = "project-workspace-state.json";
 const maxProjectTextFileBytes = 25 * 1024 * 1024;
 const allowedTextFileExtensions = new Set([".csv", ".json", ".md", ".txt", ".tsv"]);
 
-type MetaProjectStorageBackend = "local-json" | "google-drive";
+type MetaProjectStorageBackend = MetaJsonStorageBackend;
 
 export type MetaProjectFileSummary = {
   fileName: string;
@@ -303,12 +310,9 @@ function projectStorageRootForBackend(storageBackend: MetaProjectStorageBackend)
 }
 
 function projectFileStorageBackend(): MetaProjectStorageBackend {
-  const configured = process.env.META_PROJECT_STORAGE_BACKEND?.trim().toLowerCase();
-  if (configured === "local-json") return configured;
-  if (configured === "google-drive") return metaGoogleDriveStorageAllowed() ? "google-drive" : "local-json";
-
-  if (isServerlessRuntime() && getGoogleDriveAuthMode()) return "google-drive";
-  return "local-json";
+  return resolveMetaJsonStorageBackend({
+    configured: process.env.META_PROJECT_STORAGE_BACKEND,
+  });
 }
 
 function projectDrivePrefix() {
@@ -331,16 +335,10 @@ function userProjectsFilePath() {
 }
 
 function userProjectsStorageBackend(): MetaUserProjectsStorageBackend {
-  const configured = process.env.META_USER_PROJECTS_STORAGE_BACKEND?.trim().toLowerCase();
-  if (configured === "local-json") return configured;
-  if (configured === "google-drive") return metaGoogleDriveStorageAllowed() ? "google-drive" : "local-json";
-
-  const projectBackend = process.env.META_PROJECT_STORAGE_BACKEND?.trim().toLowerCase();
-  if (projectBackend === "local-json") return projectBackend;
-  if (projectBackend === "google-drive") return metaGoogleDriveStorageAllowed() ? "google-drive" : "local-json";
-
-  if (isServerlessRuntime() && getGoogleDriveAuthMode()) return "google-drive";
-  return "local-json";
+  return resolveMetaJsonStorageBackend({
+    configured: process.env.META_USER_PROJECTS_STORAGE_BACKEND,
+    inherited: process.env.META_PROJECT_STORAGE_BACKEND,
+  });
 }
 
 function userProjectsDriveFileName() {
@@ -632,26 +630,6 @@ function synologyProjectPathHint(folderName: string) {
   const configured = process.env.META_PROJECT_STORAGE_ROOT?.trim();
   if (configured && configured !== defaultProjectStorageRoot) return null;
   return `/volume1/docker/meta/data/projects/${folderName}`;
-}
-
-function isServerlessRuntime() {
-  return Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
-}
-
-function metaGoogleDriveStorageAllowed() {
-  if (isServerlessRuntime()) return true;
-  const configured = (process.env.META_ALLOW_GOOGLE_DRIVE_STORAGE ?? "").trim().toLowerCase();
-  return ["1", "true", "yes", "on"].includes(configured);
-}
-
-function isRecoverableGoogleDriveStorageError(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-  return /Google OAuth|invalid_grant|invalid_client|google-drive|Google Drive/i.test(message);
-}
-
-function googleDriveFallbackWarning(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-  return `Google Drive storage is unavailable, so Meta is using local storage fallback for this request. ${message}`;
 }
 
 export async function parseRequestJson(request: Request): Promise<unknown> {
