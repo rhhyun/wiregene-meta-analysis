@@ -45,7 +45,8 @@ export function isRecoverableGoogleDriveStorageError(error: unknown) {
 }
 
 export function googleDriveFallbackWarning(error: unknown) {
-  return `Google Drive storage is unavailable, so Meta is using local storage fallback for this request. ${sanitizeStorageErrorMessage(error)}`;
+  const code = googleDriveStorageErrorCode(error);
+  return `Meta is using local storage fallback for this request. No action is needed for the current research workflow.${code ? ` Diagnostic code: ${code}.` : ""}`;
 }
 
 export function isGoogleOauthStorageProblem(error: unknown) {
@@ -53,7 +54,7 @@ export function isGoogleOauthStorageProblem(error: unknown) {
 }
 
 export function storageFallbackNotice(action: string) {
-  return `${action}: Google Drive storage is unavailable, so this screen is staying in browser/local fallback mode. Run the Synology restart command to force Meta storage back to local Docker.`;
+  return `${action}: Meta is continuing in local/browser fallback mode. No action is needed for the current research workflow.`;
 }
 
 export function metaStoragePolicySummary() {
@@ -78,6 +79,8 @@ export function metaStoragePolicySummary() {
     runtime: isServerlessRuntime() ? "serverless" : "local-node",
     googleDriveAuthConfigured: Boolean(getGoogleDriveAuthMode()),
     googleDriveStorageAllowed: metaGoogleDriveStorageAllowed(),
+    operatorNote:
+      "Meta research workflows should use local storage on Synology/local Docker. Enable Google Drive storage only intentionally with META_ALLOW_GOOGLE_DRIVE_STORAGE=true.",
     backends: {
       project: projectBackend,
       userProjects: userProjectsBackend,
@@ -108,8 +111,13 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
-function sanitizeStorageErrorMessage(error: unknown) {
-  return errorMessage(error).replace(/\s+/g, " ").trim().slice(0, 600);
+function googleDriveStorageErrorCode(error: unknown) {
+  const message = errorMessage(error);
+  if (/invalid_grant/i.test(message)) return "GOOGLE_OAUTH_INVALID_GRANT";
+  if (/invalid_client/i.test(message)) return "GOOGLE_OAUTH_INVALID_CLIENT";
+  if (/Google OAuth/i.test(message)) return "GOOGLE_OAUTH_UNAVAILABLE";
+  if (/Google Drive|google-drive/i.test(message)) return "GOOGLE_DRIVE_UNAVAILABLE";
+  return "";
 }
 
 function safeEnvValue(value: string | undefined) {

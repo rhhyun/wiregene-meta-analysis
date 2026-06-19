@@ -424,7 +424,7 @@ function errorDiagnostics(error: unknown, context: AnalyzeRequestContext) {
 function helpForAnalyzeError(message: string, context: AnalyzeRequestContext) {
   const normalized = message.toLowerCase();
   if (normalized.includes("invalid_grant") || normalized.includes("oauth")) {
-    return "Google Drive OAuth failed. Regenerate GOOGLE_DRIVE_REFRESH_TOKEN with the same client id/secret used in deployment, then redeploy.";
+    return "Google Drive storage is unavailable. Continue with the Synology/local Docker upload path or ask an administrator to review /api/meta-analysis/storage-policy.";
   }
   if (normalized.includes("413") || normalized.includes("payload") || normalized.includes("body") || normalized.includes("too large")) {
     return "Large files on Vercel cannot be sent through the function request body. Use the Meta server chunk upload path or run the Synology/local Docker deployment.";

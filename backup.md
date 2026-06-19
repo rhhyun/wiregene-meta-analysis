@@ -1,3 +1,40 @@
+# 2026-06-20 remove raw Google OAuth credential instructions from user-facing Meta errors
+
+User issue:
+
+- The fallback warning still included a long raw Google OAuth `invalid_grant` message and credential-regeneration instructions.
+- That message is not actionable for a researcher and looks like a broken product.
+- User-facing Meta screens must never expose raw OAuth credential diagnostics as workflow guidance.
+
+Implemented:
+
+- Changed `googleDriveFallbackWarning` in `src/lib/meta-storage-policy.ts`:
+  - no raw OAuth error text is appended.
+  - user-facing message now states that Meta is using local fallback and no action is needed for the current research workflow.
+  - a short diagnostic code is allowed, e.g. `GOOGLE_OAUTH_INVALID_GRANT`.
+- Changed `storageFallbackNotice`:
+  - no longer tells the researcher to run deployment commands.
+  - now states that the screen is continuing in local/browser fallback mode.
+- Changed low-level `src/lib/google-drive-oauth.ts`:
+  - no longer throws long refresh-token/credential-regeneration instructions.
+  - throws concise diagnostic-code messages only.
+- Updated full-text analyze OAuth help text:
+  - points to Synology/local upload path or `/api/meta-analysis/storage-policy`.
+- Updated operational-error matching to use diagnostic codes.
+- Verified the previous raw message strings are no longer present in `src`.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.64`
+  - UI label: `Ver 1.99 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed
+npm.cmd run lint: passed
+npm.cmd run build: passed
+rg raw OAuth message strings in src: 0 matches
+```
+
 # 2026-06-20 centralized Meta storage policy, no patchwork
 
 User issue:

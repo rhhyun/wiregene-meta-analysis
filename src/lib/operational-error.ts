@@ -7,7 +7,7 @@ export type OperationalError = {
 export function toOperationalError(error: unknown): OperationalError {
   const message = error instanceof Error ? error.message : String(error);
 
-  if (message.includes("Google OAuth refresh failed: invalid_client")) {
+  if (message.includes("GOOGLE_OAUTH_INVALID_CLIENT")) {
     return {
       title: "Google Drive OAuth client 설정 오류",
       message:
@@ -17,7 +17,7 @@ export function toOperationalError(error: unknown): OperationalError {
     };
   }
 
-  if (message.includes("Google OAuth refresh failed: invalid_grant")) {
+  if (message.includes("GOOGLE_OAUTH_INVALID_GRANT")) {
     return {
       title: "Google Drive refresh token 오류",
       message:
