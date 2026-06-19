@@ -32,6 +32,7 @@ type ReviewerDecision = "pending" | "include_quantitative" | "include_narrative_
 type PiFinalDecision = "pending" | "include_quantitative" | "include_narrative_support" | "exclude";
 type HistoryFilter =
   | "all"
+  | "legacy_source"
   | "verification_pending"
   | "verification_complete"
   | MetaFullTextAnalysis["eligibility"]["decision"];
@@ -611,6 +612,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
       uncertain: historyItems.filter((item) => item.decision === "uncertain").length,
       exclude: historyItems.filter((item) => item.decision === "exclude").length,
       include_narrative_support: historyItems.filter((item) => item.decision === "include_narrative_support").length,
+      legacy_source: historyItems.filter((item) => !item.sourceFileSaved).length,
       verification_pending: historyItems.filter((item) => !item.verificationComplete).length,
       verification_complete: historyItems.filter((item) => item.verificationComplete).length,
     }),
@@ -655,6 +657,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
     () =>
       historyItems.filter((item) => {
         if (historyFilter === "all") return true;
+        if (historyFilter === "legacy_source") return !item.sourceFileSaved;
         if (historyFilter === "verification_pending") return !item.verificationComplete;
         if (historyFilter === "verification_complete") return item.verificationComplete;
         return item.decision === historyFilter;
@@ -1642,6 +1645,9 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
             </button>
           </div>
         </div>
+        <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-950">
+          Existing GPT-5-nano legacy rerun: select a `legacy/no source` saved record, choose the matching full-text file once, save the source to that record, then run the selected AI reviewers on the saved full text.
+        </div>
         <p className="mt-2 text-xs font-semibold leading-5 text-zinc-600">
           {currentHistoryItem?.sourceFileSaved
             ? `Selected saved source: ${currentHistoryItem.fileName}`
@@ -1725,6 +1731,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
         <div className="mt-2 flex flex-wrap gap-2">
           {([
             ["all", `All saved ${historyDecisionCounts.all}`],
+            ["legacy_source", `Legacy/no source ${historyDecisionCounts.legacy_source}`],
             ["verification_pending", `Verification pending ${historyDecisionCounts.verification_pending}`],
             ["verification_complete", `Verified ${historyDecisionCounts.verification_complete}`],
           ] as const).map(([filter, label]) => (
@@ -1822,6 +1829,17 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                         ? `source saved: ${currentHistoryItem.sourceStorage}`
                         : "legacy record: source file not saved"}
                     </span>
+                    {!currentHistoryItem.sourceFileSaved ? (
+                      <button
+                        type="button"
+                        onClick={() => void saveSourceToSelectedHistory()}
+                        disabled={!canSaveSourceToLegacyRecord}
+                        className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-900 transition hover:bg-amber-50 disabled:cursor-not-allowed disabled:border-zinc-200 disabled:text-zinc-400"
+                      >
+                        {isSavingSourceToHistory ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Save className="h-3.5 w-3.5" aria-hidden />}
+                        Save source to this record
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       onClick={() => void reanalyzeSavedSource()}
@@ -1904,6 +1922,11 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
             <p className="mt-2 text-xs font-semibold leading-5 text-zinc-600">
               AI reviewer run: {selectedAiReviewerLabel}
             </p>
+            {!currentHistoryItem && files.length > 0 ? (
+              <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs font-semibold leading-5 text-amber-950">
+                No saved record is selected. `Analyze full text` creates a new saved analysis; to update an old GPT-5-nano legacy record, select that `legacy/no source` record above first.
+              </p>
+            ) : null}
             {currentHistoryItem && !currentHistoryItem.sourceFileSaved ? (
               <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs font-semibold leading-5 text-amber-950">
                 This saved result was created before source-file persistence. Select exactly one matching full-text file, save it to this record, then run the selected AI reviewers on the saved source.

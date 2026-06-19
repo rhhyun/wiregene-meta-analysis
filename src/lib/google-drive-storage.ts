@@ -338,6 +338,7 @@ async function uploadBinary(name: string, contents: Buffer, mimeType: string, fi
         `--${boundary}`,
         `Content-Type: ${mimeType || "application/octet-stream"}`,
         "",
+        "",
       ].join("\r\n"),
       "utf8",
     ),

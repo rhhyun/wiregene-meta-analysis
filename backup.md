@@ -1,3 +1,30 @@
+# 2026-06-19 legacy rerun UI visibility and Google Drive binary upload fix
+
+User issue:
+
+- The Screening page still did not visibly show the process for rerunning the 72 old `gpt-5-nano` legacy analyses with new AI models.
+- Selecting and uploading one existing PDF without first selecting a saved legacy record still went down the normal `Analyze full text` path.
+- That normal path failed at `save_source_file` with `Google Drive binary upload failed: 400 Malformed multipart body`, even for a small 64 KB PDF.
+
+Implemented:
+
+- Fixed Google Drive binary multipart upload formatting by inserting the required blank line between the binary part headers and the PDF bytes.
+- Added a visible `Legacy/no source` saved-record filter so old GPT-5-nano records can be found directly.
+- Added a visible legacy rerun workflow notice in the AI model reviewer panel.
+- Added `Save source to this record` inside the selected saved-record detail card, in addition to the upload-box source-save button.
+- Added a warning when a file is selected but no saved record is selected: `Analyze full text` creates a new analysis; old GPT-5-nano records must be selected first and upgraded with the matching source.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.50`
+  - UI label: `Ver 1.85 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed.
+npm.cmd run lint: passed.
+npm.cmd run build: passed.
+```
+
 # 2026-06-19 legacy full-text source attach button
 
 User issue:
