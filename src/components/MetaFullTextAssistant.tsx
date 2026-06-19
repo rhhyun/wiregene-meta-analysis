@@ -20,6 +20,7 @@ import type { MetaFullTextAnalysis } from "@/lib/meta-full-text-analysis";
 type MetaFullTextAssistantProps = {
   extractionColumns: string[];
   focus: "screening" | "extraction";
+  projectId: string;
   worksheetOptions?: {
     sheetName: string;
     label: string;
@@ -146,7 +147,6 @@ type BatchAnalysisResult = {
   message: string;
 };
 
-const fullTextHistoryListUrl = "/api/meta-analysis/full-text/history?limit=500";
 const largeFileUploadThresholdBytes = 4 * 1024 * 1024;
 const googleDriveResumableChunkUnitBytes = 256 * 1024;
 const largeFileUploadChunkBytes = googleDriveResumableChunkUnitBytes * 9;
@@ -179,6 +179,20 @@ type ChunkUploadPayload = {
   receivedRange?: string | null;
   requestId?: string;
 };
+
+function fullTextHistoryListUrl(projectId: string) {
+  const searchParams = new URLSearchParams({ limit: "500" });
+  if (projectId.trim()) searchParams.set("projectId", projectId.trim());
+  return `/api/meta-analysis/full-text/history?${searchParams.toString()}`;
+}
+
+function fullTextHistoryRecordUrl(id: string, projectId: string, action?: "reanalyze") {
+  const searchParams = new URLSearchParams();
+  if (projectId.trim()) searchParams.set("projectId", projectId.trim());
+  const suffix = action ? `/${action}` : "";
+  const query = searchParams.toString();
+  return `/api/meta-analysis/full-text/history/${encodeURIComponent(id)}${suffix}${query ? `?${query}` : ""}`;
+}
 
 async function readAnalysisPayload(response: Response) {
   const { payload } = await readResponsePayload(response);
@@ -505,7 +519,7 @@ function looksLikeOpenAiModel(modelName: string) {
   return /^(gpt-|o\d|o-|chatgpt-|ft:)/i.test(modelName.trim());
 }
 
-export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptions = [] }: MetaFullTextAssistantProps) {
+export function MetaFullTextAssistant({ extractionColumns, focus, projectId, worksheetOptions = [] }: MetaFullTextAssistantProps) {
   const analyzingRef = useRef(false);
   const [files, setFiles] = useState<File[]>([]);
   const [batchResults, setBatchResults] = useState<BatchAnalysisResult[]>([]);
@@ -790,7 +804,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
     setHistoryError("");
     try {
       const payload = await readHistoryListPayload(
-        await fetch(fullTextHistoryListUrl, { cache: "no-store" }),
+        await fetch(fullTextHistoryListUrl(projectId), { cache: "no-store" }),
       );
       applyHistoryOverview(payload);
     } catch (caught) {
@@ -798,7 +812,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
     } finally {
       setHistoryLoading(false);
     }
-  }, [applyHistoryOverview]);
+  }, [applyHistoryOverview, projectId]);
 
   const loadAiReviewerSettings = useCallback(async () => {
     setAiSettingsLoading(true);
@@ -829,7 +843,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
     async function loadInitialHistory() {
       try {
         const payload = await readHistoryListPayload(
-          await fetch(fullTextHistoryListUrl, { cache: "no-store" }),
+          await fetch(fullTextHistoryListUrl(projectId), { cache: "no-store" }),
         );
         if (!cancelled) applyHistoryOverview(payload);
       } catch (caught) {
@@ -845,7 +859,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
     return () => {
       cancelled = true;
     };
-  }, [applyHistoryOverview]);
+  }, [applyHistoryOverview, projectId]);
 
   useEffect(() => {
     void loadAiReviewerSettings();
@@ -856,7 +870,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
     setNotice("");
     try {
       const payload = await readHistoryRecordPayload(
-        await fetch(`/api/meta-analysis/full-text/history/${encodeURIComponent(id)}`, { cache: "no-store" }),
+        await fetch(fullTextHistoryRecordUrl(id, projectId), { cache: "no-store" }),
       );
       const record = payload.record;
       setAnalysis(record.analysis);
@@ -876,10 +890,11 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
     setNotice("");
     try {
       const payload = await readReviewerSettingsPayload(
-        await fetch("/api/meta-analysis/full-text/history", {
+        await fetch(fullTextHistoryListUrl(projectId), {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            projectId,
             reviewerOneName,
             reviewerTwoName,
           }),
@@ -915,10 +930,11 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
     setNotice("");
     try {
       const payload = await readHistoryRecordPayload(
-        await fetch(`/api/meta-analysis/full-text/history/${encodeURIComponent(currentHistoryId)}`, {
+        await fetch(fullTextHistoryRecordUrl(currentHistoryId, projectId), {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            projectId,
             verificationMode,
             reviewerOneDecision,
             reviewerTwoDecision,
@@ -936,7 +952,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
       );
       applyVerification(payload.record.verification);
       const overview = await readHistoryListPayload(
-        await fetch(fullTextHistoryListUrl, { cache: "no-store" }),
+        await fetch(fullTextHistoryListUrl(projectId), { cache: "no-store" }),
       );
       applyHistoryOverview(overview);
       setNotice(
@@ -978,10 +994,11 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
     setNotice("");
     try {
       const payload = await readHistoryRecordPayload(
-        await fetch(`/api/meta-analysis/full-text/history/${encodeURIComponent(currentHistoryId)}`, {
+        await fetch(fullTextHistoryRecordUrl(currentHistoryId, projectId), {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            projectId,
             verificationMode: "ai_only",
             reviewerOneName,
             reviewerTwoName,
@@ -999,7 +1016,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
       );
       applyVerification(payload.record.verification);
       const overview = await readHistoryListPayload(
-        await fetch(fullTextHistoryListUrl, { cache: "no-store" }),
+        await fetch(fullTextHistoryListUrl(projectId), { cache: "no-store" }),
       );
       applyHistoryOverview(overview);
       setNotice(
@@ -1023,10 +1040,11 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
     setNotice("");
     try {
       const payload = await readHistoryRecordPayload(
-        await fetch(`/api/meta-analysis/full-text/history/${encodeURIComponent(currentHistoryId)}`, {
+        await fetch(fullTextHistoryRecordUrl(currentHistoryId, projectId), {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            projectId,
             verificationMode: "dual_reviewer",
             reviewerOneName,
             reviewerTwoName,
@@ -1044,7 +1062,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
       );
       applyVerification(payload.record.verification);
       const overview = await readHistoryListPayload(
-        await fetch(fullTextHistoryListUrl, { cache: "no-store" }),
+        await fetch(fullTextHistoryListUrl(projectId), { cache: "no-store" }),
       );
       applyHistoryOverview(overview);
       setNotice("Reviewer 1/2 workflow restored for this record.");
@@ -1069,10 +1087,10 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
     setNotice("");
     try {
       const payload = await readHistoryRecordPayload(
-        await fetch(`/api/meta-analysis/full-text/history/${encodeURIComponent(currentHistoryId)}/reanalyze`, {
+        await fetch(fullTextHistoryRecordUrl(currentHistoryId, projectId, "reanalyze"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ reviewerIds: selectedRunnableAiReviewerIds }),
+          body: JSON.stringify({ projectId, reviewerIds: selectedRunnableAiReviewerIds }),
         }),
       );
       const record = payload.record;
@@ -1082,7 +1100,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
       if (record.sourceSheet) setWorksheetName(record.sourceSheet);
       applyVerification(record.verification);
       const overview = await readHistoryListPayload(
-        await fetch(fullTextHistoryListUrl, { cache: "no-store" }),
+        await fetch(fullTextHistoryListUrl(projectId), { cache: "no-store" }),
       );
       applyHistoryOverview(overview);
       const decisionChanged =
@@ -1140,6 +1158,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
     const formData = new FormData();
     const cleanedReferenceRecord = stripGeneratedReferenceContext(referenceRecord);
     formData.set("file", nextFile);
+    formData.set("projectId", projectId);
     formData.set(
       "referenceRecord",
       [
@@ -1169,6 +1188,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
       fileName: driveFile.name || nextFile.name,
       mimeType: driveFile.mimeType || nextFile.type || "application/octet-stream",
       fileSize: Number.isFinite(driveSize) && driveSize > 0 ? driveSize : nextFile.size,
+      projectId,
       referenceRecord: [
         selectedWorksheet
           ? `Excel source sheet: ${selectedWorksheet.sheetName} (${selectedWorksheet.label}); review mode: ${selectedWorksheet.reviewMode}`

@@ -12,7 +12,13 @@ export function normalizeWiregeneAppMode(value: string | undefined | null): Wire
 export function getWiregeneAppMode(host: string | undefined | null): WiregeneAppMode {
   const normalizedHost = (host ?? "").split(":")[0]?.toLowerCase() ?? "";
 
-  if (normalizedHost === "meta.wiregene.com") return "meta";
+  if (
+    normalizedHost === "meta.wiregene.com" ||
+    normalizedHost === "mata.wiregene.com" ||
+    normalizedHost === "search.wiregen.com"
+  ) {
+    return "meta";
+  }
   if (normalizedHost === "portal.wiregene.com") return "portal";
   if (normalizedHost === "search.wiregene.com") return "search";
 

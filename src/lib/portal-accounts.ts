@@ -21,7 +21,7 @@ export const portalSites = [
     id: "meta",
     label: "Meta-analysis",
     shortLabel: "Meta",
-    url: "https://meta.wiregene.com",
+    url: "https://search.wiregen.com",
   },
   {
     id: "hyunlab",

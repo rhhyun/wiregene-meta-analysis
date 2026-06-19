@@ -11,6 +11,7 @@ import {
   saveMetaFullTextHistory,
 } from "@/lib/meta-full-text-history";
 import { saveMetaFullTextSourceFile } from "@/lib/meta-full-text-source-files";
+import { cleanMetaProjectId } from "@/lib/meta-project-scope";
 import { orchestralPainProject } from "@/lib/meta-projects";
 
 export const runtime = "nodejs";
@@ -45,6 +46,7 @@ type AnalyzeRequestContext = {
   fileSize: number | null;
   mimeType: string | null;
   contentLength: string | null;
+  projectId: string | null;
 };
 
 type AnalyzeRequestInput = {
@@ -61,6 +63,7 @@ type AnalyzeRequestInput = {
   extractionColumns: string[];
   reviewerIds: string[];
   driveFileId: string | null;
+  projectId: string | null;
 };
 
 function formString(formData: FormData, key: string) {
@@ -99,11 +102,15 @@ function payloadReviewerIds(payload: unknown) {
 
 function allowedExtractionColumns(requestedColumns: string[]) {
   if (requestedColumns.length === 0) return orchestralPainProject.extractionColumns;
-  const allowed = new Set(orchestralPainProject.extractionColumns);
-  const filtered = requestedColumns.filter((column) => allowed.has(column));
-  return filtered.length > 0 && filtered.length <= orchestralPainProject.extractionColumns.length
-    ? filtered
-    : orchestralPainProject.extractionColumns;
+  const filtered = Array.from(
+    new Set(
+      requestedColumns
+        .map((column) => column.trim())
+        .filter((column) => column.length > 0 && column.length <= 120)
+        .slice(0, 200),
+    ),
+  );
+  return filtered.length > 0 ? filtered : orchestralPainProject.extractionColumns;
 }
 
 export async function POST(request: Request) {
@@ -116,6 +123,7 @@ export async function POST(request: Request) {
     fileSize: null,
     mimeType: null,
     contentLength: request.headers.get("content-length"),
+    projectId: null,
   };
 
   try {
@@ -165,6 +173,7 @@ async function parseMultipartAnalyzeRequest(
   context.fileName = uploaded.name;
   context.fileSize = uploaded.size;
   context.mimeType = uploaded.type || null;
+  context.projectId = cleanMetaProjectId(formString(formData, "projectId")) || null;
   console.info("[meta-full-text/analyze] multipart upload received", diagnostics(context));
 
   context.phase = "read_multipart_file";
@@ -183,6 +192,7 @@ async function parseMultipartAnalyzeRequest(
     extractionColumns: allowedExtractionColumns(columnsSchema.parse(formString(formData, "extractionColumns"))),
     reviewerIds: reviewerIdsSchema.parse(formString(formData, "reviewerIds")),
     driveFileId: null,
+    projectId: context.projectId,
   };
 }
 
@@ -208,6 +218,7 @@ async function parseGoogleDriveAnalyzeRequest(
   context.fileName = fileName;
   context.fileSize = fileSize;
   context.mimeType = mimeType;
+  context.projectId = cleanMetaProjectId(payloadString(payload, "projectId")) || null;
   console.info("[meta-full-text/analyze] google-drive upload received", {
     ...diagnostics(context),
     driveFileId,
@@ -227,6 +238,7 @@ async function parseGoogleDriveAnalyzeRequest(
     extractionColumns: payloadColumns(payload),
     reviewerIds: payloadReviewerIds(payload),
     driveFileId,
+    projectId: context.projectId,
   };
 }
 
@@ -238,6 +250,7 @@ async function analyzeAndSave(input: AnalyzeRequestInput, context: AnalyzeReques
     mimeType: input.mimeType,
     fileSize: input.fileSize,
     existingDriveFileId: input.driveFileId,
+    projectId: input.projectId,
   });
 
   context.phase = "analyze_full_text";
@@ -268,6 +281,7 @@ async function analyzeAndSave(input: AnalyzeRequestInput, context: AnalyzeReques
       reviewerOneName: input.reviewerOneName,
       reviewerTwoName: input.reviewerTwoName,
       sourceFile,
+      projectId: input.projectId,
     });
 
     console.info("[meta-full-text/analyze] history saved", {
@@ -348,6 +362,7 @@ function diagnostics(context: AnalyzeRequestContext) {
     fileSize: context.fileSize,
     mimeType: context.mimeType,
     contentLength: context.contentLength,
+    projectId: context.projectId,
     elapsedMs: Date.now() - context.startedAt,
   };
 }

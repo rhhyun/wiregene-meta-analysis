@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import { AlertTriangle, CheckCircle2, Download, FileSpreadsheet, Loader2, RefreshCw, Save } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiErrorMessage } from "@/components/grant-error-message";
 
 type ExtractionSection = {
@@ -139,6 +139,21 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
   const [error, setError] = useState("");
 
   const sections = useMemo(() => [auditSection, ...extractionSections], [extractionSections]);
+  const extractionColumns = useMemo(
+    () => Array.from(new Set(extractionSections.flatMap((section) => section.fields).filter(Boolean))),
+    [extractionSections],
+  );
+  const datasetApiUrl = useCallback(
+    (format?: "xlsx") => {
+      const searchParams = new URLSearchParams();
+      if (projectId.trim()) searchParams.set("projectId", projectId.trim());
+      if (extractionColumns.length) searchParams.set("columns", extractionColumns.join(","));
+      if (format) searchParams.set("format", format);
+      const query = searchParams.toString();
+      return `/api/meta-analysis/extraction-dataset${query ? `?${query}` : ""}`;
+    },
+    [extractionColumns, projectId],
+  );
   const selectedRecord = overview?.records.find((record) => record.id === selectedId) ?? null;
   const fieldSectionByName = useMemo(() => {
     const sectionByField = new Map<string, string>();
@@ -174,7 +189,7 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
     async function loadInitialDataset() {
       try {
         const payload = await readDatasetPayload(
-          await fetch("/api/meta-analysis/extraction-dataset", { cache: "no-store" }),
+          await fetch(datasetApiUrl(), { cache: "no-store" }),
         );
         if (cancelled) return;
         setOverview(payload);
@@ -191,14 +206,14 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [datasetApiUrl]);
 
   async function refreshDataset(preferredId = selectedId) {
     setLoading(true);
     setError("");
     try {
       const payload = await readDatasetPayload(
-        await fetch("/api/meta-analysis/extraction-dataset", { cache: "no-store" }),
+        await fetch(datasetApiUrl(), { cache: "no-store" }),
       );
       setOverview(payload);
       const nextRecord = payload.records.find((record) => record.id === preferredId) ?? payload.records[0];
@@ -235,10 +250,12 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
         .sort((left, right) => left.rowIndex - right.rowIndex)
         .map((record) => (record.id === selectedRecord.id ? editingRow : record.row));
       const payload = await readDatasetPayload(
-        await fetch("/api/meta-analysis/extraction-dataset", {
+        await fetch(datasetApiUrl(), {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            projectId,
+            extractionColumns,
             historyId: selectedRecord.historyId,
             rows: rowsForHistory,
             verified: markVerified,
@@ -299,7 +316,7 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
     setError("");
     setNotice("");
     try {
-      const response = await fetch("/api/meta-analysis/extraction-dataset?format=xlsx", { cache: "no-store" });
+      const response = await fetch(datasetApiUrl("xlsx"), { cache: "no-store" });
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
         throw new Error(apiErrorMessage(payload, "Excel workbook could not be generated."));

@@ -10,6 +10,7 @@ import {
   replaceMetaFullTextHistoryAnalysis,
 } from "@/lib/meta-full-text-history";
 import { readVerifiedMetaFullTextSourceFile } from "@/lib/meta-full-text-source-files";
+import { cleanMetaProjectId } from "@/lib/meta-project-scope";
 import { orchestralPainProject } from "@/lib/meta-projects";
 
 export const runtime = "nodejs";
@@ -22,6 +23,7 @@ type RouteContext = {
 
 type ReanalyzeRequest = {
   reviewerIds: string[];
+  projectId: string | null;
 };
 
 export async function POST(request: Request, context: RouteContext) {
@@ -30,7 +32,7 @@ export async function POST(request: Request, context: RouteContext) {
 
   try {
     const reanalyzeRequest = await parseReanalyzeRequest(request);
-    const record = await getMetaFullTextHistoryRecord(id);
+    const record = await getMetaFullTextHistoryRecord(id, { projectId: reanalyzeRequest.projectId });
     if (!record) return NextResponse.json({ error: "Saved full-text analysis was not found." }, { status: 404 });
     if (!record.sourceFile) {
       return NextResponse.json(
@@ -59,7 +61,7 @@ export async function POST(request: Request, context: RouteContext) {
     const nextAnalysis = reanalyzeRequest.reviewerIds.length
       ? mergeSelectedModelReviewsIntoPrimary(record.analysis, analysis)
       : analysis;
-    const updated = await replaceMetaFullTextHistoryAnalysis(id, nextAnalysis);
+    const updated = await replaceMetaFullTextHistoryAnalysis(id, nextAnalysis, { projectId: reanalyzeRequest.projectId });
     if (!updated) return NextResponse.json({ error: "Saved full-text analysis was not found." }, { status: 404 });
 
     return NextResponse.json({
@@ -84,10 +86,14 @@ export async function POST(request: Request, context: RouteContext) {
 }
 
 async function parseReanalyzeRequest(request: Request): Promise<ReanalyzeRequest> {
+  const urlProjectId = cleanMetaProjectId(new URL(request.url).searchParams.get("projectId"));
   const contentType = request.headers.get("content-type") ?? "";
-  if (!contentType.toLowerCase().includes("application/json")) return { reviewerIds: [] };
+  if (!contentType.toLowerCase().includes("application/json")) return { reviewerIds: [], projectId: urlProjectId || null };
   const payload = (await request.json().catch(() => ({}))) as Record<string, unknown>;
-  return { reviewerIds: normalizeReviewerIds(payload.reviewerIds) };
+  return {
+    reviewerIds: normalizeReviewerIds(payload.reviewerIds),
+    projectId: cleanMetaProjectId(payload.projectId) || urlProjectId || null,
+  };
 }
 
 function normalizeReviewerIds(value: unknown) {

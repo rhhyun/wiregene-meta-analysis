@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   getMetaExtractionDatasetOverview,
+  metaExtractionDatasetScope,
   saveMetaExtractionDatasetRecord,
 } from "@/lib/meta-extraction-dataset";
 import { createMetaExtractionDatasetXlsx } from "@/lib/meta-extraction-xlsx";
@@ -10,9 +11,15 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
+  const url = new URL(request.url);
+  const scope = metaExtractionDatasetScope({
+    projectId: url.searchParams.get("projectId"),
+    extractionColumns: columnsFromQuery(url.searchParams),
+  });
+
   try {
-    const overview = await getMetaExtractionDatasetOverview();
-    const format = new URL(request.url).searchParams.get("format");
+    const overview = await getMetaExtractionDatasetOverview(scope);
+    const format = url.searchParams.get("format");
     if (format === "xlsx") {
       const workbook = await createMetaExtractionDatasetXlsx(overview);
       return new NextResponse(new Uint8Array(workbook), {
@@ -39,6 +46,10 @@ export async function PATCH(request: Request) {
   const payload = (await request.json().catch(() => ({}))) as Record<string, unknown>;
   const historyId = typeof payload.historyId === "string" ? payload.historyId : "";
   const rows = Array.isArray(payload.rows) ? payload.rows : [];
+  const scope = metaExtractionDatasetScope({
+    projectId: typeof payload.projectId === "string" ? payload.projectId : "",
+    extractionColumns: columnsFromPayload(payload.extractionColumns),
+  });
   if (!historyId) return NextResponse.json({ error: "historyId is required." }, { status: 400 });
 
   try {
@@ -51,9 +62,10 @@ export async function PATCH(request: Request) {
       verified: Boolean(payload.verified),
       verificationNotes: typeof payload.verificationNotes === "string" ? payload.verificationNotes : "",
       verifiedBy: typeof payload.verifiedBy === "string" ? payload.verifiedBy : "",
+      projectId: scope.projectId,
     });
     if (!record) return NextResponse.json({ error: "Saved full-text analysis was not found." }, { status: 404 });
-    const overview = await getMetaExtractionDatasetOverview();
+    const overview = await getMetaExtractionDatasetOverview(scope);
     return NextResponse.json({ record, ...overview });
   } catch (error) {
     return NextResponse.json(
@@ -64,4 +76,24 @@ export async function PATCH(request: Request) {
       { status: 400 },
     );
   }
+}
+
+function columnsFromQuery(searchParams: URLSearchParams) {
+  return searchParams
+    .getAll("columns")
+    .flatMap(splitColumns)
+    .filter(Boolean);
+}
+
+function columnsFromPayload(value: unknown) {
+  if (Array.isArray(value)) return value.map((column) => String(column).trim()).filter(Boolean);
+  if (typeof value === "string") return splitColumns(value);
+  return [];
+}
+
+function splitColumns(value: string) {
+  return value
+    .split(/[\n,]+/)
+    .map((column) => column.trim())
+    .filter(Boolean);
 }

@@ -1,3 +1,35 @@
+# 2026-06-19 project-scoped full-text and extraction dataset storage
+
+Context:
+
+- First synced the actual app repository with `origin/main` before implementing, because another PC had already pushed multi-model AI reviewer, saved-source reanalysis, AI-only PI adjudication, and Excel workbook export work.
+- Local pre-merge edits were stashed instead of being reapplied directly because those local code edits included Korean mojibake/default-model changes that should not overwrite the newer remote work.
+
+Implemented without overlapping the other PC work:
+
+- Full-text analysis history now accepts an optional `projectId` scope.
+- Project-scoped history is stored separately from the legacy global `.data/meta/meta-full-text-history.json`.
+- The built-in `orchestral-prmd-asymmetry` project can still read the legacy global history as a fallback, so existing saved analyses do not disappear after the scoped storage change.
+- Saved full-text source files now store under the project workspace for local storage and use project-prefixed names for Google Drive storage.
+- Full-text history list/load/save, reviewer settings, reviewer/PI verification, AI-only skip/restore, and saved-source reanalysis API calls now pass the active project id.
+- Extraction dataset overview, manual extraction verification save, CSV draft save, and `.xlsx` workbook download now use the active project id and active project extraction columns.
+- The server no longer forces AI full-text extraction columns to the original orchestral project schema when the client sends a valid project-specific schema.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.48`
+  - UI label: `Ver 1.83 | 2026 copyright by JK Hyun`
+- Public URL correction:
+  - The active public Meta link is `https://search.wiregen.com`, not `https://meta.wiregene.com`.
+  - `search.wiregen.com` and the typed alias `mata.wiregene.com` are now treated as Meta mode hosts.
+  - Launcher links, portal site metadata, environment examples, and workspace manifest were updated to the corrected public URL.
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed.
+npm.cmd run lint: passed.
+npm.cmd run build: passed without Turbopack trace warnings after narrowing project-scoped path helpers and local history file reads.
+```
+
 # 2026-06-18 AI reviewer rerun controls and Excel dataset workbook export
 
 Current actual implementation repository:

@@ -7,6 +7,11 @@ import {
   readBinaryFileFromGoogleDrive,
   writeBinaryFileToGoogleDrive,
 } from "./google-drive-storage";
+import {
+  cleanMetaProjectId,
+  metaProjectScopedDriveFileName,
+  metaProjectScopedLocalPath,
+} from "./meta-project-scope";
 
 export type MetaFullTextSourceFileStorage = "local-file" | "google-drive";
 
@@ -34,6 +39,7 @@ export async function saveMetaFullTextSourceFile(input: {
   mimeType?: string | null;
   fileSize?: number | null;
   existingDriveFileId?: string | null;
+  projectId?: string | null;
 }): Promise<MetaFullTextSourceFile> {
   const sha256 = fullTextSourceSha256(input.buffer);
   const fileName = cleanFileName(input.fileName) || `full-text-${sha256.slice(0, 12)}`;
@@ -57,8 +63,9 @@ export async function saveMetaFullTextSourceFile(input: {
     };
   }
 
+  const storedFileName = storedSourceFileName(sha256, fileName);
   if (sourceStorageBackend() === "google-drive") {
-    const driveName = storedSourceFileName(sha256, fileName);
+    const driveName = sourceDriveFileName(storedFileName, input.projectId);
     const file = await writeBinaryFileToGoogleDrive(driveName, input.buffer, mimeType);
     return {
       storage: "google-drive",
@@ -73,8 +80,8 @@ export async function saveMetaFullTextSourceFile(input: {
     };
   }
 
-  const root = sourceFileRoot();
-  const localPath = path.join(root, storedSourceFileName(sha256, fileName));
+  const root = sourceFileRoot(input.projectId);
+  const localPath = path.join(root, storedFileName);
   if (isServerlessRuntime()) {
     throw new Error(
       "Full-text source files cannot be saved to local storage in a read-only serverless deployment. Configure Google Drive storage or use Synology/local Docker.",
@@ -157,9 +164,19 @@ function sourceStorageBackend(): MetaFullTextSourceFileStorage {
   return "local-file";
 }
 
-function sourceFileRoot() {
+function sourceFileRoot(projectId?: string | null) {
+  const scopedProjectId = cleanMetaProjectId(projectId);
+  if (scopedProjectId) return metaProjectScopedLocalPath(scopedProjectId, "full-text-files");
+
   const configured = process.env.META_FULL_TEXT_SOURCE_STORAGE_PATH?.trim();
   return path.resolve(/* turbopackIgnore: true */ process.cwd(), configured || defaultSourceFileRoot);
+}
+
+function sourceDriveFileName(storedFileName: string, projectId?: string | null) {
+  const scopedProjectId = cleanMetaProjectId(projectId);
+  return scopedProjectId
+    ? metaProjectScopedDriveFileName(scopedProjectId, `full-text-files__${storedFileName}`)
+    : storedFileName;
 }
 
 function storedSourceFileName(sha256: string, fileName: string) {

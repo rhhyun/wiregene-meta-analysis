@@ -4,6 +4,7 @@ import {
   updateMetaFullTextExtractionReview,
   type MetaFullTextHistoryRecord,
 } from "./meta-full-text-history";
+import { cleanMetaProjectId, type MetaProjectScope } from "./meta-project-scope";
 
 export type MetaExtractionDatasetRecord = {
   id: string;
@@ -50,6 +51,10 @@ export type MetaExtractionDatasetOverview = {
     editableFieldCount: number;
   };
   updatedAt: string;
+};
+
+export type MetaExtractionDatasetScope = MetaProjectScope & {
+  extractionColumns?: string[] | null;
 };
 
 const auditColumns = [
@@ -111,14 +116,17 @@ const outcomePairs = [
   ["performance_limitation_n", "performance_limitation_total"],
 ];
 
-export function metaExtractionDatasetColumns() {
-  return [...auditColumns, ...orchestralPainProject.extractionColumns.filter((column) => !auditColumns.includes(column))];
+export function metaExtractionDatasetColumns(extractionColumns?: string[] | null) {
+  const projectColumns = normalizeExtractionColumns(extractionColumns);
+  return [...auditColumns, ...projectColumns.filter((column) => !auditColumns.includes(column))];
 }
 
-export async function getMetaExtractionDatasetOverview(): Promise<MetaExtractionDatasetOverview> {
-  const historyRecords = await getMetaFullTextHistoryRecords();
+export async function getMetaExtractionDatasetOverview(
+  scope: MetaExtractionDatasetScope = {},
+): Promise<MetaExtractionDatasetOverview> {
+  const historyRecords = await getMetaFullTextHistoryRecords({ projectId: scope.projectId });
   const includedRecords = historyRecords.filter(isIncludedRecord);
-  const columns = metaExtractionDatasetColumns();
+  const columns = metaExtractionDatasetColumns(scope.extractionColumns);
   const records = includedRecords.flatMap((record) => datasetRecordsForHistoryRecord(record, columns));
   return {
     columns,
@@ -144,13 +152,38 @@ export async function saveMetaExtractionDatasetRecord(input: {
   verified?: boolean;
   verificationNotes?: string;
   verifiedBy?: string;
+  projectId?: string | null;
 }) {
   return updateMetaFullTextExtractionReview(input.historyId, {
     rows: input.rows,
     verified: Boolean(input.verified),
     verificationNotes: input.verificationNotes ?? "",
     verifiedBy: input.verifiedBy ?? "",
-  });
+  }, { projectId: input.projectId });
+}
+
+function normalizeExtractionColumns(extractionColumns?: string[] | null) {
+  const cleaned = Array.isArray(extractionColumns)
+    ? Array.from(
+        new Set(
+          extractionColumns
+            .map((column) => String(column).trim())
+            .filter(Boolean),
+        ),
+      )
+    : [];
+  return cleaned.length ? cleaned : orchestralPainProject.extractionColumns;
+}
+
+function scopeProjectId(scope: MetaProjectScope = {}) {
+  return cleanMetaProjectId(scope.projectId);
+}
+
+export function metaExtractionDatasetScope(input: MetaExtractionDatasetScope = {}): MetaExtractionDatasetScope {
+  return {
+    projectId: scopeProjectId(input),
+    extractionColumns: normalizeExtractionColumns(input.extractionColumns),
+  };
 }
 
 function datasetRecordsForHistoryRecord(record: MetaFullTextHistoryRecord, columns: string[]): MetaExtractionDatasetRecord[] {

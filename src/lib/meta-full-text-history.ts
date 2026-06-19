@@ -11,6 +11,12 @@ import {
   normalizeMetaFullTextSourceFile,
   type MetaFullTextSourceFile,
 } from "./meta-full-text-source-files";
+import {
+  cleanMetaProjectId,
+  metaProjectScopedDriveFileName,
+  metaProjectScopedLocalPath,
+  type MetaProjectScope,
+} from "./meta-project-scope";
 
 export type MetaFullTextVerification = {
   verificationMode: "dual_reviewer" | "ai_only";
@@ -110,6 +116,8 @@ type MetaFullTextHistoryData = {
   reviewerSettings: MetaFullTextReviewerSettings;
 };
 
+export type MetaFullTextHistoryScope = MetaProjectScope;
+
 type MetaFullTextHistoryStorageErrorDetails = {
   operation: "read" | "write" | "backup-corrupt-json";
   path: string;
@@ -131,6 +139,7 @@ export class MetaFullTextHistoryStorageError extends Error {
 }
 
 const defaultStoragePath = ".data/meta/meta-full-text-history.json";
+const defaultLegacyProjectId = "orchestral-prmd-asymmetry";
 const maxStoredRecords = 500;
 
 export async function saveMetaFullTextHistory(input: {
@@ -142,8 +151,10 @@ export async function saveMetaFullTextHistory(input: {
   reviewerOneName?: string | null;
   reviewerTwoName?: string | null;
   sourceFile?: MetaFullTextSourceFile | null;
+  projectId?: string | null;
 }) {
-  const data = await readHistoryData();
+  const scope = historyScope(input);
+  const data = await readHistoryData(scope);
   const reviewerSettings = mergeReviewerSettings(data.reviewerSettings, {
     reviewerOneName: input.reviewerOneName,
     reviewerTwoName: input.reviewerTwoName,
@@ -170,12 +181,12 @@ export async function saveMetaFullTextHistory(input: {
   };
 
   data.records = [record, ...data.records.filter((item) => item.id !== record.id)].slice(0, maxStoredRecords);
-  await writeHistoryData(data);
+  await writeHistoryData(data, scope);
   return record;
 }
 
-export async function listMetaFullTextHistory(limit = 50) {
-  const data = await readHistoryData();
+export async function listMetaFullTextHistory(limit = 50, scope: MetaFullTextHistoryScope = {}) {
+  const data = await readHistoryData(scope);
   return data.records
     .slice()
     .sort((a, b) => b.savedAt.localeCompare(a.savedAt))
@@ -183,8 +194,8 @@ export async function listMetaFullTextHistory(limit = 50) {
     .map(toSummary);
 }
 
-export async function getMetaFullTextHistoryOverview(limit = 50) {
-  const data = await readHistoryData();
+export async function getMetaFullTextHistoryOverview(limit = 50, scope: MetaFullTextHistoryScope = {}) {
+  const data = await readHistoryData(scope);
   const sorted = data.records.slice().sort((a, b) => b.savedAt.localeCompare(a.savedAt));
   return {
     records: sorted.slice(0, Math.max(1, Math.min(limit, maxStoredRecords))).map(toSummary),
@@ -193,18 +204,22 @@ export async function getMetaFullTextHistoryOverview(limit = 50) {
   };
 }
 
-export async function getMetaFullTextHistoryRecord(id: string) {
-  const data = await readHistoryData();
+export async function getMetaFullTextHistoryRecord(id: string, scope: MetaFullTextHistoryScope = {}) {
+  const data = await readHistoryData(scope);
   return data.records.find((record) => record.id === id) ?? null;
 }
 
-export async function getMetaFullTextHistoryRecords() {
-  const data = await readHistoryData();
+export async function getMetaFullTextHistoryRecords(scope: MetaFullTextHistoryScope = {}) {
+  const data = await readHistoryData(scope);
   return data.records.slice().sort((a, b) => b.savedAt.localeCompare(a.savedAt));
 }
 
-export async function updateMetaFullTextVerification(id: string, verification: Partial<MetaFullTextVerification>) {
-  const data = await readHistoryData();
+export async function updateMetaFullTextVerification(
+  id: string,
+  verification: Partial<MetaFullTextVerification>,
+  scope: MetaFullTextHistoryScope = {},
+) {
+  const data = await readHistoryData(scope);
   const index = data.records.findIndex((record) => record.id === id);
   if (index < 0) return null;
   const currentVerification = data.records[index].verification;
@@ -240,12 +255,16 @@ export async function updateMetaFullTextVerification(id: string, verification: P
     ...mergeReviewerSettings(data.reviewerSettings, data.records[index].verification),
     updatedAt: new Date().toISOString(),
   };
-  await writeHistoryData(data);
+  await writeHistoryData(data, scope);
   return data.records[index];
 }
 
-export async function updateMetaFullTextExtractionReview(id: string, review: Partial<MetaFullTextExtractionReview>) {
-  const data = await readHistoryData();
+export async function updateMetaFullTextExtractionReview(
+  id: string,
+  review: Partial<MetaFullTextExtractionReview>,
+  scope: MetaFullTextHistoryScope = {},
+) {
+  const data = await readHistoryData(scope);
   const index = data.records.findIndex((record) => record.id === id);
   if (index < 0) return null;
 
@@ -263,12 +282,16 @@ export async function updateMetaFullTextExtractionReview(id: string, review: Par
             : data.records[index].extractionReview.verifiedAt,
     }),
   };
-  await writeHistoryData(data);
+  await writeHistoryData(data, scope);
   return data.records[index];
 }
 
-export async function replaceMetaFullTextHistoryAnalysis(id: string, analysis: MetaFullTextAnalysis) {
-  const data = await readHistoryData();
+export async function replaceMetaFullTextHistoryAnalysis(
+  id: string,
+  analysis: MetaFullTextAnalysis,
+  scope: MetaFullTextHistoryScope = {},
+) {
+  const data = await readHistoryData(scope);
   const index = data.records.findIndex((record) => record.id === id);
   if (index < 0) return null;
   const current = data.records[index];
@@ -284,12 +307,15 @@ export async function replaceMetaFullTextHistoryAnalysis(id: string, analysis: M
       ...(current.analysisArchive ?? []),
     ].slice(0, 10),
   };
-  await writeHistoryData(data);
+  await writeHistoryData(data, scope);
   return data.records[index];
 }
 
-export async function updateMetaFullTextReviewerSettings(settings: Partial<MetaFullTextReviewerSettings>) {
-  const data = await readHistoryData();
+export async function updateMetaFullTextReviewerSettings(
+  settings: Partial<MetaFullTextReviewerSettings>,
+  scope: MetaFullTextHistoryScope = {},
+) {
+  const data = await readHistoryData(scope);
   data.reviewerSettings = {
     ...mergeReviewerSettings(data.reviewerSettings, settings),
     updatedAt: new Date().toISOString(),
@@ -312,7 +338,7 @@ export async function updateMetaFullTextReviewerSettings(settings: Partial<MetaF
       }),
     };
   });
-  await writeHistoryData(data);
+  await writeHistoryData(data, scope);
   return data.reviewerSettings;
 }
 
@@ -543,12 +569,12 @@ function normalizeData(value: unknown): MetaFullTextHistoryData {
   };
 }
 
-async function readHistoryData(): Promise<MetaFullTextHistoryData> {
-  const targetPath = storageLocation();
+async function readHistoryData(scope: MetaFullTextHistoryScope = {}): Promise<MetaFullTextHistoryData> {
+  const targetPath = storageLocation(scope);
   let raw: string | null;
 
   try {
-    raw = await readStorageText();
+    raw = await readStorageText(scope);
   } catch (error) {
     throw storageError(error, "read", targetPath);
   }
@@ -559,42 +585,52 @@ async function readHistoryData(): Promise<MetaFullTextHistoryData> {
     return normalizeData(JSON.parse(raw));
   } catch (error) {
     if (!(error instanceof SyntaxError)) throw storageError(error, "read", targetPath);
-    await backupCorruptHistory(raw, error);
+    await backupCorruptHistory(raw, error, scope);
     return { records: [], reviewerSettings: emptyReviewerSettings() };
   }
 }
 
-async function writeHistoryData(data: MetaFullTextHistoryData) {
-  const targetPath = storageLocation();
+async function writeHistoryData(data: MetaFullTextHistoryData, scope: MetaFullTextHistoryScope = {}) {
+  const targetPath = storageLocation(scope);
   try {
-    await writeStorageText(JSON.stringify(normalizeData(data), null, 2));
+    await writeStorageText(JSON.stringify(normalizeData(data), null, 2), scope);
   } catch (error) {
     throw storageError(error, "write", targetPath);
   }
 }
 
-async function readStorageText() {
+async function readStorageText(scope: MetaFullTextHistoryScope = {}) {
   if (storageBackend() === "google-drive") {
-    ensureGoogleDriveStorageConfigured("read");
+    ensureGoogleDriveStorageConfigured("read", scope);
+    const raw = await readTextFileFromGoogleDrive(driveFileName(scope), driveFileId(scope));
+    if (raw || !shouldReadLegacyHistoryFallback(scope)) return raw;
     return readTextFileFromGoogleDrive(driveFileName(), driveFileId());
   }
 
   try {
-    return await fs.readFile(localStoragePath(), "utf8");
+    return await fs.readFile(/* turbopackIgnore: true */ localStoragePath(scope), "utf8");
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      if (!shouldReadLegacyHistoryFallback(scope)) return null;
+      try {
+        return await fs.readFile(/* turbopackIgnore: true */ localStoragePath(), "utf8");
+      } catch (fallbackError) {
+        if ((fallbackError as NodeJS.ErrnoException).code === "ENOENT") return null;
+        throw fallbackError;
+      }
+    }
     throw error;
   }
 }
 
-async function writeStorageText(contents: string) {
+async function writeStorageText(contents: string, scope: MetaFullTextHistoryScope = {}) {
   if (storageBackend() === "google-drive") {
-    ensureGoogleDriveStorageConfigured("write");
-    await writeTextFileToGoogleDrive(driveFileName(), contents, driveFileId());
+    ensureGoogleDriveStorageConfigured("write", scope);
+    await writeTextFileToGoogleDrive(driveFileName(scope), contents, driveFileId(scope));
     return;
   }
 
-  const targetPath = localStoragePath();
+  const targetPath = localStoragePath(scope);
   if (isServerlessRuntime()) {
     throw new MetaFullTextHistoryStorageError("meta full-text history storage write failed.", {
       operation: "write",
@@ -619,19 +655,19 @@ async function writeStorageText(contents: string) {
   }
 }
 
-async function backupCorruptHistory(raw: string, parseError: SyntaxError) {
+async function backupCorruptHistory(raw: string, parseError: SyntaxError, scope: MetaFullTextHistoryScope = {}) {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   if (storageBackend() === "google-drive") {
-    const backupName = `${driveFileName()}.corrupt-${stamp}`;
+    const backupName = `${driveFileName(scope)}.corrupt-${stamp}`;
     try {
       await writeTextFileToGoogleDrive(backupName, raw);
       return;
     } catch (error) {
-      throw storageError(error, "backup-corrupt-json", storageLocation(), `google-drive:${backupName}`, parseError.message);
+      throw storageError(error, "backup-corrupt-json", storageLocation(scope), `google-drive:${backupName}`, parseError.message);
     }
   }
 
-  const targetPath = localStoragePath();
+  const targetPath = localStoragePath(scope);
   const backupPath = `${targetPath}.corrupt-${stamp}`;
   try {
     await fs.rename(targetPath, backupPath);
@@ -649,31 +685,41 @@ function storageBackend(): "local-json" | "google-drive" {
   return "local-json";
 }
 
-function localStoragePath() {
+function localStoragePath(scope: MetaFullTextHistoryScope = {}) {
+  const projectId = scopeProjectId(scope);
+  if (projectId) return metaProjectScopedLocalPath(projectId, "full-text-history.json");
+
   const configured = process.env.META_FULL_TEXT_HISTORY_STORAGE_PATH?.trim();
-  return path.resolve(/* turbopackIgnore: true */ process.cwd(), configured || defaultStoragePath);
+  return configured || defaultStoragePath;
 }
 
-function driveFileName() {
+function driveFileName(scope: MetaFullTextHistoryScope = {}) {
+  const projectId = scopeProjectId(scope);
+  if (projectId) return metaProjectScopedDriveFileName(projectId, "full-text-history.json");
+
   return (
     process.env.META_FULL_TEXT_HISTORY_DRIVE_FILENAME?.trim() ||
-    path.basename(process.env.META_FULL_TEXT_HISTORY_STORAGE_PATH?.trim() || defaultStoragePath)
+    baseName(process.env.META_FULL_TEXT_HISTORY_STORAGE_PATH?.trim() || defaultStoragePath)
   );
 }
 
-function driveFileId() {
+function driveFileId(scope: MetaFullTextHistoryScope = {}) {
+  if (scopeProjectId(scope)) return "";
   return process.env.META_FULL_TEXT_HISTORY_DRIVE_FILE_ID?.trim() ?? "";
 }
 
-function storageLocation() {
-  return storageBackend() === "google-drive" ? `google-drive:${driveFileName()}` : localStoragePath();
+function storageLocation(scope: MetaFullTextHistoryScope = {}) {
+  return storageBackend() === "google-drive" ? `google-drive:${driveFileName(scope)}` : localStoragePath(scope);
 }
 
-function ensureGoogleDriveStorageConfigured(operation: MetaFullTextHistoryStorageErrorDetails["operation"]) {
+function ensureGoogleDriveStorageConfigured(
+  operation: MetaFullTextHistoryStorageErrorDetails["operation"],
+  scope: MetaFullTextHistoryScope = {},
+) {
   if (getGoogleDriveAuthMode()) return;
   throw new MetaFullTextHistoryStorageError(`meta full-text history storage ${operation} failed.`, {
     operation,
-    path: `google-drive:${driveFileName()}`,
+    path: `google-drive:${driveFileName(scope)}`,
     backend: "google-drive",
     code: "GOOGLE_DRIVE_NOT_CONFIGURED",
     message:
@@ -708,6 +754,25 @@ function storageError(
     help,
     backupPath,
   });
+}
+
+function historyScope(input: MetaFullTextHistoryScope): MetaFullTextHistoryScope {
+  const projectId = scopeProjectId(input);
+  return projectId ? { projectId } : {};
+}
+
+function scopeProjectId(scope: MetaFullTextHistoryScope = {}) {
+  return cleanMetaProjectId(scope.projectId);
+}
+
+function shouldReadLegacyHistoryFallback(scope: MetaFullTextHistoryScope = {}) {
+  const projectId = scopeProjectId(scope);
+  const legacyProjectId = process.env.META_FULL_TEXT_HISTORY_LEGACY_PROJECT_ID?.trim() || defaultLegacyProjectId;
+  return Boolean(projectId && projectId === legacyProjectId);
+}
+
+function baseName(value: string) {
+  return value.split(/[\\/]+/).filter(Boolean).at(-1) || value;
 }
 
 function isServerlessRuntime() {

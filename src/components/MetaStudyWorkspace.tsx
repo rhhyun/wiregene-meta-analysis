@@ -2852,6 +2852,7 @@ function ScreeningStage({ project }: { project: MetaStudyProject }) {
       <MetaFullTextAssistant
         extractionColumns={project.extractionColumns}
         focus="screening"
+        projectId={project.id}
         worksheetOptions={fullTextWorksheetOptions(project)}
       />
       <MetaExtractionDatasetPanel extractionSections={project.extractionSections} projectId={project.id} />
@@ -3481,6 +3482,7 @@ function ExtractionStage({ project }: { project: MetaStudyProject }) {
       <MetaFullTextAssistant
         extractionColumns={project.extractionColumns}
         focus="extraction"
+        projectId={project.id}
         worksheetOptions={fullTextWorksheetOptions(project)}
       />
     </div>

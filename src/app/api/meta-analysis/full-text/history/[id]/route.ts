@@ -4,6 +4,7 @@ import {
   metaFullTextHistoryStorageErrorDetails,
   updateMetaFullTextVerification,
 } from "@/lib/meta-full-text-history";
+import { cleanMetaProjectId } from "@/lib/meta-project-scope";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,11 +13,12 @@ type RouteContext = {
   params: Promise<{ id: string }>;
 };
 
-export async function GET(_request: Request, context: RouteContext) {
+export async function GET(request: Request, context: RouteContext) {
   const { id } = await context.params;
+  const projectId = cleanMetaProjectId(new URL(request.url).searchParams.get("projectId"));
 
   try {
-    const record = await getMetaFullTextHistoryRecord(id);
+    const record = await getMetaFullTextHistoryRecord(id, { projectId });
     if (!record) return NextResponse.json({ error: "Saved full-text analysis was not found." }, { status: 404 });
     return NextResponse.json({ record });
   } catch (error) {
@@ -32,7 +34,9 @@ export async function GET(_request: Request, context: RouteContext) {
 
 export async function PATCH(request: Request, context: RouteContext) {
   const { id } = await context.params;
+  const urlProjectId = cleanMetaProjectId(new URL(request.url).searchParams.get("projectId"));
   const payload = await request.json().catch(() => ({}));
+  const projectId = cleanMetaProjectId(payload.projectId) || urlProjectId;
 
   try {
     const record = await updateMetaFullTextVerification(id, {
@@ -48,7 +52,7 @@ export async function PATCH(request: Request, context: RouteContext) {
       piName: payload.piName,
       piFinalDecision: payload.piFinalDecision,
       piFinalReason: payload.piFinalReason,
-    });
+    }, { projectId });
     if (!record) return NextResponse.json({ error: "Saved full-text analysis was not found." }, { status: 404 });
     return NextResponse.json({ record });
   } catch (error) {
