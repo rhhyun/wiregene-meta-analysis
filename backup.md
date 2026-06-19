@@ -1,3 +1,61 @@
+# 2026-06-20 Meta DB export and durable storage policy
+
+User issue:
+
+- Every DB generated in the Meta workflow must be downloadable.
+- Data volume will grow, so the design must avoid slow exports, timeout errors, and payload-size failures.
+- Durable storage must support Synology/local Docker and Google Drive, with a clear policy for DB snapshots and large full-text files.
+
+Implemented:
+
+- Added a centralized Meta DB export route:
+  - `GET /api/meta-analysis/projects/[projectId]/db-export?format=zip`
+  - `GET /api/meta-analysis/projects/[projectId]/db-export?format=json`
+  - `POST /api/meta-analysis/projects/[projectId]/db-export`
+- Added `src/lib/meta-db-export.ts`:
+  - builds a project-scoped DB snapshot.
+  - builds a ZIP bundle for browser download.
+  - saves a JSON DB snapshot to project storage through the same Synology/Google Drive project storage adapter.
+- Added `Download DB bundle` and `Save DB snapshot` buttons to `ProjectStoragePanel`.
+- The DB bundle includes:
+  - `manifest.json`
+  - `project-workspace-state.json`
+  - `user-projects.json`
+  - `ai-settings-summary.redacted.json`
+  - `full-text-history.json`
+  - `extraction-dataset.json`
+  - `extraction-dataset.csv`
+  - saved project text files under `project-files/`
+- Added explicit storage/export policy in the UI:
+  - DB JSON/ZIP exports include research state, project files, full-text AI history, reviewer verification, extraction dataset, source-file metadata, and redacted AI settings.
+  - full-text PDF/Word binaries are not embedded in DB JSON/ZIP.
+  - full-text source binaries stay in Synology/local storage or Google Drive and are tracked by storage type, fileName, size, sha256, localPath or driveFileId.
+  - existing `meta-db-snapshot-*` files are skipped during export to prevent recursive snapshot growth.
+- Added export limits for speed and reliability:
+  - single project text file: 25 MB
+  - total included project text files: 80 MB
+  - files beyond limits are listed in the manifest with a skipped reason instead of breaking the export.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.58`
+  - UI label: `Ver 1.93 | 2026 copyright by JK Hyun`
+
+Storage policy:
+
+- Synology/local Docker should use local project storage for speed and DB snapshots:
+  - `META_PROJECT_STORAGE_BACKEND=local-json`
+  - `META_PROJECT_STORAGE_ROOT=.data/meta/projects`
+  - `META_FULL_TEXT_SOURCE_STORAGE_BACKEND=local-file`
+- Vercel/serverless or cross-PC sharing should use Google Drive for DB/project storage and full-text source storage when large uploads are required.
+- API keys are not exported. AI settings are included only as redacted summaries.
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed
+npm.cmd run lint: passed
+npm.cmd run build: passed
+```
+
 # 2026-06-20 saved full-text history deletion
 
 User issue:

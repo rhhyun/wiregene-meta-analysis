@@ -15,6 +15,8 @@ import {
   FolderOpen,
   KeyRound,
   ListChecks,
+  Download,
+  Loader2,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
@@ -171,6 +173,20 @@ type ProjectFileSaveResponse = {
     storageBackend: "local-json" | "google-drive";
   };
   storage: ProjectStorageSummary;
+};
+
+type ProjectDbExportSaveResponse = {
+  savedFile?: ProjectStorageFileSummary & {
+    projectId: string;
+    folderName: string;
+    storageRoot: string;
+    projectPath: string;
+    synologyPathHint: string | null;
+    storageBackend: "local-json" | "google-drive";
+  };
+  storage?: ProjectStorageSummary;
+  snapshot?: { fileBaseName?: string; warnings?: string[] };
+  error?: string;
 };
 
 type ProjectWorkspaceState = {
@@ -2864,6 +2880,9 @@ function ProjectStoragePanel({ project }: { project: MetaStudyProject }) {
   const [storage, setStorage] = useState<ProjectStorageSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [dbExportSaving, setDbExportSaving] = useState(false);
+  const [dbExportDownloading, setDbExportDownloading] = useState(false);
 
   const refreshStorage = useCallback(async () => {
     setLoading(true);
@@ -2905,6 +2924,52 @@ function ProjectStoragePanel({ project }: { project: MetaStudyProject }) {
     };
   }, [project.id, refreshStorage]);
 
+  async function downloadDbBundle() {
+    setDbExportDownloading(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch(projectDbExportUrl(project.id, project.extractionColumns), { cache: "no-store" });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(payload.error || "Meta DB export could not be downloaded.");
+      }
+      const blob = await response.blob();
+      const contentDisposition = response.headers.get("content-disposition") ?? "";
+      const fileName = fileNameFromContentDisposition(contentDisposition) || `${safeDownloadName(project.id)}-meta-db-export.zip`;
+      downloadBlobToBrowser(fileName, blob);
+      setNotice("Meta DB bundle downloaded. Binary full-text files are referenced by checksum/path/Drive id to keep exports fast and reliable.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Meta DB export could not be downloaded.");
+    } finally {
+      setDbExportDownloading(false);
+    }
+  }
+
+  async function saveDbSnapshot() {
+    setDbExportSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch(`/api/meta-analysis/projects/${encodeURIComponent(project.id)}/db-export`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ extractionColumns: project.extractionColumns }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as ProjectDbExportSaveResponse;
+      if (!response.ok || !payload.savedFile) {
+        throw new Error(payload.error || "Meta DB snapshot could not be saved.");
+      }
+      setStorage(payload.storage ?? (await loadProjectStorage(project.id)));
+      window.dispatchEvent(new CustomEvent(projectFileSavedEventName, { detail: { projectId: project.id } }));
+      setNotice(`Meta DB snapshot saved: ${payload.savedFile.fileName}`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Meta DB snapshot could not be saved.");
+    } finally {
+      setDbExportSaving(false);
+    }
+  }
+
   const files = storage?.files ?? [];
 
   return (
@@ -2917,15 +2982,35 @@ function ProjectStoragePanel({ project }: { project: MetaStudyProject }) {
             Clipboard exports are not files until they are saved here. Each project uses its own server folder.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => void refreshStorage()}
-          disabled={loading}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-sky-300 bg-white px-3 text-sm font-semibold text-sky-800 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} aria-hidden />
-          Refresh
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => void downloadDbBundle()}
+            disabled={dbExportDownloading}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-sky-700 px-3 text-sm font-semibold text-white transition hover:bg-sky-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
+          >
+            {dbExportDownloading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Download className="h-4 w-4" aria-hidden />}
+            Download DB bundle
+          </button>
+          <button
+            type="button"
+            onClick={() => void saveDbSnapshot()}
+            disabled={dbExportSaving}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-sky-300 bg-white px-3 text-sm font-semibold text-sky-800 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {dbExportSaving ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Save className="h-4 w-4" aria-hidden />}
+            Save DB snapshot
+          </button>
+          <button
+            type="button"
+            onClick={() => void refreshStorage()}
+            disabled={loading}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-sky-300 bg-white px-3 text-sm font-semibold text-sky-800 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} aria-hidden />
+            Refresh
+          </button>
+        </div>
       </div>
 
       <div className="mt-4 grid gap-3 lg:grid-cols-3">
@@ -2953,9 +3038,27 @@ function ProjectStoragePanel({ project }: { project: MetaStudyProject }) {
         </p>
       </div>
 
+      <div className="mt-3 rounded-md border border-sky-200 bg-white p-3 text-sm leading-6 text-zinc-700">
+        <p className="font-semibold text-zinc-950">DB export and storage policy</p>
+        <p className="mt-1">
+          The DB bundle includes project workspace state, saved project CSV/JSON/MD/TXT files, full-text AI history,
+          reviewer verification, extraction dataset CSV, source-file metadata, and redacted AI settings.
+        </p>
+        <p className="mt-1">
+          PDF/Word full-text binaries are not embedded in DB JSON/ZIP. They remain in Synology/local storage or Google Drive
+          and are tracked by checksum, path, Drive id, and file size to avoid slow exports, serverless payload limits, and recursive snapshot growth.
+        </p>
+      </div>
+
       {error ? (
         <p className="mt-3 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-900">
           {error}
+        </p>
+      ) : null}
+
+      {notice && !error ? (
+        <p className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-900">
+          {notice}
         </p>
       ) : null}
 
@@ -3013,6 +3116,28 @@ function downloadFileToBrowser(fileName: string, text: string) {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+function downloadBlobToBrowser(fileName: string, blob: Blob) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function fileNameFromContentDisposition(value: string) {
+  const utf8Match = value.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) return decodeURIComponent(utf8Match[1].replaceAll('"', ""));
+  const asciiMatch = value.match(/filename="?([^";]+)"?/i);
+  return asciiMatch?.[1]?.replaceAll('"', "") ?? "";
+}
+
+function safeDownloadName(value: string) {
+  return value.trim().replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "wiregene-meta";
 }
 
 function isServerlessStorageError(message: string) {
@@ -3678,6 +3803,13 @@ async function loadProjectStorage(projectId: string) {
     throw new Error(payload.error || "Project storage could not be loaded.");
   }
   return payload.storage;
+}
+
+function projectDbExportUrl(projectId: string, extractionColumns: string[]) {
+  const searchParams = new URLSearchParams({ format: "zip" });
+  if (extractionColumns.length) searchParams.set("columns", extractionColumns.join(","));
+  const query = searchParams.toString();
+  return `/api/meta-analysis/projects/${encodeURIComponent(projectId)}/db-export${query ? `?${query}` : ""}`;
 }
 
 async function saveProjectTextFile(projectId: string, fileName: string, contents: string) {
