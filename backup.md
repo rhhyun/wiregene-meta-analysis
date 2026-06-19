@@ -1,3 +1,33 @@
+# 2026-06-19 legacy full-text source attach button
+
+User issue:
+
+- The saved full-text list already had 72 legacy records analyzed with `gpt-5-nano`.
+- Those records displayed `legacy/no source`, so the new multi-model AI rerun button stayed disabled.
+- The UI only told the user to upload the source once, but did not provide an explicit button/API to save that uploaded source back onto the selected legacy record.
+
+Implemented:
+
+- Added `POST /api/meta-analysis/full-text/history/[id]/source`.
+- The route saves a newly uploaded source file to an existing saved full-text record without creating a duplicate analysis record.
+- The route supports direct multipart upload and the existing large-file Google Drive chunk path.
+- Added `updateMetaFullTextSourceFile` so legacy history records can be upgraded with a reusable source file.
+- In `MetaFullTextAssistant`, selecting a legacy saved record and choosing one matching full-text file now shows:
+  - `Save uploaded source to this legacy record` in the AI reviewer panel.
+  - `Save this file to the selected legacy record` in the upload box.
+- After source save, the saved record remains selected, the file input queue is cleared, and `Run selected AI reviewers on saved full text` becomes available for the selected AI models.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.49`
+  - UI label: `Ver 1.84 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed.
+npm.cmd run lint: passed.
+npm.cmd run build: passed; `/api/meta-analysis/full-text/history/[id]/source` is included in the route output.
+```
+
 # 2026-06-19 project-scoped full-text and extraction dataset storage
 
 Context:

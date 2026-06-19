@@ -5,7 +5,8 @@
 - Current working repo confirmed: `C:\Users\HyunJK\Documents\GitHub\meta.wiregene.com`.
 - Pulled remote work from the other PC first; latest remote already included multi-model AI full-text reviewer rerun, saved-source reanalysis, AI-only PI adjudication, and Excel workbook export.
 - Continued with non-overlapping implementation: project-scoped full-text history/source-file storage and project-scoped extraction dataset/Excel workbook generation.
-- Active version after this checkpoint: `Ver 1.83`, package `0.1.48`.
+- Added an explicit legacy source attach path so old `gpt-5-nano` records marked `legacy/no source` can be upgraded by selecting the saved record, choosing the matching full-text file, and saving that source before rerunning selected AI models.
+- Active version after this checkpoint: `Ver 1.84`, package `0.1.49`.
 - Public deployment URL corrected to `https://search.wiregene.com`; `search.wiregen.com` is also accepted as a typed alias and treated as Meta mode.
 - Next priority: PRISMA/Search/Screening outputs should persist to the same project-scoped workspace so a generated topic can move from search strategy -> RIS upload -> screening -> full-text -> extraction -> R analysis without global cross-project mixing.
 

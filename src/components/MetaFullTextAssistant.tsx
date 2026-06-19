@@ -186,7 +186,7 @@ function fullTextHistoryListUrl(projectId: string) {
   return `/api/meta-analysis/full-text/history?${searchParams.toString()}`;
 }
 
-function fullTextHistoryRecordUrl(id: string, projectId: string, action?: "reanalyze") {
+function fullTextHistoryRecordUrl(id: string, projectId: string, action?: "reanalyze" | "source") {
   const searchParams = new URLSearchParams();
   if (projectId.trim()) searchParams.set("projectId", projectId.trim());
   const suffix = action ? `/${action}` : "";
@@ -553,6 +553,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
   const [isSavingVerification, setIsSavingVerification] = useState(false);
   const [isSavingReviewerSettings, setIsSavingReviewerSettings] = useState(false);
   const [isReanalyzingSavedSource, setIsReanalyzingSavedSource] = useState(false);
+  const [isSavingSourceToHistory, setIsSavingSourceToHistory] = useState(false);
   const [aiReviewerSlots, setAiReviewerSlots] = useState<MetaAiReviewerSlotSummary[]>([]);
   const [selectedAiReviewerIds, setSelectedAiReviewerIds] = useState<string[]>([]);
   const [aiSettingsLoading, setAiSettingsLoading] = useState(true);
@@ -593,6 +594,14 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
   const currentHistoryItem = useMemo(
     () => historyItems.find((item) => item.id === currentHistoryId) ?? null,
     [currentHistoryId, historyItems],
+  );
+  const canSaveSourceToLegacyRecord = Boolean(
+    currentHistoryItem &&
+      !currentHistoryItem.sourceFileSaved &&
+      files.length === 1 &&
+      firstSelectedFile &&
+      !isAnalyzing &&
+      !isSavingSourceToHistory,
   );
   const aiOnlyVerificationMode = verificationMode === "ai_only";
   const historyDecisionCounts = useMemo(
@@ -1121,6 +1130,88 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
     }
   }
 
+  async function saveSourceToSelectedHistory() {
+    if (!currentHistoryId || !currentHistoryItem) {
+      setError("Select the saved legacy full-text record before saving a source file.");
+      return;
+    }
+    if (currentHistoryItem.sourceFileSaved) {
+      setError("This saved full-text record already has a reusable source file.");
+      return;
+    }
+    if (files.length !== 1 || !firstSelectedFile) {
+      setError("Choose exactly one matching full-text file for the selected legacy record.");
+      return;
+    }
+
+    const sourceFile = firstSelectedFile;
+    setIsSavingSourceToHistory(true);
+    setError("");
+    setNotice("Saving the selected source file to this legacy full-text record.");
+    try {
+      let payload: { record: MetaFullTextHistoryRecord };
+      if (shouldUseLargeFileUpload(sourceFile)) {
+        setNotice("Uploading the large source file through the server chunk path.");
+        const session = await readUploadSessionPayload(
+          await fetch("/api/meta-analysis/full-text/upload-session", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              fileName: sourceFile.name,
+              mimeType: sourceFile.type || "application/octet-stream",
+              fileSize: sourceFile.size,
+            }),
+          }),
+        );
+        const driveFile = await uploadLargeFileThroughServerChunks(sourceFile, session, (message) => setNotice(message));
+        payload = await readHistoryRecordPayload(
+          await fetch(fullTextHistoryRecordUrl(currentHistoryId, projectId, "source"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              projectId,
+              driveFileId: driveFile.id,
+              fileName: driveFile.name || sourceFile.name,
+              mimeType: driveFile.mimeType || sourceFile.type || "application/octet-stream",
+              fileSize: Number(driveFile.size) || sourceFile.size,
+            }),
+          }),
+        );
+      } else {
+        const formData = new FormData();
+        formData.set("file", sourceFile);
+        formData.set("projectId", projectId);
+        payload = await readHistoryRecordPayload(
+          await fetch(fullTextHistoryRecordUrl(currentHistoryId, projectId, "source"), {
+            method: "POST",
+            body: formData,
+          }),
+        );
+      }
+
+      const record = payload.record;
+      setAnalysis(record.analysis);
+      setCurrentHistoryId(record.id);
+      setReferenceRecord(stripGeneratedReferenceContext(record.referenceRecord));
+      if (record.sourceSheet) setWorksheetName(record.sourceSheet);
+      applyVerification(record.verification);
+      const overview = await readHistoryListPayload(
+        await fetch(fullTextHistoryListUrl(projectId), { cache: "no-store" }),
+      );
+      applyHistoryOverview(overview);
+      setFiles([]);
+      setBatchResults([]);
+      setNotice(
+        `Source saved to legacy record: ${record.fileName}. You can now run the selected AI reviewers on the saved full text without reuploading.`,
+      );
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Full-text source could not be saved to this record.");
+      setNotice("");
+    } finally {
+      setIsSavingSourceToHistory(false);
+    }
+  }
+
   function handleFilesChange(nextFiles: File[]) {
     setFiles(nextFiles);
     setBatchResults(
@@ -1135,11 +1226,12 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
         message: "Waiting for sequential analysis.",
       })),
     );
-    setAnalysis(null);
-    setCurrentHistoryId(null);
+    if (!currentHistoryId) {
+      setAnalysis(null);
+      resetVerificationState();
+    }
     setError("");
     setNotice("");
-    resetVerificationState();
   }
 
   async function copyToClipboard(value: string, label: string) {
@@ -1524,6 +1616,17 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
             >
               Select all ready
             </button>
+            {currentHistoryItem && !currentHistoryItem.sourceFileSaved ? (
+              <button
+                type="button"
+                onClick={() => void saveSourceToSelectedHistory()}
+                disabled={!canSaveSourceToLegacyRecord}
+                className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-900 transition hover:bg-amber-50 disabled:cursor-not-allowed disabled:border-zinc-200 disabled:text-zinc-400"
+              >
+                {isSavingSourceToHistory ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Save className="h-3.5 w-3.5" aria-hidden />}
+                Save uploaded source to this legacy record
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={() => void reanalyzeSavedSource()}
@@ -1543,7 +1646,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
           {currentHistoryItem?.sourceFileSaved
             ? `Selected saved source: ${currentHistoryItem.fileName}`
             : currentHistoryItem
-              ? "This selected record is legacy/no source; use the full-text upload box below once, then future model comparison reruns can use the saved source."
+              ? "This selected record is legacy/no source. Choose the matching full-text file below, save it to this record, then rerun the selected AI reviewers."
               : "Select a saved full-text record below, then run the checked AI reviewers without reuploading the file."}
         </p>
       </section>
@@ -1770,10 +1873,26 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
               disabled={isAnalyzing}
               className="mt-3 w-full text-sm text-zinc-700 disabled:cursor-not-allowed disabled:opacity-60 file:mr-3 file:rounded-md file:border-0 file:bg-zinc-900 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-zinc-700"
             />
+            {currentHistoryItem && !currentHistoryItem.sourceFileSaved ? (
+              <button
+                type="button"
+                onClick={() => void saveSourceToSelectedHistory()}
+                disabled={!canSaveSourceToLegacyRecord}
+                className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-4 text-sm font-semibold text-amber-950 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:border-zinc-200 disabled:bg-zinc-100 disabled:text-zinc-400"
+              >
+                {isSavingSourceToHistory ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Save className="h-4 w-4" aria-hidden />}
+                Save this file to the selected legacy record
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={analyzeFullText}
-              disabled={isAnalyzing || files.length === 0 || selectedRunnableAiReviewerIds.length === 0}
+              disabled={
+                isAnalyzing ||
+                files.length === 0 ||
+                selectedRunnableAiReviewerIds.length === 0 ||
+                Boolean(currentHistoryItem && !currentHistoryItem.sourceFileSaved && files.length === 1)
+              }
               className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
             >
               {isAnalyzing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <SearchCheck className="h-4 w-4" aria-hidden />}
@@ -1787,7 +1906,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
             </p>
             {currentHistoryItem && !currentHistoryItem.sourceFileSaved ? (
               <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs font-semibold leading-5 text-amber-950">
-                This saved result was created before source-file persistence. Upload the same full-text file here once to save the source for future 3-AI reviewer reruns.
+                This saved result was created before source-file persistence. Select exactly one matching full-text file, save it to this record, then run the selected AI reviewers on the saved source.
               </p>
             ) : null}
           </div>

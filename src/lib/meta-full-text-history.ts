@@ -311,6 +311,30 @@ export async function replaceMetaFullTextHistoryAnalysis(
   return data.records[index];
 }
 
+export async function updateMetaFullTextSourceFile(
+  id: string,
+  sourceFile: MetaFullTextSourceFile,
+  scope: MetaFullTextHistoryScope = {},
+) {
+  const data = await readHistoryData(scope);
+  const index = data.records.findIndex((record) => record.id === id);
+  if (index < 0) return null;
+  const normalizedSourceFile = normalizeMetaFullTextSourceFile(sourceFile);
+  if (!normalizedSourceFile) return null;
+
+  data.records[index] = {
+    ...data.records[index],
+    fileName: data.records[index].fileName || normalizedSourceFile.fileName,
+    sourceFile: normalizedSourceFile,
+    analysis: {
+      ...data.records[index].analysis,
+      sourceFileSha256: normalizedSourceFile.sha256 || data.records[index].analysis.sourceFileSha256,
+    },
+  };
+  await writeHistoryData(data, scope);
+  return data.records[index];
+}
+
 export async function updateMetaFullTextReviewerSettings(
   settings: Partial<MetaFullTextReviewerSettings>,
   scope: MetaFullTextHistoryScope = {},
