@@ -1229,10 +1229,6 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
 
   async function analyzeFullText() {
     if (analyzingRef.current || files.length === 0) return;
-    if (!reviewerSettingsReady) {
-      setError("Save reviewer 1 and reviewer 2 names before full-text analysis.");
-      return;
-    }
     if (selectedRunnableAiReviewerIds.length === 0) {
       setError("Select at least one ready AI reviewer model before full-text analysis.");
       return;
@@ -1423,7 +1419,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
         </p>
         {!reviewerSettingsReady ? (
           <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs font-semibold leading-5 text-amber-950">
-            Save reviewer names before analysis so each researcher can identify their assigned verification role.
+            Reviewer names are not required to run AI full-text analysis. Save them before final human verification or PI adjudication.
           </p>
         ) : null}
       </section>
@@ -1527,7 +1523,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
           {currentHistoryItem?.sourceFileSaved
             ? `Selected saved source: ${currentHistoryItem.fileName}`
             : currentHistoryItem
-              ? "This selected record is legacy/no source; reupload once before model comparison reruns."
+              ? "This selected record is legacy/no source; use the full-text upload box below once, then future model comparison reruns can use the saved source."
               : "Select a saved full-text record below, then run the checked AI reviewers without reuploading the file."}
         </p>
       </section>
@@ -1757,7 +1753,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
             <button
               type="button"
               onClick={analyzeFullText}
-              disabled={isAnalyzing || files.length === 0 || !reviewerSettingsReady || selectedRunnableAiReviewerIds.length === 0}
+              disabled={isAnalyzing || files.length === 0 || selectedRunnableAiReviewerIds.length === 0}
               className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
             >
               {isAnalyzing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <SearchCheck className="h-4 w-4" aria-hidden />}
@@ -1769,6 +1765,11 @@ export function MetaFullTextAssistant({ extractionColumns, focus, worksheetOptio
             <p className="mt-2 text-xs font-semibold leading-5 text-zinc-600">
               AI reviewer run: {selectedAiReviewerLabel}
             </p>
+            {currentHistoryItem && !currentHistoryItem.sourceFileSaved ? (
+              <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs font-semibold leading-5 text-amber-950">
+                This saved result was created before source-file persistence. Upload the same full-text file here once to save the source for future 3-AI reviewer reruns.
+              </p>
+            ) : null}
           </div>
         </label>
 
