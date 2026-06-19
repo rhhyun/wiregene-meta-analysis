@@ -8,6 +8,7 @@ import {
 } from "./google-drive-storage";
 import type { MetaFullTextAnalysis } from "./meta-full-text-analysis";
 import {
+  deleteMetaFullTextSourceFile,
   normalizeMetaFullTextSourceFile,
   type MetaFullTextSourceFile,
 } from "./meta-full-text-source-files";
@@ -261,6 +262,50 @@ export async function mergeMetaFullTextHistoryAnalysis(
   };
   await writeHistoryData(data, scope);
   return data.records[index];
+}
+
+export async function deleteMetaFullTextHistoryRecord(id: string, scope: MetaFullTextHistoryScope = {}) {
+  const data = await readHistoryData(scope);
+  const index = data.records.findIndex((record) => record.id === id);
+  if (index < 0) return null;
+
+  const [record] = data.records.splice(index, 1);
+  await writeHistoryData(data, scope);
+
+  let sourceFileDeleted = false;
+  let sourceFileDeleteWarning: string | null = null;
+  const sourceFile = normalizeMetaFullTextSourceFile(record.sourceFile);
+  if (sourceFile && !isSourceFileReferencedByRecords(sourceFile, data.records)) {
+    try {
+      const deletedSource = await deleteMetaFullTextSourceFile(sourceFile, scopeProjectId(scope));
+      sourceFileDeleted = deletedSource.deleted;
+      sourceFileDeleteWarning = deletedSource.warning;
+    } catch (error) {
+      sourceFileDeleteWarning = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  return {
+    record,
+    stats: historyStats(data.records),
+    sourceFileDeleted,
+    sourceFileDeleteWarning,
+  };
+}
+
+function isSourceFileReferencedByRecords(sourceFile: MetaFullTextSourceFile, records: MetaFullTextHistoryRecord[]) {
+  const sha256 = cleanString(sourceFile.sha256);
+  const driveFileId = cleanString(sourceFile.driveFileId);
+  const localPath = cleanString(sourceFile.localPath);
+  return records.some((record) => {
+    const current = normalizeMetaFullTextSourceFile(record.sourceFile);
+    if (!current) return false;
+    return Boolean(
+      (sha256 && cleanString(current.sha256) === sha256) ||
+        (driveFileId && cleanString(current.driveFileId) === driveFileId) ||
+        (localPath && cleanString(current.localPath) === localPath),
+    );
+  });
 }
 
 export async function listMetaFullTextHistory(limit = 50, scope: MetaFullTextHistoryScope = {}) {

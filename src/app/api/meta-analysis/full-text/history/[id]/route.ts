@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import {
+  deleteMetaFullTextHistoryRecord,
+  getMetaFullTextHistoryOverview,
   getMetaFullTextHistoryRecord,
   metaFullTextHistoryStorageErrorDetails,
+  summarizeMetaFullTextHistoryRecord,
   updateMetaFullTextVerification,
 } from "@/lib/meta-full-text-history";
 import { cleanMetaProjectId } from "@/lib/meta-project-scope";
@@ -59,6 +62,31 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "Saved full-text verification could not be updated.",
+        details: metaFullTextHistoryStorageErrorDetails(error),
+      },
+      { status: 400 },
+    );
+  }
+}
+
+export async function DELETE(request: Request, context: RouteContext) {
+  const { id } = await context.params;
+  const projectId = cleanMetaProjectId(new URL(request.url).searchParams.get("projectId"));
+
+  try {
+    const deleted = await deleteMetaFullTextHistoryRecord(id, { projectId });
+    if (!deleted) return NextResponse.json({ error: "Saved full-text analysis was not found." }, { status: 404 });
+    const overview = await getMetaFullTextHistoryOverview(500, { projectId });
+    return NextResponse.json({
+      ...overview,
+      deletedRecord: summarizeMetaFullTextHistoryRecord(deleted.record),
+      sourceFileDeleted: deleted.sourceFileDeleted,
+      sourceFileDeleteWarning: deleted.sourceFileDeleteWarning,
+    });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: error instanceof Error ? error.message : "Saved full-text analysis could not be deleted.",
         details: metaFullTextHistoryStorageErrorDetails(error),
       },
       { status: 400 },

@@ -11,6 +11,7 @@ import {
   RefreshCw,
   Save,
   SearchCheck,
+  Trash2,
   UploadCloud,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -277,6 +278,9 @@ async function readHistoryListPayload(response: Response) {
     records: MetaFullTextHistorySummary[];
     reviewerSettings: MetaFullTextReviewerSettings;
     stats: MetaFullTextHistoryStats;
+    deletedRecord?: MetaFullTextHistorySummary;
+    sourceFileDeleted?: boolean;
+    sourceFileDeleteWarning?: string | null;
   };
 }
 
@@ -615,6 +619,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
   const [isReanalyzingSavedSource, setIsReanalyzingSavedSource] = useState(false);
   const [isSavingSourceToHistory, setIsSavingSourceToHistory] = useState(false);
   const [aiReviewerSlots, setAiReviewerSlots] = useState<MetaAiReviewerSlotSummary[]>([]);
+  const [deletingHistoryId, setDeletingHistoryId] = useState<string | null>(null);
   const [selectedAiReviewerIds, setSelectedAiReviewerIds] = useState<string[]>([]);
   const [aiSettingsLoading, setAiSettingsLoading] = useState(true);
   const [aiSettingsError, setAiSettingsError] = useState("");
@@ -999,6 +1004,53 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
       setNotice(`Loaded saved analysis: ${record.fileName}`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Saved full-text analysis could not be loaded.");
+    }
+  }
+
+  async function deleteSavedHistoryRecord(id: string) {
+    const item = historyItems.find((record) => record.id === id);
+    if (!item) {
+      setError("Select a saved full-text record before deleting.");
+      return;
+    }
+    const confirmed = window.confirm(
+      [
+        "Delete this saved full-text analysis record from the database?",
+        "",
+        item.fileName,
+        "",
+        "This removes the saved AI model comparison, reviewer verification, extracted dataset draft, and any unshared stored full-text source file for this record. This cannot be undone.",
+      ].join("\n"),
+    );
+    if (!confirmed) return;
+
+    setDeletingHistoryId(id);
+    setError("");
+    setNotice("");
+    try {
+      const payload = await readHistoryListPayload(
+        await fetch(fullTextHistoryRecordUrl(id, projectId), {
+          method: "DELETE",
+        }),
+      );
+      applyHistoryOverview(payload);
+      if (currentHistoryId === id) {
+        setCurrentHistoryId(null);
+        setAnalysis(null);
+        setReferenceRecord("");
+        resetVerificationState();
+      }
+      setNotice(
+        [
+          `Deleted saved full-text record: ${payload.deletedRecord?.fileName ?? item.fileName}.`,
+          `Saved files: ${payload.stats.totalCount}; verification completed: ${payload.stats.verificationCompletedCount}.`,
+          payload.sourceFileDeleteWarning ? `Source file warning: ${payload.sourceFileDeleteWarning}` : "",
+        ].filter(Boolean).join(" "),
+      );
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Saved full-text analysis could not be deleted.");
+    } finally {
+      setDeletingHistoryId(null);
     }
   }
 
@@ -2058,6 +2110,19 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                     >
                       {isReanalyzingSavedSource || isSavingSourceToHistory ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden />}
                       {savedSourceActionLabel}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void deleteSavedHistoryRecord(currentHistoryItem.id)}
+                      disabled={deletingHistoryId === currentHistoryItem.id || isAnalyzing || isSavingVerification}
+                      className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-rose-300 bg-white px-3 text-xs font-semibold text-rose-800 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:border-zinc-200 disabled:text-zinc-400"
+                    >
+                      {deletingHistoryId === currentHistoryItem.id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                      ) : (
+                        <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                      )}
+                      Delete saved record
                     </button>
                   </div>
                   <p className="mt-2 text-xs font-semibold leading-5 text-emerald-950">{savedSourceActionHelp}</p>

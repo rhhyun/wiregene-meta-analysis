@@ -1,3 +1,46 @@
+# 2026-06-20 saved full-text history deletion
+
+User issue:
+
+- The older AI-model run record around item 33 overlapped with newly uploaded analyses.
+- The user could not proceed because there was no delete button for a mistakenly uploaded or duplicate full-text analysis record.
+- Saved full-text analyses need a DB/storage deletion path, not just visual filtering.
+
+Implemented:
+
+- Added backend deletion support:
+  - `DELETE /api/meta-analysis/full-text/history/[id]`
+  - deletes the saved full-text history record from the project-scoped history store.
+  - returns the refreshed saved-record overview, deleted record summary, and source-file cleanup status.
+- Added `deleteMetaFullTextHistoryRecord` in `src/lib/meta-full-text-history.ts`.
+  - removes the history record.
+  - updates saved/verified counters through the same overview flow.
+  - checks whether the stored source file is still referenced by another record before attempting source cleanup.
+- Added source-file cleanup helpers:
+  - local source files are deleted only if the path is inside configured full-text storage roots.
+  - Google Drive source files can be deleted by id when they are not shared by another saved record.
+  - source cleanup failure is returned as a warning and does not roll back the already-deleted history record.
+- Added UI delete control in `MetaFullTextAssistant`:
+  - select a saved full-text analysis record.
+  - click `Delete saved record`.
+  - confirm the deletion.
+  - the saved list, counts, selected analysis, and verification state update immediately.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.57`
+  - UI label: `Ver 1.92 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed
+npm.cmd run lint: passed
+npm.cmd run build: passed
+```
+
+Operational note:
+
+- This is intended for duplicate/mistaken full-text AI analysis records. The UI requires confirmation because deletion removes AI model comparisons, reviewer verification, extracted dataset draft, and any unshared stored source file for that saved record.
+
 # 2026-06-20 DeepSeek reviewer model-id normalization
 
 User issue:

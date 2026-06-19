@@ -3,6 +3,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import { getGoogleDriveAuthMode } from "./google-drive-config";
 import {
+  deleteGoogleDriveFile,
   getGoogleDriveFileMetadata,
   readBinaryFileFromGoogleDrive,
   writeBinaryFileToGoogleDrive,
@@ -25,6 +26,12 @@ export type MetaFullTextSourceFile = {
   localPath: string | null;
   driveFileId: string | null;
   webViewLink: string | null;
+};
+
+export type MetaFullTextSourceDeleteResult = {
+  deleted: boolean;
+  storage: MetaFullTextSourceFileStorage;
+  warning: string | null;
 };
 
 const defaultSourceFileRoot = ".data/meta/full-text-files";
@@ -156,6 +163,52 @@ export function normalizeMetaFullTextSourceFile(value: unknown): MetaFullTextSou
   };
 }
 
+export async function deleteMetaFullTextSourceFile(
+  sourceFile: MetaFullTextSourceFile,
+  projectId?: string | null,
+): Promise<MetaFullTextSourceDeleteResult> {
+  const normalized = normalizeMetaFullTextSourceFile(sourceFile);
+  if (!normalized) {
+    return { deleted: false, storage: "local-file", warning: "No valid full-text source file metadata was available." };
+  }
+
+  if (normalized.storage === "google-drive") {
+    if (!normalized.driveFileId) {
+      return { deleted: false, storage: normalized.storage, warning: "Saved Google Drive source file id is missing." };
+    }
+    return {
+      deleted: await deleteGoogleDriveFile(normalized.driveFileId),
+      storage: normalized.storage,
+      warning: null,
+    };
+  }
+
+  if (!normalized.localPath) {
+    return { deleted: false, storage: normalized.storage, warning: "Saved local source file path is missing." };
+  }
+
+  const targetPath = path.resolve(/* turbopackIgnore: true */ process.cwd(), normalized.localPath);
+  const allowedRoots = sourceFileAllowedRoots(projectId);
+  const allowed = allowedRoots.some((root) => pathIsInsideOrSame(targetPath, root));
+  if (!allowed) {
+    return {
+      deleted: false,
+      storage: normalized.storage,
+      warning: `Skipped local source file deletion outside configured full-text storage roots: ${normalized.localPath}`,
+    };
+  }
+
+  try {
+    await fs.unlink(targetPath);
+    return { deleted: true, storage: normalized.storage, warning: null };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return { deleted: false, storage: normalized.storage, warning: null };
+    }
+    throw error;
+  }
+}
+
 function sourceStorageBackend(): MetaFullTextSourceFileStorage {
   const configured = process.env.META_FULL_TEXT_SOURCE_STORAGE_BACKEND?.trim().toLowerCase();
   if (configured === "local-file" || configured === "local-files" || configured === "local-json") return "local-file";
@@ -170,6 +223,17 @@ function sourceFileRoot(projectId?: string | null) {
 
   const configured = process.env.META_FULL_TEXT_SOURCE_STORAGE_PATH?.trim();
   return path.resolve(/* turbopackIgnore: true */ process.cwd(), configured || defaultSourceFileRoot);
+}
+
+function sourceFileAllowedRoots(projectId?: string | null) {
+  const roots = [sourceFileRoot(projectId), sourceFileRoot(null)]
+    .map((root) => path.resolve(/* turbopackIgnore: true */ process.cwd(), root));
+  return Array.from(new Set(roots));
+}
+
+function pathIsInsideOrSame(targetPath: string, rootPath: string) {
+  const relative = path.relative(rootPath, targetPath);
+  return relative === "" || Boolean(relative && !relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
 function sourceDriveFileName(storedFileName: string, projectId?: string | null) {

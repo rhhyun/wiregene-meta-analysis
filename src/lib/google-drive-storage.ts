@@ -513,6 +513,19 @@ export async function readBinaryFileFromGoogleDrive(fileId: string) {
   return Buffer.from(await response.arrayBuffer());
 }
 
+export async function deleteGoogleDriveFile(fileId: string) {
+  const normalizedFileId = fileId.trim();
+  if (!normalizedFileId) return false;
+  const url = new URL(`${driveFilesUrl}/${encodeURIComponent(normalizedFileId)}`);
+  url.searchParams.set("supportsAllDrives", "true");
+  const response = await driveFetch(url.toString(), { method: "DELETE" });
+  if (response.status === 404) return false;
+  if (!response.ok && response.status !== 204) {
+    throw new Error(`Google Drive file delete failed: ${response.status} ${await response.text()}`);
+  }
+  return true;
+}
+
 export async function saveReportToGoogleDrive(report: ReportWithItems) {
   const reportFile = await uploadJson(`report-${report.generatedAt.slice(0, 10)}-${report.id}.json`, report);
   const indexFile = await findFileByName(indexFileName);
