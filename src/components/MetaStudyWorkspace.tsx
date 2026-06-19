@@ -161,6 +161,7 @@ type ProjectStorageSummary = {
   synologyPathHint: string | null;
   exists: boolean;
   files: ProjectStorageFileSummary[];
+  warning?: string | null;
 };
 
 type ProjectFileSaveResponse = {
@@ -211,11 +212,41 @@ type UserMetaProjectsResponse = {
   storage?: {
     backend: "local-json" | "google-drive";
     path: string;
+    warning?: string | null;
   };
   error?: string;
 };
 
 const projectFileSavedEventName = "wiregene-meta-project-file-saved";
+
+function isGoogleOauthStorageProblem(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /Google OAuth|invalid_grant|invalid_client|GOOGLE_DRIVE|google-drive|Google Drive/i.test(message);
+}
+
+function storageFallbackNotice(action: string) {
+  return `${action}: Google Drive storage is unavailable, so this screen is staying in browser/local fallback mode. Run the Synology restart command to force Meta storage back to local Docker.`;
+}
+
+function browserFallbackProjectStorage(projectId: string, warning: string): ProjectStorageSummary {
+  const folderName = projectId
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 96) || "project";
+
+  return {
+    projectId,
+    folderName,
+    storageBackend: "local-json",
+    storageRoot: "browser/local fallback",
+    projectPath: "server project storage unavailable",
+    synologyPathHint: null,
+    exists: false,
+    files: [],
+    warning,
+  };
+}
 
 const analysisReadinessRows = [
   ["Overall PRMD prevalence", "현재 61-column template에는 없음; 필요 시 overall_PRMD_n/total 추가", "Template extension candidate"],
@@ -1413,7 +1444,12 @@ export function MetaStudyWorkspace({
       setProjectSyncNotice(`Study list synced to ${storageLabel}.`);
     } catch (caught) {
       setProjectSyncNotice("");
-      setProjectSyncError(caught instanceof Error ? caught.message : "Study list could not be synced to shared storage.");
+      if (isGoogleOauthStorageProblem(caught)) {
+        setProjectSyncError("");
+        setProjectSyncNotice(storageFallbackNotice("Study list sync paused"));
+      } else {
+        setProjectSyncError(caught instanceof Error ? caught.message : "Study list could not be synced to shared storage.");
+      }
     }
   }, []);
 
@@ -1447,7 +1483,12 @@ export function MetaStudyWorkspace({
           return next;
         });
       } catch (caught) {
-        setProjectSyncError(caught instanceof Error ? caught.message : "Shared study list could not be loaded; using this browser only.");
+        if (isGoogleOauthStorageProblem(caught)) {
+          setProjectSyncError("");
+          setProjectSyncNotice(storageFallbackNotice("Study list loaded from this browser"));
+        } else {
+          setProjectSyncError(caught instanceof Error ? caught.message : "Shared study list could not be loaded; using this browser only.");
+        }
       }
     }
 
@@ -1926,7 +1967,14 @@ function ProtocolStage({ project }: { project: MetaStudyProject }) {
         setSharedStateNotice(state.updatedAt ? `Shared state loaded: ${new Date(state.updatedAt).toLocaleString("ko-KR")}` : "Shared state loaded.");
       })
       .catch((caught) => {
-        if (!cancelled) setSharedStateError(caught instanceof Error ? caught.message : "Shared protocol state could not be loaded.");
+        if (!cancelled) {
+          if (isGoogleOauthStorageProblem(caught)) {
+            setSharedStateError("");
+            setSharedStateNotice(storageFallbackNotice("Shared protocol state load paused"));
+          } else {
+            setSharedStateError(caught instanceof Error ? caught.message : "Shared protocol state could not be loaded.");
+          }
+        }
       });
 
     return () => {
@@ -1947,7 +1995,12 @@ function ProtocolStage({ project }: { project: MetaStudyProject }) {
       await saveProjectWorkspaceState(project.id, { protocolDraft: draft });
       setSharedStateNotice(`Shared state saved: ${new Date(nextSavedAt).toLocaleString("ko-KR")}`);
     } catch (caught) {
-      setSharedStateError(caught instanceof Error ? caught.message : "Shared protocol state could not be saved.");
+      if (isGoogleOauthStorageProblem(caught)) {
+        setSharedStateError("");
+        setSharedStateNotice(storageFallbackNotice("Shared protocol state save paused"));
+      } else {
+        setSharedStateError(caught instanceof Error ? caught.message : "Shared protocol state could not be saved.");
+      }
     }
   }
 
@@ -2203,7 +2256,14 @@ function SearchStage({
         }
       })
       .catch((caught) => {
-        if (!cancelled) setSharedStateError(caught instanceof Error ? caught.message : "Shared search state could not be loaded.");
+        if (!cancelled) {
+          if (isGoogleOauthStorageProblem(caught)) {
+            setSharedStateError("");
+            setSharedStateNotice(storageFallbackNotice("Shared search state load paused"));
+          } else {
+            setSharedStateError(caught instanceof Error ? caught.message : "Shared search state could not be loaded.");
+          }
+        }
       });
 
     return () => {
@@ -2218,7 +2278,12 @@ function SearchStage({
         setSharedStateNotice(`Shared search state saved: ${new Date(savedAt).toLocaleString("ko-KR")}`);
       })
       .catch((caught) => {
-        setSharedStateError(caught instanceof Error ? caught.message : "Shared search state could not be saved.");
+        if (isGoogleOauthStorageProblem(caught)) {
+          setSharedStateError("");
+          setSharedStateNotice(storageFallbackNotice("Shared search state save paused"));
+        } else {
+          setSharedStateError(caught instanceof Error ? caught.message : "Shared search state could not be saved.");
+        }
       });
   }
 
@@ -2891,7 +2956,13 @@ function ProjectStoragePanel({ project }: { project: MetaStudyProject }) {
       setStorage(await loadProjectStorage(project.id));
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Project storage could not be loaded.";
-      setError(`Project file storage could not be loaded. ${message}`);
+      if (isGoogleOauthStorageProblem(caught)) {
+        setStorage(browserFallbackProjectStorage(project.id, message));
+        setNotice(storageFallbackNotice("Project file storage fallback"));
+        setError("");
+      } else {
+        setError(`Project file storage could not be loaded. ${message}`);
+      }
     } finally {
       setLoading(false);
     }
@@ -2907,7 +2978,16 @@ function ProjectStoragePanel({ project }: { project: MetaStudyProject }) {
         setError("");
       })
       .catch((caught) => {
-        if (!cancelled) setError(caught instanceof Error ? caught.message : "Project storage could not be loaded.");
+        if (!cancelled) {
+          const message = caught instanceof Error ? caught.message : "Project storage could not be loaded.";
+          if (isGoogleOauthStorageProblem(caught)) {
+            setStorage(browserFallbackProjectStorage(project.id, message));
+            setNotice(storageFallbackNotice("Project file storage fallback"));
+            setError("");
+          } else {
+            setError(message);
+          }
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -3064,6 +3144,12 @@ function ProjectStoragePanel({ project }: { project: MetaStudyProject }) {
         </p>
       ) : null}
 
+      {storage?.warning && !error ? (
+        <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900">
+          {storage.warning}
+        </p>
+      ) : null}
+
       {notice && !error ? (
         <p className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-900">
           {notice}
@@ -3182,7 +3268,7 @@ function ProjectFileSaveButton({
       window.setTimeout(() => setStatus("idle"), 2500);
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Project file could not be saved.";
-      if (isServerlessStorageError(message)) {
+      if (isServerlessStorageError(message) || isGoogleOauthStorageProblem(message)) {
         // Vercel 등 서버리스 환경에서는 브라우저 다운로드로 자동 대체
         downloadFileToBrowser(fileName, text);
         setStatus("downloaded");
@@ -3262,7 +3348,14 @@ function WorkbookFullTextBoard({ project }: { project: MetaStudyProject }) {
         setSharedStateNotice(state.updatedAt ? `Shared board loaded: ${new Date(state.updatedAt).toLocaleString("ko-KR")}` : "Shared board loaded.");
       })
       .catch((caught) => {
-        if (!cancelled) setSharedStateError(caught instanceof Error ? caught.message : "Shared board state could not be loaded.");
+        if (!cancelled) {
+          if (isGoogleOauthStorageProblem(caught)) {
+            setSharedStateError("");
+            setSharedStateNotice(storageFallbackNotice("Shared board state load paused"));
+          } else {
+            setSharedStateError(caught instanceof Error ? caught.message : "Shared board state could not be loaded.");
+          }
+        }
       });
 
     return () => {
@@ -3312,7 +3405,12 @@ function WorkbookFullTextBoard({ project }: { project: MetaStudyProject }) {
       await saveProjectWorkspaceState(project.id, { workbookBoard: board });
       setSharedStateNotice(`Shared board saved: ${new Date(savedAt).toLocaleString("ko-KR")}`);
     } catch (caught) {
-      setSharedStateError(caught instanceof Error ? caught.message : "Shared board state could not be saved.");
+      if (isGoogleOauthStorageProblem(caught)) {
+        setSharedStateError("");
+        setSharedStateNotice(storageFallbackNotice("Shared board state save paused"));
+      } else {
+        setSharedStateError(caught instanceof Error ? caught.message : "Shared board state could not be saved.");
+      }
     }
   }
 

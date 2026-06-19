@@ -36,6 +36,7 @@ export type MetaProjectStorageSummary = {
   synologyPathHint: string | null;
   exists: boolean;
   files: MetaProjectFileSummary[];
+  warning?: string | null;
 };
 
 export type MetaProjectSavedFile = MetaProjectFileSummary & {
@@ -74,6 +75,7 @@ type MetaUserProjectsStorageBackend = "local-json" | "google-drive";
 export type MetaUserProjectsStorageSummary = {
   backend: MetaUserProjectsStorageBackend;
   path: string;
+  warning?: string | null;
 };
 
 export async function readStoredMetaStudyProjects<T extends StoredMetaStudyProjectLike>(): Promise<T[]> {
@@ -121,26 +123,28 @@ export function getMetaUserProjectsStorageSummary(): MetaUserProjectsStorageSumm
 export async function getMetaProjectStorageSummary(projectId: string): Promise<MetaProjectStorageSummary> {
   const folderName = safeProjectFolder(projectId);
   const storageBackend = projectFileStorageBackend();
-  const storageRoot = projectStorageRootForBackend(storageBackend);
-  const projectPath =
-    storageBackend === "google-drive"
-      ? `${storageRoot}/${folderName}`
-      : path.join(/*turbopackIgnore: true*/ storageRoot, folderName);
-  const files =
-    storageBackend === "google-drive"
-      ? await listGoogleDriveProjectFiles(folderName)
-      : await listLocalProjectFiles(projectPath);
+  if (storageBackend === "google-drive") {
+    const storageRoot = projectStorageRootForBackend(storageBackend);
+    const projectPath = `${storageRoot}/${folderName}`;
+    try {
+      const files = await listGoogleDriveProjectFiles(folderName);
+      return {
+        projectId,
+        folderName,
+        storageBackend,
+        storageRoot,
+        projectPath,
+        synologyPathHint: null,
+        exists: files !== null,
+        files: files ?? [],
+      };
+    } catch (error) {
+      if (!isRecoverableGoogleDriveStorageError(error)) throw error;
+      return localProjectStorageSummary(projectId, googleDriveFallbackWarning(error));
+    }
+  }
 
-  return {
-    projectId,
-    folderName,
-    storageBackend,
-    storageRoot,
-    projectPath,
-    synologyPathHint: storageBackend === "google-drive" ? null : synologyProjectPathHint(folderName),
-    exists: files !== null,
-    files: files ?? [],
-  };
+  return localProjectStorageSummary(projectId);
 }
 
 export async function saveMetaProjectTextFile(input: {
@@ -171,20 +175,39 @@ export async function saveMetaProjectTextFile(input: {
 
   if (storageBackend === "google-drive") {
     ensureGoogleDriveProjectStorageConfigured("write");
-    await writeTextFileToGoogleDrive(projectDriveFileName(folderName, fileName), contents);
-    return {
-      projectId: input.projectId,
-      folderName,
-      storageRoot,
-      projectPath,
-      synologyPathHint: null,
-      storageBackend,
-      fileName,
-      path: targetPath,
-      bytes: Buffer.byteLength(contents, "utf8"),
-      updatedAt: new Date().toISOString(),
-    };
+    try {
+      await writeTextFileToGoogleDrive(projectDriveFileName(folderName, fileName), contents);
+      return {
+        projectId: input.projectId,
+        folderName,
+        storageRoot,
+        projectPath,
+        synologyPathHint: null,
+        storageBackend,
+        fileName,
+        path: targetPath,
+        bytes: Buffer.byteLength(contents, "utf8"),
+        updatedAt: new Date().toISOString(),
+      };
+    } catch (error) {
+      if (!isRecoverableGoogleDriveStorageError(error) || isServerlessRuntime()) throw error;
+      return saveLocalMetaProjectTextFile(input.projectId, folderName, fileName, contents);
+    }
   }
+
+  return saveLocalMetaProjectTextFile(input.projectId, folderName, fileName, contents);
+}
+
+async function saveLocalMetaProjectTextFile(
+  projectId: string,
+  folderName: string,
+  fileName: string,
+  contents: string,
+): Promise<MetaProjectSavedFile> {
+  const storageBackend: MetaProjectStorageBackend = "local-json";
+  const storageRoot = projectStorageRootForBackend(storageBackend);
+  const projectPath = path.join(/*turbopackIgnore: true*/ storageRoot, folderName);
+  const targetPath = path.join(/*turbopackIgnore: true*/ projectPath, fileName);
 
   if (isServerlessRuntime()) {
     throw new Error(
@@ -197,7 +220,7 @@ export async function saveMetaProjectTextFile(input: {
 
   const stats = await fs.stat(targetPath);
   return {
-    projectId: input.projectId,
+    projectId,
     folderName,
     storageRoot,
     projectPath,
@@ -216,9 +239,18 @@ export async function readMetaProjectTextFile(projectId: string, fileName: strin
   const storageBackend = projectFileStorageBackend();
   if (storageBackend === "google-drive") {
     ensureGoogleDriveProjectStorageConfigured("read");
-    return readTextFileFromGoogleDrive(projectDriveFileName(folderName, safeFileName));
+    try {
+      return await readTextFileFromGoogleDrive(projectDriveFileName(folderName, safeFileName));
+    } catch (error) {
+      if (!isRecoverableGoogleDriveStorageError(error)) throw error;
+      return readLocalMetaProjectTextFile(folderName, safeFileName);
+    }
   }
 
+  return readLocalMetaProjectTextFile(folderName, safeFileName);
+}
+
+async function readLocalMetaProjectTextFile(folderName: string, safeFileName: string) {
   try {
     return await fs.readFile(path.join(/*turbopackIgnore: true*/ projectStorageRoot(), folderName, safeFileName), "utf8");
   } catch (error) {
@@ -330,9 +362,18 @@ function userProjectsStorageLocation() {
 async function readUserProjectsStorageText() {
   if (userProjectsStorageBackend() === "google-drive") {
     ensureGoogleDriveUserProjectsStorageConfigured("read");
-    return readTextFileFromGoogleDrive(userProjectsDriveFileName(), userProjectsDriveFileId());
+    try {
+      return await readTextFileFromGoogleDrive(userProjectsDriveFileName(), userProjectsDriveFileId());
+    } catch (error) {
+      if (!isRecoverableGoogleDriveStorageError(error)) throw error;
+      return readLocalUserProjectsStorageText();
+    }
   }
 
+  return readLocalUserProjectsStorageText();
+}
+
+async function readLocalUserProjectsStorageText() {
   try {
     return await fs.readFile(userProjectsFilePath(), "utf8");
   } catch (error) {
@@ -344,10 +385,19 @@ async function readUserProjectsStorageText() {
 async function writeUserProjectsStorageText(contents: string) {
   if (userProjectsStorageBackend() === "google-drive") {
     ensureGoogleDriveUserProjectsStorageConfigured("write");
-    await writeTextFileToGoogleDrive(userProjectsDriveFileName(), contents, userProjectsDriveFileId());
+    try {
+      await writeTextFileToGoogleDrive(userProjectsDriveFileName(), contents, userProjectsDriveFileId());
+    } catch (error) {
+      if (!isRecoverableGoogleDriveStorageError(error) || isServerlessRuntime()) throw error;
+      await writeLocalUserProjectsStorageText(contents);
+    }
     return;
   }
 
+  await writeLocalUserProjectsStorageText(contents);
+}
+
+async function writeLocalUserProjectsStorageText(contents: string) {
   const filePath = userProjectsFilePath();
   if (isServerlessRuntime()) {
     throw new Error(
@@ -494,6 +544,26 @@ async function listGoogleDriveProjectFiles(folderName: string) {
     }));
 }
 
+async function localProjectStorageSummary(projectId: string, warning: string | null = null): Promise<MetaProjectStorageSummary> {
+  const folderName = safeProjectFolder(projectId);
+  const storageBackend: MetaProjectStorageBackend = "local-json";
+  const storageRoot = projectStorageRootForBackend(storageBackend);
+  const projectPath = path.join(/*turbopackIgnore: true*/ storageRoot, folderName);
+  const files = await listLocalProjectFiles(projectPath);
+
+  return {
+    projectId,
+    folderName,
+    storageBackend,
+    storageRoot,
+    projectPath,
+    synologyPathHint: synologyProjectPathHint(folderName),
+    exists: files !== null,
+    files: files ?? [],
+    warning,
+  };
+}
+
 async function listLocalProjectFiles(projectPath: string) {
   let entries: Dirent<string>[];
   try {
@@ -572,6 +642,16 @@ function metaGoogleDriveStorageAllowed() {
   if (isServerlessRuntime()) return true;
   const configured = (process.env.META_ALLOW_GOOGLE_DRIVE_STORAGE ?? "").trim().toLowerCase();
   return ["1", "true", "yes", "on"].includes(configured);
+}
+
+function isRecoverableGoogleDriveStorageError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /Google OAuth|invalid_grant|invalid_client|google-drive|Google Drive/i.test(message);
+}
+
+function googleDriveFallbackWarning(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return `Google Drive storage is unavailable, so Meta is using local storage fallback for this request. ${message}`;
 }
 
 export async function parseRequestJson(request: Request): Promise<unknown> {

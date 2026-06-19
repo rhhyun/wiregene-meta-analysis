@@ -1,3 +1,37 @@
+# 2026-06-20 Google OAuth failure UI/API fallback for Meta workspace
+
+User issue:
+
+- The Meta page still displayed Google OAuth `invalid_grant` errors after the previous storage hardening.
+- The screenshot showed `Loading...` for storage mode, proving part of the new UI had deployed, but the storage API still surfaced Google OAuth failures.
+- The app needs to remain usable even if stale Google OAuth credentials exist or the server is temporarily running an older runtime configuration.
+
+Implemented:
+
+- Added API-level Google Drive fallback in `src/lib/meta-project-storage.ts`:
+  - project file storage list falls back to local storage summary when Google Drive read fails with OAuth/config errors.
+  - project text file read falls back to local project files when Google Drive read fails.
+  - project text file write retries local storage on local Docker when Google Drive write fails.
+  - user study project list read falls back to local storage when Google Drive read fails.
+  - user study project list write retries local storage on local Docker when Google Drive write fails.
+- Added warning propagation on project storage summaries instead of throwing a blocking red error.
+- Added client-level fallback in `MetaStudyWorkspace`:
+  - study list load/sync OAuth failures become a local/browser fallback notice instead of a red sidebar error.
+  - Project file storage OAuth failures render a local/browser fallback summary instead of blocking the panel.
+  - protocol/search/workbook shared-state OAuth failures become fallback notices instead of red errors.
+  - project file save buttons download the CSV/JSON/TXT/MD to the browser when Google/server storage is unavailable.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.62`
+  - UI label: `Ver 1.97 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed
+npm.cmd run lint: passed
+npm.cmd run build: passed
+```
+
 # 2026-06-20 hard-stop Meta Google Drive storage on local Docker
 
 User issue:
