@@ -1,3 +1,27 @@
+# 2026-06-19 explicit legacy source storage explanation
+
+Clarification:
+
+- If saved records show `legacy/no source`, the original full-text article files are not stored.
+- Those records contain the previous analysis result and metadata only.
+- To apply new AI models to those records, the matching PDF/Word full-text article must be uploaded once and attached to the selected saved record.
+
+Implemented:
+
+- Added Korean explanation in the AI reviewer panel: the `legacy/no source` count means PDF/Word originals are not stored.
+- Added Korean explanation above the saved full-text list when legacy records exist.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.52`
+  - UI label: `Ver 1.87 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed.
+npm.cmd run lint: passed.
+npm.cmd run build: passed.
+```
+
 # 2026-06-19 saved-source rerun button state fix
 
 User issue:

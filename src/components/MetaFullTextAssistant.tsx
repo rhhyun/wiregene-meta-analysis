@@ -1683,6 +1683,12 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
           </div>
         </div>
         <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-950">
+          <span className="block text-sm text-amber-950">
+            원문 full-text 파일 저장 상태: legacy/no source {historyDecisionCounts.legacy_source.toLocaleString("ko-KR")}개는 PDF/Word 원문이 저장되어 있지 않습니다.
+          </span>
+          <span className="mt-1 block text-amber-900">
+            새 AI model로 다시 분석하려면 기존 저장 논문을 하나 선택한 뒤, 해당 full-text article을 한 번 업로드해서 그 기록에 연결해야 합니다.
+          </span>
           Existing GPT-5-nano legacy rerun: select a `legacy/no source` saved record, choose the matching full-text file once, save the source to that record, then run the selected AI reviewers on the saved full text.
           <span className="mt-1 block text-amber-900">Current button action: {savedSourceActionLabel}.</span>
         </div>
@@ -1714,6 +1720,11 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
         {historyError ? (
           <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-950">
             {historyError}
+          </div>
+        ) : null}
+        {historyDecisionCounts.legacy_source > 0 ? (
+          <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm font-semibold leading-6 text-amber-950">
+            현재 저장된 분석 결과 중 {historyDecisionCounts.legacy_source.toLocaleString("ko-KR")}개는 `legacy/no source`입니다. 이 기록들은 GPT-5-nano 분석 결과만 저장되어 있고 원문 PDF/Word full-text 파일은 저장되어 있지 않습니다. 새 AI model을 적용하려면 각 논문 기록을 선택하고 matching full-text article을 한 번 업로드해 source를 연결해야 합니다.
           </div>
         ) : null}
         {historySheetProgress.length > 0 ? (
