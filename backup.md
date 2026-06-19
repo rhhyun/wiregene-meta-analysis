@@ -1,3 +1,33 @@
+# 2026-06-19 saved-source rerun button state fix
+
+User issue:
+
+- The `Run selected AI reviewers on saved full text` button remained grey with no explanation.
+- In practice the button was enabled only when a saved record had `sourceFileSaved=true`, but most existing `gpt-5-nano` records were `legacy/no source`.
+- The user should not have to infer the enablement rules.
+
+Implemented:
+
+- Replaced the single static disabled rerun button with a state-aware action:
+  - No saved record selected: `Select a saved record first`.
+  - No ready AI reviewer selected: `Select ready AI reviewers first`.
+  - Legacy/no source record selected but no file chosen: `Choose one matching file for this legacy record`.
+  - Legacy/no source record selected and exactly one file chosen: `Save source, then run selected AI reviewers`.
+  - Source already saved: `Run selected AI reviewers on saved full text`.
+- The same state-aware action is used in the AI reviewer panel and selected-record detail card.
+- Added visible `Current button action: ...` text below the legacy rerun workflow note.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.51`
+  - UI label: `Ver 1.86 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed.
+npm.cmd run lint: passed.
+npm.cmd run build: passed.
+```
+
 # 2026-06-19 legacy rerun UI visibility and Google Drive binary upload fix
 
 User issue:

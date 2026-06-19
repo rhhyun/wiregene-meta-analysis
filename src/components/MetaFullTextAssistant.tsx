@@ -604,6 +604,22 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
       !isAnalyzing &&
       !isSavingSourceToHistory,
   );
+  const savedSourceActionDisabled =
+    isReanalyzingSavedSource ||
+    isSavingSourceToHistory ||
+    selectedRunnableAiReviewerIds.length === 0 ||
+    !currentHistoryItem ||
+    (!currentHistoryItem.sourceFileSaved && !canSaveSourceToLegacyRecord);
+  const savedSourceActionLabel =
+    selectedRunnableAiReviewerIds.length === 0
+      ? "Select ready AI reviewers first"
+      : !currentHistoryItem
+        ? "Select a saved record first"
+        : currentHistoryItem.sourceFileSaved
+          ? "Run selected AI reviewers on saved full text"
+          : canSaveSourceToLegacyRecord
+            ? "Save source, then run selected AI reviewers"
+            : "Choose one matching file for this legacy record";
   const aiOnlyVerificationMode = verificationMode === "ai_only";
   const historyDecisionCounts = useMemo(
     () => ({
@@ -1133,7 +1149,27 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
     }
   }
 
-  async function saveSourceToSelectedHistory() {
+  async function runSavedSourceAction() {
+    if (!currentHistoryItem) {
+      setError("Select a saved full-text record first.");
+      return;
+    }
+    if (selectedRunnableAiReviewerIds.length === 0) {
+      setError("Select at least one ready AI reviewer model first.");
+      return;
+    }
+    if (currentHistoryItem.sourceFileSaved) {
+      await reanalyzeSavedSource();
+      return;
+    }
+    if (!canSaveSourceToLegacyRecord) {
+      setError("This legacy record needs exactly one matching full-text file selected before AI rerun.");
+      return;
+    }
+    await saveSourceToSelectedHistory({ rerunAfterSave: true });
+  }
+
+  async function saveSourceToSelectedHistory(options: { rerunAfterSave?: boolean } = {}) {
     if (!currentHistoryId || !currentHistoryItem) {
       setError("Select the saved legacy full-text record before saving a source file.");
       return;
@@ -1204,6 +1240,11 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
       applyHistoryOverview(overview);
       setFiles([]);
       setBatchResults([]);
+      if (options.rerunAfterSave) {
+        setNotice(`Source saved to legacy record: ${record.fileName}. Running selected AI reviewers now.`);
+        await reanalyzeSavedSource();
+        return;
+      }
       setNotice(
         `Source saved to legacy record: ${record.fileName}. You can now run the selected AI reviewers on the saved full text without reuploading.`,
       );
@@ -1632,21 +1673,18 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
             ) : null}
             <button
               type="button"
-              onClick={() => void reanalyzeSavedSource()}
-              disabled={
-                isReanalyzingSavedSource ||
-                !currentHistoryItem?.sourceFileSaved ||
-                selectedRunnableAiReviewerIds.length === 0
-              }
+              onClick={() => void runSavedSourceAction()}
+              disabled={savedSourceActionDisabled}
               className="inline-flex h-8 items-center justify-center gap-2 rounded-md bg-emerald-700 px-3 text-xs font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
             >
-              {isReanalyzingSavedSource ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden />}
-              Run selected AI reviewers on saved full text
+              {isReanalyzingSavedSource || isSavingSourceToHistory ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden />}
+              {savedSourceActionLabel}
             </button>
           </div>
         </div>
         <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-950">
           Existing GPT-5-nano legacy rerun: select a `legacy/no source` saved record, choose the matching full-text file once, save the source to that record, then run the selected AI reviewers on the saved full text.
+          <span className="mt-1 block text-amber-900">Current button action: {savedSourceActionLabel}.</span>
         </div>
         <p className="mt-2 text-xs font-semibold leading-5 text-zinc-600">
           {currentHistoryItem?.sourceFileSaved
@@ -1842,16 +1880,12 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                     ) : null}
                     <button
                       type="button"
-                      onClick={() => void reanalyzeSavedSource()}
-                      disabled={
-                        isReanalyzingSavedSource ||
-                        !currentHistoryItem.sourceFileSaved ||
-                        selectedRunnableAiReviewerIds.length === 0
-                      }
+                      onClick={() => void runSavedSourceAction()}
+                      disabled={savedSourceActionDisabled}
                       className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-emerald-300 bg-white px-3 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:border-zinc-200 disabled:text-zinc-400"
                     >
-                      {isReanalyzingSavedSource ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden />}
-                      Run selected AI on saved full text
+                      {isReanalyzingSavedSource || isSavingSourceToHistory ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden />}
+                      {savedSourceActionLabel}
                     </button>
                   </div>
                   <p className="text-xs font-medium leading-5 text-zinc-600">
