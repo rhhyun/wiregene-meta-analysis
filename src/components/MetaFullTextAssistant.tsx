@@ -279,8 +279,11 @@ async function readHistoryListPayload(response: Response) {
     reviewerSettings: MetaFullTextReviewerSettings;
     stats: MetaFullTextHistoryStats;
     deletedRecord?: MetaFullTextHistorySummary;
+    deletedRecords?: MetaFullTextHistorySummary[];
     sourceFileDeleted?: boolean;
+    sourceFileDeletedCount?: number;
     sourceFileDeleteWarning?: string | null;
+    sourceFileDeleteWarnings?: string[];
   };
 }
 
@@ -620,6 +623,8 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
   const [isSavingSourceToHistory, setIsSavingSourceToHistory] = useState(false);
   const [aiReviewerSlots, setAiReviewerSlots] = useState<MetaAiReviewerSlotSummary[]>([]);
   const [deletingHistoryId, setDeletingHistoryId] = useState<string | null>(null);
+  const [selectedHistoryIdsForDelete, setSelectedHistoryIdsForDelete] = useState<string[]>([]);
+  const [isBatchDeletingHistory, setIsBatchDeletingHistory] = useState(false);
   const [selectedAiReviewerIds, setSelectedAiReviewerIds] = useState<string[]>([]);
   const [aiSettingsLoading, setAiSettingsLoading] = useState(true);
   const [aiSettingsError, setAiSettingsError] = useState("");
@@ -763,6 +768,17 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
       }),
     [historyFilter, historyItems],
   );
+  const selectedHistoryDeleteSet = useMemo(
+    () => new Set(selectedHistoryIdsForDelete),
+    [selectedHistoryIdsForDelete],
+  );
+  const visibleHistoryIds = useMemo(() => filteredHistoryItems.map((item) => item.id), [filteredHistoryItems]);
+  const selectedVisibleHistoryDeleteCount = useMemo(
+    () => visibleHistoryIds.filter((id) => selectedHistoryDeleteSet.has(id)).length,
+    [selectedHistoryDeleteSet, visibleHistoryIds],
+  );
+  const allVisibleHistorySelectedForDelete =
+    visibleHistoryIds.length > 0 && selectedVisibleHistoryDeleteCount === visibleHistoryIds.length;
   const analyzeButtonLabel = isAnalyzing
     ? "Analyzing"
     : currentHistoryItem && !currentHistoryItem.sourceFileSaved && files.length === 1
@@ -911,6 +927,10 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
     stats?: MetaFullTextHistoryStats;
   }) => {
     setHistoryItems(payload.records);
+    setSelectedHistoryIdsForDelete((current) => {
+      const validIds = new Set(payload.records.map((record) => record.id));
+      return current.filter((id) => validIds.has(id));
+    });
     if (payload.stats) setHistoryStats(payload.stats);
     if (payload.reviewerSettings) {
       setReviewerOneName(payload.reviewerSettings.reviewerOneName);
@@ -1007,6 +1027,25 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
     }
   }
 
+  function toggleHistoryDeleteSelection(id: string, checked: boolean) {
+    setSelectedHistoryIdsForDelete((current) => {
+      if (checked) return Array.from(new Set([...current, id]));
+      return current.filter((currentId) => currentId !== id);
+    });
+  }
+
+  function toggleVisibleHistoryDeleteSelection(checked: boolean) {
+    setSelectedHistoryIdsForDelete((current) => {
+      const visibleIds = new Set(visibleHistoryIds);
+      if (!checked) return current.filter((id) => !visibleIds.has(id));
+      return Array.from(new Set([...current, ...visibleHistoryIds]));
+    });
+  }
+
+  function clearHistoryDeleteSelection() {
+    setSelectedHistoryIdsForDelete([]);
+  }
+
   async function deleteSavedHistoryRecord(id: string) {
     const item = historyItems.find((record) => record.id === id);
     if (!item) {
@@ -1034,6 +1073,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
         }),
       );
       applyHistoryOverview(payload);
+      setSelectedHistoryIdsForDelete((current) => current.filter((currentId) => currentId !== id));
       if (currentHistoryId === id) {
         setCurrentHistoryId(null);
         setAnalysis(null);
@@ -1051,6 +1091,76 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
       setError(caught instanceof Error ? caught.message : "Saved full-text analysis could not be deleted.");
     } finally {
       setDeletingHistoryId(null);
+    }
+  }
+
+  async function deleteSelectedHistoryRecords() {
+    const selectedIds = selectedHistoryIdsForDelete.filter((id) => historyItems.some((item) => item.id === id));
+    if (selectedIds.length === 0) {
+      setError("Select saved full-text records before batch deletion.");
+      return;
+    }
+
+    const selectedItems = historyItems.filter((item) => selectedIds.includes(item.id));
+    const preview = selectedItems
+      .slice(0, 6)
+      .map((item) => `- ${item.fileName}`)
+      .join("\n");
+    const remainingCount = selectedItems.length > 6 ? `\n...and ${selectedItems.length - 6} more` : "";
+    const confirmed = window.confirm(
+      [
+        `Delete ${selectedItems.length.toLocaleString("ko-KR")} selected saved full-text analysis record(s) from the database?`,
+        "",
+        preview + remainingCount,
+        "",
+        "This removes saved AI model comparisons, reviewer verification, extracted dataset drafts, and any unshared stored full-text source files for the selected records. This cannot be undone.",
+      ].join("\n"),
+    );
+    if (!confirmed) return;
+
+    setIsBatchDeletingHistory(true);
+    setError("");
+    setNotice("");
+    try {
+      const payload = await readHistoryListPayload(
+        await fetch(fullTextHistoryListUrl(projectId), {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectId,
+            ids: selectedIds,
+          }),
+        }),
+      );
+      applyHistoryOverview(payload);
+      clearHistoryDeleteSelection();
+
+      if (currentHistoryId && selectedIds.includes(currentHistoryId)) {
+        setCurrentHistoryId(null);
+        setAnalysis(null);
+        setReferenceRecord("");
+        resetVerificationState();
+      }
+
+      const deletedCount = payload.deletedRecords?.length ?? selectedItems.length;
+      const sourceDeletedCount = payload.sourceFileDeletedCount ?? (payload.sourceFileDeleted ? 1 : 0);
+      const sourceWarnings = payload.sourceFileDeleteWarnings?.length
+        ? ` Source file warnings: ${payload.sourceFileDeleteWarnings.join(" / ")}`
+        : payload.sourceFileDeleteWarning
+          ? ` Source file warning: ${payload.sourceFileDeleteWarning}`
+          : "";
+      setNotice(
+        [
+          `Deleted ${deletedCount.toLocaleString("ko-KR")} saved full-text record(s).`,
+          `Saved files: ${payload.stats.totalCount}; verification completed: ${payload.stats.verificationCompletedCount}.`,
+          `Source files deleted: ${sourceDeletedCount}.`,
+          sourceWarnings,
+        ].filter(Boolean).join(" "),
+      );
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Selected saved full-text analyses could not be deleted.");
+    } finally {
+      setIsBatchDeletingHistory(false);
     }
   }
 
@@ -2012,55 +2122,104 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                   </span>
                   <span>{historyItems.filter((item) => item.verificationComplete).length.toLocaleString("ko-KR")} verified</span>
                 </div>
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-md border border-zinc-200 bg-white px-3 py-2">
+                  <label className="inline-flex items-center gap-2 text-xs font-semibold text-zinc-700">
+                    <input
+                      type="checkbox"
+                      checked={allVisibleHistorySelectedForDelete}
+                      disabled={visibleHistoryIds.length === 0 || isBatchDeletingHistory}
+                      onChange={(event) => toggleVisibleHistoryDeleteSelection(event.target.checked)}
+                      className="h-4 w-4 rounded border-zinc-300 text-emerald-700 focus:ring-emerald-600"
+                    />
+                    Select shown ({selectedVisibleHistoryDeleteCount.toLocaleString("ko-KR")}/{visibleHistoryIds.length.toLocaleString("ko-KR")})
+                  </label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={clearHistoryDeleteSelection}
+                      disabled={selectedHistoryIdsForDelete.length === 0 || isBatchDeletingHistory}
+                      className="inline-flex h-8 items-center justify-center rounded-md border border-zinc-200 bg-white px-3 text-xs font-semibold text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:text-zinc-400"
+                    >
+                      Clear selection
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void deleteSelectedHistoryRecords()}
+                      disabled={selectedHistoryIdsForDelete.length === 0 || isBatchDeletingHistory || isAnalyzing || isSavingVerification}
+                      className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-rose-300 bg-white px-3 text-xs font-semibold text-rose-800 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:border-zinc-200 disabled:text-zinc-400"
+                    >
+                      {isBatchDeletingHistory ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                      ) : (
+                        <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                      )}
+                      Delete selected ({selectedHistoryIdsForDelete.length.toLocaleString("ko-KR")})
+                    </button>
+                  </div>
+                </div>
                 <div className="mt-2 max-h-[34rem] overflow-y-auto rounded-md border border-zinc-200 bg-zinc-50">
                   <div className="divide-y divide-zinc-200">
                     {filteredHistoryItems.map((item, index) => {
                       const selected = item.id === currentHistoryId;
                       return (
-                        <button
+                        <div
                           key={item.id}
-                          type="button"
-                          onClick={() => void loadSavedAnalysis(item.id)}
-                          aria-pressed={selected}
                           className={`grid w-full gap-2 px-3 py-3 text-left transition hover:bg-emerald-50 ${
                             selected ? "bg-emerald-50 ring-1 ring-inset ring-emerald-200" : "bg-white"
                           }`}
                         >
-                          <div className="flex items-start justify-between gap-3">
-                            <p className="min-w-0 truncate text-sm font-semibold text-zinc-950">
-                              {index + 1}. {item.fileName}
-                            </p>
-                            <span
-                              className={`shrink-0 rounded-md px-2 py-1 text-xs font-semibold ${
-                                item.verificationComplete ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-900"
-                              }`}
+                          <div className="flex items-start gap-3">
+                            <input
+                              type="checkbox"
+                              checked={selectedHistoryDeleteSet.has(item.id)}
+                              disabled={isBatchDeletingHistory}
+                              aria-label={`Select ${item.fileName} for deletion`}
+                              onChange={(event) => toggleHistoryDeleteSelection(item.id, event.target.checked)}
+                              className="mt-1 h-4 w-4 shrink-0 rounded border-zinc-300 text-rose-700 focus:ring-rose-600"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => void loadSavedAnalysis(item.id)}
+                              aria-pressed={selected}
+                              className="min-w-0 flex-1 text-left"
                             >
-                              {item.verificationComplete ? "verified" : "pending"}
-                            </span>
+                              <div className="flex items-start justify-between gap-3">
+                                <p className="min-w-0 truncate text-sm font-semibold text-zinc-950">
+                                  {index + 1}. {item.fileName}
+                                </p>
+                                <span
+                                  className={`shrink-0 rounded-md px-2 py-1 text-xs font-semibold ${
+                                    item.verificationComplete ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-900"
+                                  }`}
+                                >
+                                  {item.verificationComplete ? "verified" : "pending"}
+                                </span>
+                              </div>
+                              <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold text-zinc-600">
+                                <span className="rounded-md bg-zinc-100 px-2 py-1">{item.sourceSheet ?? "no sheet"}</span>
+                                <span className="rounded-md bg-zinc-100 px-2 py-1">{decisionLabel(item.decision)}</span>
+                                <span className="rounded-md bg-zinc-100 px-2 py-1">confidence {item.confidence}</span>
+                                <span className="rounded-md bg-zinc-100 px-2 py-1">
+                                  {item.verificationMode === "ai_only" ? "AI-only verification" : "2-reviewer verification"}
+                                </span>
+                                <span className="rounded-md bg-zinc-100 px-2 py-1">
+                                  {item.sourceFileSaved ? `source saved: ${item.sourceStorage}` : "legacy/no source"}
+                                </span>
+                                <span
+                                  className={`rounded-md px-2 py-1 ${
+                                    item.aiModelReviewCount >= aiComparisonProgress.target
+                                      ? "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-100"
+                                      : "bg-amber-50 text-amber-900 ring-1 ring-amber-100"
+                                  }`}
+                                >
+                                  AI reviews {item.aiModelReviewCount}/{aiComparisonProgress.target}
+                                </span>
+                                <span className="rounded-md bg-zinc-100 px-2 py-1">{new Date(item.savedAt).toLocaleString("ko-KR")}</span>
+                              </div>
+                              {item.titleGuess ? <p className="mt-2 line-clamp-2 text-xs leading-5 text-zinc-500">{item.titleGuess}</p> : null}
+                            </button>
                           </div>
-                          <div className="flex flex-wrap gap-2 text-xs font-semibold text-zinc-600">
-                            <span className="rounded-md bg-zinc-100 px-2 py-1">{item.sourceSheet ?? "no sheet"}</span>
-                            <span className="rounded-md bg-zinc-100 px-2 py-1">{decisionLabel(item.decision)}</span>
-                            <span className="rounded-md bg-zinc-100 px-2 py-1">confidence {item.confidence}</span>
-                            <span className="rounded-md bg-zinc-100 px-2 py-1">
-                              {item.verificationMode === "ai_only" ? "AI-only verification" : "2-reviewer verification"}
-                            </span>
-                            <span className="rounded-md bg-zinc-100 px-2 py-1">
-                              {item.sourceFileSaved ? `source saved: ${item.sourceStorage}` : "legacy/no source"}
-                            </span>
-                            <span
-                              className={`rounded-md px-2 py-1 ${
-                                item.aiModelReviewCount >= aiComparisonProgress.target
-                                  ? "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-100"
-                                  : "bg-amber-50 text-amber-900 ring-1 ring-amber-100"
-                              }`}
-                            >
-                              AI reviews {item.aiModelReviewCount}/{aiComparisonProgress.target}
-                            </span>
-                            <span className="rounded-md bg-zinc-100 px-2 py-1">{new Date(item.savedAt).toLocaleString("ko-KR")}</span>
-                          </div>
-                          {item.titleGuess ? <p className="line-clamp-2 text-xs leading-5 text-zinc-500">{item.titleGuess}</p> : null}
-                        </button>
+                        </div>
                       );
                     })}
                     {filteredHistoryItems.length === 0 ? (
@@ -2114,7 +2273,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                     <button
                       type="button"
                       onClick={() => void deleteSavedHistoryRecord(currentHistoryItem.id)}
-                      disabled={deletingHistoryId === currentHistoryItem.id || isAnalyzing || isSavingVerification}
+                      disabled={deletingHistoryId === currentHistoryItem.id || isBatchDeletingHistory || isAnalyzing || isSavingVerification}
                       className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-rose-300 bg-white px-3 text-xs font-semibold text-rose-800 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:border-zinc-200 disabled:text-zinc-400"
                     >
                       {deletingHistoryId === currentHistoryItem.id ? (

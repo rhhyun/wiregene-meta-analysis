@@ -265,32 +265,77 @@ export async function mergeMetaFullTextHistoryAnalysis(
 }
 
 export async function deleteMetaFullTextHistoryRecord(id: string, scope: MetaFullTextHistoryScope = {}) {
-  const data = await readHistoryData(scope);
-  const index = data.records.findIndex((record) => record.id === id);
-  if (index < 0) return null;
+  const deleted = await deleteMetaFullTextHistoryRecords([id], scope);
+  if (!deleted || deleted.records.length === 0) return null;
 
-  const [record] = data.records.splice(index, 1);
+  return {
+    record: deleted.records[0],
+    stats: deleted.stats,
+    sourceFileDeleted: deleted.sourceFileDeletedCount > 0,
+    sourceFileDeleteWarning: deleted.sourceFileDeleteWarnings[0] ?? null,
+  };
+}
+
+export async function deleteMetaFullTextHistoryRecords(ids: string[], scope: MetaFullTextHistoryScope = {}) {
+  const requestedIds = Array.from(new Set(ids.map(cleanString).filter(Boolean)));
+  if (requestedIds.length === 0) return null;
+
+  const idSet = new Set(requestedIds);
+  const data = await readHistoryData(scope);
+  const records: MetaFullTextHistoryRecord[] = [];
+  const remainingRecords: MetaFullTextHistoryRecord[] = [];
+
+  for (const record of data.records) {
+    if (idSet.has(record.id)) {
+      records.push(record);
+    } else {
+      remainingRecords.push(record);
+    }
+  }
+
+  if (records.length === 0) return null;
+
+  data.records = remainingRecords;
   await writeHistoryData(data, scope);
 
-  let sourceFileDeleted = false;
-  let sourceFileDeleteWarning: string | null = null;
-  const sourceFile = normalizeMetaFullTextSourceFile(record.sourceFile);
-  if (sourceFile && !isSourceFileReferencedByRecords(sourceFile, data.records)) {
+  const seenSourceFileKeys = new Set<string>();
+  const sourceFileDeleteWarnings: string[] = [];
+  let sourceFileDeletedCount = 0;
+
+  for (const record of records) {
+    const sourceFile = normalizeMetaFullTextSourceFile(record.sourceFile);
+    if (!sourceFile) continue;
+
+    const sourceFileKey = sourceFileReferenceKey(sourceFile);
+    if (sourceFileKey && seenSourceFileKeys.has(sourceFileKey)) continue;
+    if (sourceFileKey) seenSourceFileKeys.add(sourceFileKey);
+    if (isSourceFileReferencedByRecords(sourceFile, data.records)) continue;
+
     try {
       const deletedSource = await deleteMetaFullTextSourceFile(sourceFile, scopeProjectId(scope));
-      sourceFileDeleted = deletedSource.deleted;
-      sourceFileDeleteWarning = deletedSource.warning;
+      if (deletedSource.deleted) sourceFileDeletedCount += 1;
+      if (deletedSource.warning) sourceFileDeleteWarnings.push(`${sourceFile.fileName}: ${deletedSource.warning}`);
     } catch (error) {
-      sourceFileDeleteWarning = error instanceof Error ? error.message : String(error);
+      sourceFileDeleteWarnings.push(`${sourceFile.fileName}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
   return {
-    record,
+    records,
     stats: historyStats(data.records),
-    sourceFileDeleted,
-    sourceFileDeleteWarning,
+    sourceFileDeletedCount,
+    sourceFileDeleteWarnings,
   };
+}
+
+function sourceFileReferenceKey(sourceFile: MetaFullTextSourceFile) {
+  const driveFileId = cleanString(sourceFile.driveFileId);
+  if (driveFileId) return `drive:${driveFileId}`;
+  const localPath = cleanString(sourceFile.localPath);
+  if (localPath) return `local:${localPath}`;
+  const sha256 = cleanString(sourceFile.sha256);
+  if (sha256) return `sha256:${sha256}`;
+  return "";
 }
 
 function isSourceFileReferencedByRecords(sourceFile: MetaFullTextSourceFile, records: MetaFullTextHistoryRecord[]) {

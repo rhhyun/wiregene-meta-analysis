@@ -1,3 +1,40 @@
+# 2026-06-20 batch deletion for saved full-text history records
+
+User issue:
+
+- Deleting wrongly uploaded or duplicate saved full-text AI analysis records one by one is too slow.
+- The saved article list needs checkboxes so two or more records can be selected and deleted together.
+- Batch deletion must still protect shared stored PDF/Word source files.
+
+Implemented:
+
+- Added batch history deletion support:
+  - `DELETE /api/meta-analysis/full-text/history`
+  - accepts `ids` in the JSON body or query string.
+  - returns the refreshed history overview, deleted record summaries, and source-file cleanup warnings.
+- Added `deleteMetaFullTextHistoryRecords` in `src/lib/meta-full-text-history.ts`.
+  - removes all selected records with one history-store write.
+  - deletes an unshared stored full-text source file only when no remaining record references it.
+  - deduplicates source cleanup when selected records reference the same stored source.
+- Updated `MetaFullTextAssistant` saved article list:
+  - each saved record row now has a deletion checkbox.
+  - `Select shown` selects all records currently visible under the active filter.
+  - `Clear selection` resets the pending deletion selection.
+  - `Delete selected` deletes all selected records after confirmation and refreshes saved counts.
+  - if the currently open record is deleted, the active analysis and verification form are cleared.
+- Single-record delete remains available from the selected-record detail panel.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.59`
+  - UI label: `Ver 1.94 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed
+npm.cmd run lint: passed
+npm.cmd run build: passed
+```
+
 # 2026-06-20 Meta DB export and durable storage policy
 
 User issue:
