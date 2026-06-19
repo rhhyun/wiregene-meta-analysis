@@ -272,7 +272,8 @@ function projectStorageRootForBackend(storageBackend: MetaProjectStorageBackend)
 
 function projectFileStorageBackend(): MetaProjectStorageBackend {
   const configured = process.env.META_PROJECT_STORAGE_BACKEND?.trim().toLowerCase();
-  if (configured === "local-json" || configured === "google-drive") return configured;
+  if (configured === "local-json") return configured;
+  if (configured === "google-drive") return metaGoogleDriveStorageAllowed() ? "google-drive" : "local-json";
 
   if (isServerlessRuntime() && getGoogleDriveAuthMode()) return "google-drive";
   return "local-json";
@@ -299,10 +300,12 @@ function userProjectsFilePath() {
 
 function userProjectsStorageBackend(): MetaUserProjectsStorageBackend {
   const configured = process.env.META_USER_PROJECTS_STORAGE_BACKEND?.trim().toLowerCase();
-  if (configured === "local-json" || configured === "google-drive") return configured;
+  if (configured === "local-json") return configured;
+  if (configured === "google-drive") return metaGoogleDriveStorageAllowed() ? "google-drive" : "local-json";
 
   const projectBackend = process.env.META_PROJECT_STORAGE_BACKEND?.trim().toLowerCase();
-  if (projectBackend === "local-json" || projectBackend === "google-drive") return projectBackend;
+  if (projectBackend === "local-json") return projectBackend;
+  if (projectBackend === "google-drive") return metaGoogleDriveStorageAllowed() ? "google-drive" : "local-json";
 
   if (isServerlessRuntime() && getGoogleDriveAuthMode()) return "google-drive";
   return "local-json";
@@ -563,6 +566,12 @@ function synologyProjectPathHint(folderName: string) {
 
 function isServerlessRuntime() {
   return Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+}
+
+function metaGoogleDriveStorageAllowed() {
+  if (isServerlessRuntime()) return true;
+  const configured = (process.env.META_ALLOW_GOOGLE_DRIVE_STORAGE ?? "").trim().toLowerCase();
+  return ["1", "true", "yes", "on"].includes(configured);
 }
 
 export async function parseRequestJson(request: Request): Promise<unknown> {

@@ -212,7 +212,7 @@ export async function deleteMetaFullTextSourceFile(
 function sourceStorageBackend(): MetaFullTextSourceFileStorage {
   const configured = process.env.META_FULL_TEXT_SOURCE_STORAGE_BACKEND?.trim().toLowerCase();
   if (configured === "local-file" || configured === "local-files" || configured === "local-json") return "local-file";
-  if (configured === "google-drive") return "google-drive";
+  if (configured === "google-drive") return metaGoogleDriveStorageAllowed() ? "google-drive" : "local-file";
   if (isServerlessRuntime() && getGoogleDriveAuthMode()) return "google-drive";
   return "local-file";
 }
@@ -269,4 +269,10 @@ function parseDriveFileSize(value: string | undefined) {
 
 function isServerlessRuntime() {
   return Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+}
+
+function metaGoogleDriveStorageAllowed() {
+  if (isServerlessRuntime()) return true;
+  const configured = (process.env.META_ALLOW_GOOGLE_DRIVE_STORAGE ?? "").trim().toLowerCase();
+  return ["1", "true", "yes", "on"].includes(configured);
 }

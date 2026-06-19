@@ -1,3 +1,40 @@
+# 2026-06-20 hard-stop Meta Google Drive storage on local Docker
+
+User issue:
+
+- After the previous fix, the UI changed to `Loading...`, but Google OAuth `invalid_grant` errors still appeared.
+- That proved explicit `google-drive` runtime values could still force Meta storage APIs to call Google Drive.
+- The app needs to remain usable on Synology/local Docker even when stale Google Drive OAuth credentials remain in `.env`.
+
+Implemented:
+
+- Added a hard local-Docker policy across Meta storage libraries:
+  - On serverless/Vercel, explicit Google Drive storage still works.
+  - On Synology/local Docker, explicit `google-drive` storage is ignored unless `META_ALLOW_GOOGLE_DRIVE_STORAGE=true`.
+- Applied the policy to:
+  - project file storage
+  - user study project list storage
+  - Meta AI settings storage
+  - full-text history storage
+  - full-text PDF/Word source file storage
+- Updated Synology runtime start script:
+  - seeds and corrects `META_ALLOW_GOOGLE_DRIVE_STORAGE=false`.
+  - keeps Meta storage on local JSON/local files by default.
+- Updated `synology/docker/meta/.env.example` with `META_ALLOW_GOOGLE_DRIVE_STORAGE=false`.
+- If Google Drive is intentionally needed for Meta storage on local Docker, the operator must explicitly set:
+  - `META_ALLOW_GOOGLE_DRIVE_STORAGE=true`
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.61`
+  - UI label: `Ver 1.96 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed
+npm.cmd run lint: passed
+npm.cmd run build: passed
+```
+
 # 2026-06-20 fix Meta local storage routing OAuth error storm
 
 User issue:
