@@ -4,7 +4,7 @@ Standalone repository exported from `research-briefing-platform`.
 
 ## Service Boundary
 
-- Host: https://search.wiregen.com
+- Host: https://search.wiregene.com
 - App mode: meta
 - Synology source directory: /volume1/docker/wiregene-meta-analysis
 - Runtime directory: /volume1/docker/meta

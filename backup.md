@@ -18,8 +18,8 @@ Implemented without overlapping the other PC work:
   - `package.json` / `package-lock.json`: `0.1.48`
   - UI label: `Ver 1.83 | 2026 copyright by JK Hyun`
 - Public URL correction:
-  - The active public Meta link is `https://search.wiregen.com`, not `https://meta.wiregene.com`.
-  - `search.wiregen.com` and the typed alias `mata.wiregene.com` are now treated as Meta mode hosts.
+  - The active public Meta link is `https://search.wiregene.com`, not `https://meta.wiregene.com`.
+  - `search.wiregene.com`, the user-typed alias `search.wiregen.com`, and the typed alias `mata.wiregene.com` are now treated as Meta mode hosts.
   - Launcher links, portal site metadata, environment examples, and workspace manifest were updated to the corrected public URL.
 
 Verification:

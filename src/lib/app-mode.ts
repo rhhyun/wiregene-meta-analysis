@@ -15,12 +15,12 @@ export function getWiregeneAppMode(host: string | undefined | null): WiregeneApp
   if (
     normalizedHost === "meta.wiregene.com" ||
     normalizedHost === "mata.wiregene.com" ||
+    normalizedHost === "search.wiregene.com" ||
     normalizedHost === "search.wiregen.com"
   ) {
     return "meta";
   }
   if (normalizedHost === "portal.wiregene.com") return "portal";
-  if (normalizedHost === "search.wiregene.com") return "search";
 
   const explicitMode = process.env.WIREGENE_APP_MODE ?? process.env.NEXT_PUBLIC_WIREGENE_APP_MODE;
   if (explicitMode) return normalizeWiregeneAppMode(explicitMode);

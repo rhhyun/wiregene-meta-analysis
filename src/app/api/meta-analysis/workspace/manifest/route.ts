@@ -32,7 +32,7 @@ export async function GET() {
 
     return NextResponse.json({
       ok: true,
-      app: "search.wiregen.com",
+      app: "search.wiregene.com",
       generatedAt: new Date().toISOString(),
       projectRegistryStorage: getMetaUserProjectsStorageSummary(),
       integration: {

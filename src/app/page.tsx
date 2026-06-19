@@ -35,7 +35,7 @@ const externalLinks = [
   {
     label: "Meta-analysis",
     detail: "PRISMA, screening, extraction",
-    href: "https://search.wiregen.com/?wiregene_from=search",
+    href: "https://search.wiregene.com/?wiregene_from=search",
   },
   {
     label: "Portal",

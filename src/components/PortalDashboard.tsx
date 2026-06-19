@@ -23,7 +23,7 @@ const launcherSites = [
   {
     label: "Meta-analysis",
     shortLabel: "Meta",
-    href: "https://search.wiregen.com/?wiregene_from=portal",
+    href: "https://search.wiregene.com/?wiregene_from=portal",
     detail: "PRISMA, 검색식, screening, extraction, analysis",
     icon: BarChart3,
   },

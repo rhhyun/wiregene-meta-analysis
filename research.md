@@ -6,7 +6,7 @@
 - The published Hyun lab Acta Biomaterialia NMA paper is the reference model for required outputs: PRISMA flow, descriptive included-study charts, NMA network diagrams, network forest plots, SUCRA/rank plots, pairwise forest plots, study/result tables, risk-of-bias tables, NMA/pairwise summary tables, and final raw extraction workbook.
 - R/Rscript support is required for true meta-analysis/NMA graph generation. RStudio GUI is optional; the app should call reproducible R scripts or export analysis-ready data for R.
 - Full-text history, source files, reviewer decisions, PI adjudication, and extraction datasets must be scoped by `projectId`; no research topic should share a global full-text or Excel dataset store with another topic.
-- Current public Meta deployment URL is `https://search.wiregen.com`; the app must enter Meta mode on that host.
+- Current public Meta deployment URL is `https://search.wiregene.com`; the app must enter Meta mode on that host.
 
 > 최초 작성: 2026-06-18 | 담당: JK Hyun
 
