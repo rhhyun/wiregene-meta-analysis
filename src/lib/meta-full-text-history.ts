@@ -79,6 +79,10 @@ export type MetaFullTextHistorySummary = {
   aiUsed: boolean;
   model: string | null;
   aiWarning: string | null;
+  modelReviewCount: number;
+  aiModelReviewCount: number;
+  modelReviewLabels: string[];
+  modelReviewModels: string[];
   reviewScore: number;
   reviewGrade: string;
   extractionRowCount: number;
@@ -373,6 +377,14 @@ export function metaFullTextHistoryStorageErrorDetails(error: unknown) {
 }
 
 function toSummary(record: MetaFullTextHistoryRecord): MetaFullTextHistorySummary {
+  const modelReviews = Array.isArray(record.analysis.modelReviews) ? record.analysis.modelReviews : [];
+  const modelReviewLabels = Array.from(
+    new Set(modelReviews.map((review) => cleanString(review.label || review.reviewerId)).filter(Boolean)),
+  ).slice(0, 3);
+  const modelReviewModels = Array.from(
+    new Set(modelReviews.map((review) => cleanString(review.modelName)).filter(Boolean)),
+  ).slice(0, 3);
+
   return {
     id: record.id,
     fileName: record.fileName,
@@ -387,6 +399,10 @@ function toSummary(record: MetaFullTextHistoryRecord): MetaFullTextHistorySummar
     aiUsed: record.analysis.aiUsed,
     model: record.analysis.model,
     aiWarning: record.analysis.aiWarning,
+    modelReviewCount: modelReviews.length,
+    aiModelReviewCount: modelReviews.filter((review) => review.aiUsed).length,
+    modelReviewLabels,
+    modelReviewModels,
     reviewScore: record.analysis.reviewEvaluation.score,
     reviewGrade: record.analysis.reviewEvaluation.grade,
     extractionRowCount: record.analysis.extraction.rows.length,

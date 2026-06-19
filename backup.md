@@ -1,3 +1,36 @@
+# 2026-06-19 legacy source upload auto-runs selected AI reviewers
+
+User issue:
+
+- Another PC had progressed to `Ver 1.88`.
+- Existing Musician PRMD pain records include older `gpt-5-nano` full-text analyses.
+- These records now need comparison by up to three AI model reviewers.
+- If an old history record does not have the original PDF/Word full-text source saved, the app should ask for the article upload and then automatically analyze it with the saved/selected AI reviewer models without creating a duplicate record.
+
+Implemented:
+
+- Kept the existing same-record backend flow:
+  - `POST /api/meta-analysis/full-text/history/[id]/source` attaches the uploaded source to the selected legacy record.
+  - `POST /api/meta-analysis/full-text/history/[id]/reanalyze` runs the selected AI reviewer models and replaces/merges the analysis on the same history record.
+- Removed the confusing save-only UI path for legacy/no-source records:
+  - All legacy source upload buttons now call `saveSourceToSelectedHistory({ rerunAfterSave: true })`.
+  - The buttons require at least one runnable AI reviewer selection.
+  - Button labels now state that the source is saved and AI reviewers run immediately.
+- Added AI comparison progress to the saved full-text area:
+  - Overall saved-record progress shows how many records have the selected target number of AI model reviews.
+  - Each saved article row shows `AI reviews x/y`.
+  - The selected record detail shows stored model names when model-review comparisons exist.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.54`
+  - UI label: `Ver 1.89 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed
+npm.cmd run lint: passed
+npm.cmd run build: passed
+```
 # 2026-06-19 saved-record rerun duplicate guard and Gemini 404 fix
 
 User issue:

@@ -51,6 +51,10 @@ type MetaFullTextHistorySummary = {
   aiUsed: boolean;
   model: string | null;
   aiWarning: string | null;
+  modelReviewCount: number;
+  aiModelReviewCount: number;
+  modelReviewLabels: string[];
+  modelReviewModels: string[];
   reviewScore: number;
   reviewGrade: string;
   extractionRowCount: number;
@@ -619,6 +623,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
       !isAnalyzing &&
       !isSavingSourceToHistory,
   );
+  const canUpgradeLegacyRecordWithAi = canSaveSourceToLegacyRecord && selectedRunnableAiReviewerIds.length > 0;
   const savedSourceActionDisabled =
     isReanalyzingSavedSource ||
     isSavingSourceToHistory ||
@@ -633,16 +638,27 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
         : currentHistoryItem.sourceFileSaved
           ? "Update this saved record with selected AI reviewers"
           : canSaveSourceToLegacyRecord
-            ? "Save source to this record, then rerun"
+            ? "Save source and run selected AI reviewers"
             : "Choose one matching file for this legacy record";
   const savedSourceActionHelp = !currentHistoryItem
     ? "Select one saved article record first. This saved-source path updates that record instead of creating another saved article."
     : currentHistoryItem.sourceFileSaved
       ? "This will reuse the stored full-text source and replace the AI analysis in the same saved record. The saved article count does not increase."
       : canSaveSourceToLegacyRecord
-        ? "This will attach the selected full-text file to this legacy record, then replace the AI analysis in this same record. It does not create a duplicate."
+        ? "This will attach the selected full-text file to this legacy record, automatically run the selected AI reviewers, and replace the AI analysis in this same record. It does not create a duplicate."
         : "Legacy/no source means the previous AI result exists, but the original full-text file is not stored. Select exactly one matching full-text file to update this record.";
   const aiOnlyVerificationMode = verificationMode === "ai_only";
+  const aiComparisonTargetCount =
+    selectedRunnableAiReviewerIds.length || runnableAiReviewerSlots.length || aiReviewerSlots.filter(aiReviewerRunnable).length || 3;
+  const aiComparisonProgress = useMemo(() => {
+    const target = Math.max(1, aiComparisonTargetCount);
+    return {
+      target,
+      complete: historyItems.filter((item) => item.aiModelReviewCount >= target).length,
+      savedSourceNeedsRun: historyItems.filter((item) => item.sourceFileSaved && item.aiModelReviewCount < target).length,
+      uploadNeeded: historyItems.filter((item) => !item.sourceFileSaved && item.aiModelReviewCount < target).length,
+    };
+  }, [aiComparisonTargetCount, historyItems]);
   const historyDecisionCounts = useMemo(
     () => ({
       all: historyItems.length,
@@ -1217,6 +1233,10 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
       setError("Choose exactly one matching full-text file for the selected legacy record.");
       return;
     }
+    if (options.rerunAfterSave && selectedRunnableAiReviewerIds.length === 0) {
+      setError("Select at least one ready AI reviewer model before uploading a source for automatic analysis.");
+      return;
+    }
 
     const sourceFile = firstSelectedFile;
     setIsSavingSourceToHistory(true);
@@ -1709,12 +1729,12 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
             {currentHistoryItem && !currentHistoryItem.sourceFileSaved ? (
               <button
                 type="button"
-                onClick={() => void saveSourceToSelectedHistory()}
-                disabled={!canSaveSourceToLegacyRecord}
+                onClick={() => void saveSourceToSelectedHistory({ rerunAfterSave: true })}
+                disabled={!canUpgradeLegacyRecordWithAi}
                 className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-900 transition hover:bg-amber-50 disabled:cursor-not-allowed disabled:border-zinc-200 disabled:text-zinc-400"
               >
                 {isSavingSourceToHistory ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Save className="h-3.5 w-3.5" aria-hidden />}
-                Save uploaded source to this legacy record
+                Save source and run AI reviewers
               </button>
             ) : null}
             <button
@@ -1735,16 +1755,21 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
           <span className="mt-1 block text-amber-900">
             새 AI model로 다시 분석하려면 기존 저장 논문을 하나 선택한 뒤, 해당 full-text article을 한 번 업로드해서 그 기록에 연결해야 합니다.
           </span>
-          Existing GPT-5-nano legacy rerun: select a `legacy/no source` saved record, choose the matching full-text file once, save the source to that record, then run the selected AI reviewers on the saved full text.
+          Existing GPT-5-nano legacy rerun: select a `legacy/no source` saved record, choose the matching full-text file once, then the saved-record update button saves the source and immediately runs the selected AI reviewers.
           <span className="mt-1 block text-amber-900">Current button action: {savedSourceActionLabel}.</span>
           <span className="mt-1 block text-amber-900">{savedSourceActionHelp}</span>
         </div>
         <p className="mt-2 text-xs font-semibold leading-5 text-zinc-600">
-          {currentHistoryItem?.sourceFileSaved
-            ? `Selected saved source: ${currentHistoryItem.fileName}`
-            : currentHistoryItem
-              ? "This selected record is legacy/no source. Choose the matching full-text file below, save it to this record, then rerun the selected AI reviewers."
+            {currentHistoryItem?.sourceFileSaved
+              ? `Selected saved source: ${currentHistoryItem.fileName}`
+              : currentHistoryItem
+              ? "This selected record is legacy/no source. Choose the matching full-text file below; the app saves it to this record and immediately runs the selected AI reviewers."
               : "Select a saved full-text record below, then run the checked AI reviewers without reuploading the file."}
+        </p>
+        <p className="mt-2 text-xs font-semibold leading-5 text-zinc-700">
+          AI comparison progress: {aiComparisonProgress.complete}/{historyItems.length} saved records have{" "}
+          {aiComparisonProgress.target} AI model review(s). Saved-source records needing rerun:{" "}
+          {aiComparisonProgress.savedSourceNeedsRun}; legacy records needing source upload: {aiComparisonProgress.uploadNeeded}.
         </p>
       </section>
 
@@ -1891,6 +1916,15 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                             <span className="rounded-md bg-zinc-100 px-2 py-1">
                               {item.sourceFileSaved ? `source saved: ${item.sourceStorage}` : "legacy/no source"}
                             </span>
+                            <span
+                              className={`rounded-md px-2 py-1 ${
+                                item.aiModelReviewCount >= aiComparisonProgress.target
+                                  ? "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-100"
+                                  : "bg-amber-50 text-amber-900 ring-1 ring-amber-100"
+                              }`}
+                            >
+                              AI reviews {item.aiModelReviewCount}/{aiComparisonProgress.target}
+                            </span>
                             <span className="rounded-md bg-zinc-100 px-2 py-1">{new Date(item.savedAt).toLocaleString("ko-KR")}</span>
                           </div>
                           {item.titleGuess ? <p className="line-clamp-2 text-xs leading-5 text-zinc-500">{item.titleGuess}</p> : null}
@@ -1928,12 +1962,12 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                     {!currentHistoryItem.sourceFileSaved ? (
                       <button
                         type="button"
-                        onClick={() => void saveSourceToSelectedHistory()}
-                        disabled={!canSaveSourceToLegacyRecord}
+                        onClick={() => void saveSourceToSelectedHistory({ rerunAfterSave: true })}
+                        disabled={!canUpgradeLegacyRecordWithAi}
                         className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-900 transition hover:bg-amber-50 disabled:cursor-not-allowed disabled:border-zinc-200 disabled:text-zinc-400"
                       >
                         {isSavingSourceToHistory ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Save className="h-3.5 w-3.5" aria-hidden />}
-                        Save source to this record
+                        Save source and run AI reviewers
                       </button>
                     ) : null}
                     <button
@@ -1951,6 +1985,12 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                     {currentHistoryItem.sourceSheet ?? "no sheet"} · {decisionLabel(currentHistoryItem.decision)} · confidence{" "}
                     {currentHistoryItem.confidence} · {currentHistoryItem.aiUsed ? `AI ${currentHistoryItem.model}` : "fallback"} · review{" "}
                     {currentHistoryItem.reviewScore}/{currentHistoryItem.reviewGrade}
+                  </p>
+                  <p className="text-xs font-medium leading-5 text-zinc-600">
+                    AI model reviews: {currentHistoryItem.aiModelReviewCount}/{aiComparisonProgress.target}
+                    {currentHistoryItem.modelReviewModels.length
+                      ? ` - ${currentHistoryItem.modelReviewModels.join(", ")}`
+                      : " - no model comparison stored yet"}
                   </p>
                 </div>
               ) : null}
@@ -1987,12 +2027,12 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
             {currentHistoryItem && !currentHistoryItem.sourceFileSaved ? (
               <button
                 type="button"
-                onClick={() => void saveSourceToSelectedHistory()}
-                disabled={!canSaveSourceToLegacyRecord}
+                onClick={() => void saveSourceToSelectedHistory({ rerunAfterSave: true })}
+                disabled={!canUpgradeLegacyRecordWithAi}
                 className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-4 text-sm font-semibold text-amber-950 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:border-zinc-200 disabled:bg-zinc-100 disabled:text-zinc-400"
               >
                 {isSavingSourceToHistory ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Save className="h-4 w-4" aria-hidden />}
-                Save this file to the selected legacy record
+                Save this file and run selected AI reviewers
               </button>
             ) : null}
             <button
@@ -2022,7 +2062,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
             ) : null}
             {currentHistoryItem && !currentHistoryItem.sourceFileSaved ? (
               <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs font-semibold leading-5 text-amber-950">
-                This saved result was created before source-file persistence. Select exactly one matching full-text file, then use the saved-record update button. The source and new AI result are written back to this same record, not saved as another article.
+                This saved result was created before source-file persistence. Select exactly one matching full-text file, then use the saved-record update button. The source and selected AI reviewer results are written back to this same record, not saved as another article.
               </p>
             ) : null}
             {currentHistoryItem?.sourceFileSaved && files.length > 0 ? (
