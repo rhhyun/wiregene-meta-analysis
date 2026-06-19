@@ -551,7 +551,14 @@ function normalizeBaseUrl(value: string | null | undefined) {
 
 function normalizeModelName(value: string) {
   const normalized = value.replace(/\s+/g, "").trim();
-  return normalized || defaultModelName;
+  return normalizeKnownProviderModelAlias(normalized || defaultModelName);
+}
+
+function normalizeKnownProviderModelAlias(modelName: string) {
+  const compact = modelName.toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (compact === "deepseekv4flash") return "deepseek-v4-flash";
+  if (compact === "deepseekv4pro") return "deepseek-v4-pro";
+  return modelName;
 }
 
 function looksLikeOpenAiModel(modelName: string) {

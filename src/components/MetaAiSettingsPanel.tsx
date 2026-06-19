@@ -383,6 +383,11 @@ export function MetaAiSettingsPanel() {
                         Base URL is required before this compatible reviewer can run.
                       </p>
                     ) : null}
+                    {providerModelHint(slot) ? (
+                      <p className="rounded-md border border-sky-200 bg-sky-50 p-2 text-xs font-semibold leading-5 text-sky-950">
+                        {providerModelHint(slot)}
+                      </p>
+                    ) : null}
                   </div>
                 </article>
               ))}
@@ -442,6 +447,16 @@ function StatusBox({ label, value }: { label: string; value: string }) {
       <p className="mt-1 break-words text-sm font-semibold leading-6 text-zinc-950">{value}</p>
     </div>
   );
+}
+
+function providerModelHint(slot: ReviewerSlotForm) {
+  const modelName = slot.modelName.toLowerCase();
+  const baseUrl = slot.baseUrl?.toLowerCase() ?? "";
+  if (slot.providerType === "OPENAI_COMPATIBLE" && (modelName.includes("deepseek") || baseUrl.includes("deepseek"))) {
+    return "DeepSeek V4 model ids must be exact lowercase: deepseek-v4-flash or deepseek-v4-pro. DeepSeekV4Flash is saved as deepseek-v4-flash.";
+  }
+
+  return "";
 }
 
 function looksLikeOpenAiModel(modelName: string) {

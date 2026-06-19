@@ -1,3 +1,42 @@
+# 2026-06-20 DeepSeek reviewer model-id normalization
+
+User issue:
+
+- After adding DeepSeek balance, AI reviewer 3 still failed in the full-text AI model comparison table.
+- The provider response showed this was no longer a payment problem:
+  - accepted model ids: `deepseek-v4-pro` or `deepseek-v4-flash`
+  - submitted model id: `DeepSeekV4Flash`
+
+Implemented:
+
+- Added server-side model-name normalization in `src/lib/meta-ai-settings.ts`:
+  - `DeepSeekV4Flash`, `DeepSeek V4 Flash`, `deepseek_v4_flash`, and similar variants normalize to `deepseek-v4-flash`.
+  - `DeepSeekV4Pro`, `DeepSeek V4 Pro`, `deepseek_v4_pro`, and similar variants normalize to `deepseek-v4-pro`.
+  - Already-saved settings are normalized when AI reviewer configs are resolved, so old saved `DeepSeekV4Flash` entries should run with `deepseek-v4-flash` after redeploy.
+- Added a DeepSeek-specific hint in `MetaAiSettingsPanel`:
+  - OpenAI-compatible slots whose Base URL or model name mentions DeepSeek now show the exact accepted V4 model ids.
+- Improved full-text AI reviewer request warnings:
+  - DeepSeek 400 errors that mention supported model names now explicitly tell the user to use `deepseek-v4-flash` or `deepseek-v4-pro`.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.56`
+  - UI label: `Ver 1.91 | 2026 copyright by JK Hyun`
+
+Operational note:
+
+- DeepSeek Base URL and API key had reached the provider successfully; the blocking issue in the screenshot was the model id spelling/casing.
+- Recommended slot 3 setting:
+  - Provider: `OPENAI_COMPATIBLE`
+  - Base URL: the DeepSeek OpenAI-compatible endpoint already being used
+  - Model: `deepseek-v4-flash` or `deepseek-v4-pro`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed
+npm.cmd run lint: passed
+npm.cmd run build: passed
+```
+
 # 2026-06-20 duplicate full-text merge prompt and OpenAI-like reviewer routing
 
 User issue:

@@ -1164,6 +1164,18 @@ function formatAiReviewerRequestError(error: unknown, reviewer: MetaAiReviewerCo
   const hints: string[] = [];
   const baseUrl = reviewer.baseUrl?.trim() ?? "";
   const looksLikeNotFound = /\b404\b|not\s+found/i.test(message);
+  const looksLikeDeepSeek =
+    /deepseek/i.test(baseUrl) || /deepseek/i.test(reviewer.modelName) || /deepseek/i.test(message);
+
+  if (
+    reviewer.providerType === "OPENAI_COMPATIBLE" &&
+    looksLikeDeepSeek &&
+    /(supported API model names|deepseek-v4)/i.test(message)
+  ) {
+    hints.push(
+      "DeepSeek rejected the model id. Use the exact lowercase model id deepseek-v4-flash or deepseek-v4-pro; DeepSeekV4Flash is not accepted.",
+    );
+  }
 
   if (reviewer.providerType === "OPENAI_COMPATIBLE" && looksLikeNotFound) {
     if (isGoogleGeminiOpenAiBaseUrl(baseUrl)) {
