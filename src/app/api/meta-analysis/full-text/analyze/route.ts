@@ -7,8 +7,11 @@ import {
 } from "@/lib/google-drive-storage";
 import { analyzeMetaFullTextUpload } from "@/lib/meta-full-text-analysis";
 import {
+  findMetaFullTextDuplicateRecord,
+  mergeMetaFullTextHistoryAnalysis,
   metaFullTextHistoryStorageErrorDetails,
   saveMetaFullTextHistory,
+  summarizeMetaFullTextHistoryRecord,
 } from "@/lib/meta-full-text-history";
 import { saveMetaFullTextSourceFile } from "@/lib/meta-full-text-source-files";
 import { cleanMetaProjectId } from "@/lib/meta-project-scope";
@@ -64,6 +67,8 @@ type AnalyzeRequestInput = {
   reviewerIds: string[];
   driveFileId: string | null;
   projectId: string | null;
+  duplicatePolicy: "new" | "merge";
+  duplicateTargetId: string | null;
 };
 
 function formString(formData: FormData, key: string) {
@@ -98,6 +103,14 @@ function payloadReviewerIds(payload: unknown) {
   const value = (payload as Record<string, unknown>).reviewerIds;
   if (Array.isArray(value)) return normalizeReviewerIds(value);
   return reviewerIdsSchema.parse(typeof value === "string" ? value : "");
+}
+
+function normalizeDuplicatePolicy(value: string) {
+  return value.trim().toLowerCase() === "merge" ? "merge" : "new";
+}
+
+function normalizeRecordId(value: string) {
+  return value.replace(/[^a-zA-Z0-9_-]/g, "").trim().slice(0, 120) || null;
 }
 
 function allowedExtractionColumns(requestedColumns: string[]) {
@@ -193,6 +206,8 @@ async function parseMultipartAnalyzeRequest(
     reviewerIds: reviewerIdsSchema.parse(formString(formData, "reviewerIds")),
     driveFileId: null,
     projectId: context.projectId,
+    duplicatePolicy: normalizeDuplicatePolicy(formString(formData, "duplicatePolicy")),
+    duplicateTargetId: normalizeRecordId(formString(formData, "duplicateTargetId")),
   };
 }
 
@@ -239,6 +254,8 @@ async function parseGoogleDriveAnalyzeRequest(
     reviewerIds: payloadReviewerIds(payload),
     driveFileId,
     projectId: context.projectId,
+    duplicatePolicy: normalizeDuplicatePolicy(payloadString(payload, "duplicatePolicy")),
+    duplicateTargetId: normalizeRecordId(payloadString(payload, "duplicateTargetId")),
   };
 }
 
@@ -272,6 +289,51 @@ async function analyzeAndSave(input: AnalyzeRequestInput, context: AnalyzeReques
 
   context.phase = "save_history";
   try {
+    if (input.duplicatePolicy === "merge") {
+      const duplicate = await findMetaFullTextDuplicateRecord(
+        {
+          targetId: input.duplicateTargetId,
+          fileName: input.fileName,
+          sourceFile,
+          analysis,
+        },
+        { projectId: input.projectId },
+      );
+      if (duplicate) {
+        const mergedRecord = await mergeMetaFullTextHistoryAnalysis(
+          duplicate.record.id,
+          analysis,
+          sourceFile,
+          { projectId: input.projectId },
+        );
+        if (mergedRecord) {
+          console.info("[meta-full-text/analyze] duplicate merged into existing history record", {
+            ...diagnostics(context),
+            historyId: mergedRecord.id,
+            matchedBy: duplicate.matchedBy,
+          });
+
+          return NextResponse.json({
+            analysis: mergedRecord.analysis,
+            savedRecord: summarizeMetaFullTextHistoryRecord(mergedRecord),
+            duplicateAction: {
+              status: "merged",
+              targetId: mergedRecord.id,
+              matchedBy: duplicate.matchedBy,
+            },
+            diagnostics: {
+              ...diagnostics(context),
+              status: "merged",
+              historyId: mergedRecord.id,
+              matchedBy: duplicate.matchedBy,
+              extractedTextLength: mergedRecord.analysis.extractedTextLength,
+              aiUsed: mergedRecord.analysis.aiUsed,
+            },
+          });
+        }
+      }
+    }
+
     const savedRecord = await saveMetaFullTextHistory({
       analysis,
       sourceSheet: input.sourceSheet,
@@ -291,39 +353,9 @@ async function analyzeAndSave(input: AnalyzeRequestInput, context: AnalyzeReques
 
     return NextResponse.json({
       analysis,
-      savedRecord: {
-        id: savedRecord.id,
-        fileName: savedRecord.fileName,
-        sourceSheet: savedRecord.sourceSheet,
-        sourceLabel: savedRecord.sourceLabel,
-        reviewMode: savedRecord.reviewMode,
-        savedAt: savedRecord.savedAt,
-        analyzedAt: savedRecord.analysis.analyzedAt,
-        titleGuess: savedRecord.analysis.titleGuess,
-        decision: savedRecord.analysis.eligibility.decision,
-        confidence: savedRecord.analysis.eligibility.confidence,
-        aiUsed: savedRecord.analysis.aiUsed,
-        model: savedRecord.analysis.model,
-        aiWarning: savedRecord.analysis.aiWarning,
-        reviewScore: savedRecord.analysis.reviewEvaluation.score,
-        reviewGrade: savedRecord.analysis.reviewEvaluation.grade,
-        extractionRowCount: savedRecord.analysis.extraction.rows.length,
-        missingCriticalFieldCount: savedRecord.analysis.extraction.missingCriticalFields.length,
-        validationIssueCount: savedRecord.analysis.extraction.validationIssues.length,
-        sourceFileSaved: Boolean(savedRecord.sourceFile),
-        sourceStorage: savedRecord.sourceFile?.storage ?? null,
-        verificationComplete: false,
-        verificationMode: savedRecord.verification.verificationMode,
-        reviewerReviewSkippedAt: savedRecord.verification.reviewerReviewSkippedAt,
-        reviewerOneName: savedRecord.verification.reviewerOneName,
-        reviewerTwoName: savedRecord.verification.reviewerTwoName,
-        reviewerOneDecision: savedRecord.verification.reviewerOneDecision,
-        reviewerTwoDecision: savedRecord.verification.reviewerTwoDecision,
-        fixedExclusionReason: savedRecord.verification.fixedExclusionReason,
-        conflictStatus: savedRecord.verification.conflictStatus,
-        piName: savedRecord.verification.piName,
-        piFinalDecision: savedRecord.verification.piFinalDecision,
-        piAdjudicatedAt: savedRecord.verification.piAdjudicatedAt,
+      savedRecord: summarizeMetaFullTextHistoryRecord(savedRecord),
+      duplicateAction: {
+        status: input.duplicatePolicy === "merge" ? "merge_target_not_found_saved_new" : "saved_new",
       },
       diagnostics: {
         ...diagnostics(context),

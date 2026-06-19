@@ -162,6 +162,11 @@ type AnalysisPayload = {
   analysis: MetaFullTextAnalysis;
   savedRecord?: MetaFullTextHistorySummary | null;
   saveError?: unknown;
+  duplicateAction?: {
+    status: "merged" | "saved_new" | "merge_target_not_found_saved_new";
+    targetId?: string;
+    matchedBy?: string;
+  };
   diagnostics?: unknown;
 };
 
@@ -317,6 +322,41 @@ function savedErrorMessage(details: unknown) {
   ]
     .filter(Boolean)
     .join(" ");
+}
+
+function normalizedArticleFileKey(value: string) {
+  return value
+    .replace(/\.[a-z0-9]{1,8}$/i, "")
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^a-z0-9\uAC00-\uD7A3]+/g, "")
+    .trim()
+    .slice(0, 180);
+}
+
+function findDuplicateHistoryItemForFile(nextFile: File, historyItems: MetaFullTextHistorySummary[]) {
+  const fileKey = normalizedArticleFileKey(nextFile.name);
+  if (!fileKey) return null;
+  return historyItems.find((item) => normalizedArticleFileKey(item.fileName) === fileKey) ?? null;
+}
+
+function duplicateMergePrompt(duplicates: { file: File; target: MetaFullTextHistorySummary }[]) {
+  const preview = duplicates
+    .slice(0, 5)
+    .map((item) => `- ${item.file.name} -> ${item.target.fileName}`)
+    .join("\n");
+  const extra = duplicates.length > 5 ? `\n...and ${duplicates.length - 5} more` : "";
+  return [
+    `${duplicates.length} uploaded full-text file(s) match existing saved article record(s).`,
+    "",
+    "OK: merge the new AI model result into the existing record. The paper will not appear twice, and previous AI decisions/model reviews remain in the comparison history.",
+    "Cancel: stop this run so a duplicate saved article is not created.",
+    "",
+    preview,
+    extra,
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 function decisionLabel(decision: MetaFullTextAnalysis["eligibility"]["decision"]) {
@@ -1345,7 +1385,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
     }
   }
 
-  function createAnalysisFormData(nextFile: File) {
+  function createAnalysisFormData(nextFile: File, duplicateTarget: MetaFullTextHistorySummary | null) {
     const formData = new FormData();
     const cleanedReferenceRecord = stripGeneratedReferenceContext(referenceRecord);
     formData.set("file", nextFile);
@@ -1368,10 +1408,16 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
     formData.set("reviewerOneName", reviewerOneName);
     formData.set("reviewerTwoName", reviewerTwoName);
     formData.set("reviewerIds", selectedRunnableAiReviewerIds.join(","));
+    formData.set("duplicatePolicy", duplicateTarget ? "merge" : "new");
+    if (duplicateTarget) formData.set("duplicateTargetId", duplicateTarget.id);
     return formData;
   }
 
-  function createAnalysisJsonPayload(nextFile: File, driveFile: GoogleDriveUploadPayload) {
+  function createAnalysisJsonPayload(
+    nextFile: File,
+    driveFile: GoogleDriveUploadPayload,
+    duplicateTarget: MetaFullTextHistorySummary | null,
+  ) {
     const cleanedReferenceRecord = stripGeneratedReferenceContext(referenceRecord);
     const driveSize = Number(driveFile.size);
     return {
@@ -1395,6 +1441,8 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
       reviewerOneName,
       reviewerTwoName,
       reviewerIds: selectedRunnableAiReviewerIds,
+      duplicatePolicy: duplicateTarget ? "merge" : "new",
+      duplicateTargetId: duplicateTarget?.id ?? null,
     };
   }
 
@@ -1402,13 +1450,21 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
     return nextFile.size > largeFileUploadThresholdBytes;
   }
 
-  async function analyzeSingleFullTextFile(nextFile: File, onStage: (message: string) => void) {
+  async function analyzeSingleFullTextFile(
+    nextFile: File,
+    onStage: (message: string) => void,
+    duplicateTarget: MetaFullTextHistorySummary | null,
+  ) {
     if (!shouldUseLargeFileUpload(nextFile)) {
-      onStage("Extracting full text and requesting AI review.");
+      onStage(
+        duplicateTarget
+          ? `Extracting full text and merging AI review into existing record: ${duplicateTarget.fileName}.`
+          : "Extracting full text and requesting AI review.",
+      );
       return readAnalysisPayload(
         await fetch("/api/meta-analysis/full-text/analyze", {
           method: "POST",
-          body: createAnalysisFormData(nextFile),
+          body: createAnalysisFormData(nextFile, duplicateTarget),
         }),
       );
     }
@@ -1433,7 +1489,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
       await fetch("/api/meta-analysis/full-text/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(createAnalysisJsonPayload(nextFile, driveFile)),
+        body: JSON.stringify(createAnalysisJsonPayload(nextFile, driveFile, duplicateTarget)),
       }),
     );
   }
@@ -1444,18 +1500,35 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
       setError("Select at least one ready AI reviewer model before full-text analysis.");
       return;
     }
-    if (currentHistoryItem) {
+    const queuedFiles = files;
+    const duplicateMatches = queuedFiles
+      .map((file, index) => ({
+        file,
+        resultId: batchFileId(file, index),
+        target: findDuplicateHistoryItemForFile(file, historyItems),
+      }))
+      .filter((item): item is { file: File; resultId: string; target: MetaFullTextHistorySummary } => Boolean(item.target));
+    const duplicateTargetByResultId = new Map<string, MetaFullTextHistorySummary>();
+    if (duplicateMatches.length > 0) {
+      const confirmed = window.confirm(duplicateMergePrompt(duplicateMatches));
+      if (!confirmed) {
+        setNotice("Duplicate full-text upload canceled. No duplicate saved article record was created.");
+        return;
+      }
+      for (const match of duplicateMatches) duplicateTargetByResultId.set(match.resultId, match.target);
+    }
+
+    if (currentHistoryItem && duplicateMatches.length === 0) {
       const confirmed = window.confirm(
         "A saved record is selected, but this upload button creates NEW saved article record(s). To update the selected record without duplication, cancel this and use the saved-record update button.",
       );
       if (!confirmed) return;
-    } else if (historyDecisionCounts.legacy_source > 0) {
+    } else if (!currentHistoryItem && duplicateMatches.length === 0 && historyDecisionCounts.legacy_source > 0) {
       const confirmed = window.confirm(
         "No saved record is selected. This upload path creates NEW saved article record(s) and can increase the saved count (for example, 72 -> 73). To update an old GPT-5-nano legacy record without duplication, cancel this, select the matching legacy/no source record, choose the PDF, then use the saved-record update button.",
       );
       if (!confirmed) return;
     }
-    const queuedFiles = files;
     analyzingRef.current = true;
     setError("");
     setNotice("");
@@ -1498,16 +1571,21 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
         );
 
         try {
-          const payload = await analyzeSingleFullTextFile(nextFile, (message) =>
-            setBatchResults((current) =>
-              current.map((item) => (item.id === resultId ? { ...item, message } : item)),
-            ),
+          const duplicateTarget = duplicateTargetByResultId.get(resultId) ?? null;
+          const payload = await analyzeSingleFullTextFile(
+            nextFile,
+            (message) =>
+              setBatchResults((current) =>
+                current.map((item) => (item.id === resultId ? { ...item, message } : item)),
+              ),
+            duplicateTarget,
           );
           setAnalysis(payload.analysis);
           if (payload.savedRecord && !payload.saveError) {
             savedCount += 1;
             setCurrentHistoryId(payload.savedRecord.id);
             upsertHistoryItem(payload.savedRecord);
+            const merged = payload.duplicateAction?.status === "merged";
             setBatchResults((current) =>
               current.map((item) =>
                 item.id === resultId
@@ -1517,7 +1595,9 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                       savedRecordId: payload.savedRecord?.id ?? null,
                       decision: payload.analysis.eligibility.decision,
                       confidence: payload.analysis.eligibility.confidence,
-                      message: "Saved automatically to full-text history.",
+                      message: merged
+                        ? "Merged into existing full-text history record; no duplicate article was created."
+                        : "Saved automatically to full-text history.",
                     }
                   : item,
               ),

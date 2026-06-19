@@ -368,9 +368,17 @@ export function MetaAiSettingsPanel() {
                       Clear saved key for this slot
                     </label>
                     <p className="text-xs leading-5 text-zinc-500">
-                      Source: {sourceLabels[slot.apiKeySource]}. {slot.providerType === "OPENAI_COMPATIBLE" ? "Use provider OpenAI-compatible chat endpoint." : "Uses OpenAI Responses API."}
+                      Source: {sourceLabels[slot.apiKeySource]}.{" "}
+                      {slot.providerType === "OPENAI_COMPATIBLE" && !slot.baseUrl && looksLikeOpenAiModel(slot.modelName)
+                        ? "OpenAI-like model without Base URL uses the saved OpenAI key and Responses API."
+                        : slot.providerType === "OPENAI_COMPATIBLE"
+                          ? "Use provider OpenAI-compatible chat endpoint."
+                          : "Uses OpenAI Responses API."}
                     </p>
-                    {slot.providerType === "OPENAI_COMPATIBLE" && slot.enabled && !slot.baseUrl ? (
+                    {slot.providerType === "OPENAI_COMPATIBLE" &&
+                    slot.enabled &&
+                    !slot.baseUrl &&
+                    !looksLikeOpenAiModel(slot.modelName) ? (
                       <p className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs font-semibold leading-5 text-amber-950">
                         Base URL is required before this compatible reviewer can run.
                       </p>
@@ -434,4 +442,8 @@ function StatusBox({ label, value }: { label: string; value: string }) {
       <p className="mt-1 break-words text-sm font-semibold leading-6 text-zinc-950">{value}</p>
     </div>
   );
+}
+
+function looksLikeOpenAiModel(modelName: string) {
+  return /^(gpt-|o\d|o-|chatgpt-|ft:)/i.test(modelName.trim());
 }

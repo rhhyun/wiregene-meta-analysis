@@ -189,6 +189,80 @@ export async function saveMetaFullTextHistory(input: {
   return record;
 }
 
+export async function findMetaFullTextDuplicateRecord(
+  input: {
+    targetId?: string | null;
+    fileName?: string | null;
+    sourceFile?: MetaFullTextSourceFile | null;
+    analysis?: MetaFullTextAnalysis | null;
+  },
+  scope: MetaFullTextHistoryScope = {},
+) {
+  const data = await readHistoryData(scope);
+  const targetId = cleanString(input.targetId);
+  if (targetId) {
+    const targeted = data.records.find((record) => record.id === targetId);
+    if (targeted) return { record: targeted, matchedBy: "target_id" as const };
+  }
+
+  const normalizedSourceFile = normalizeMetaFullTextSourceFile(input.sourceFile);
+  const sourceSha256 = cleanString(normalizedSourceFile?.sha256 || input.analysis?.sourceFileSha256);
+  if (sourceSha256) {
+    const bySourceHash = data.records.find(
+      (record) => cleanString(record.sourceFile?.sha256 || record.analysis.sourceFileSha256) === sourceSha256,
+    );
+    if (bySourceHash) return { record: bySourceHash, matchedBy: "source_sha256" as const };
+  }
+
+  const fileKey = duplicateTextKey(input.fileName || input.analysis?.fileName || "");
+  if (fileKey) {
+    const byFileName = data.records.find((record) => duplicateTextKey(record.fileName || record.analysis.fileName) === fileKey);
+    if (byFileName) return { record: byFileName, matchedBy: "file_name" as const };
+  }
+
+  const titleKey = duplicateTextKey(input.analysis?.titleGuess || "");
+  if (titleKey) {
+    const byTitle = data.records.find((record) => duplicateTextKey(record.analysis.titleGuess || "") === titleKey);
+    if (byTitle) return { record: byTitle, matchedBy: "title" as const };
+  }
+
+  return null;
+}
+
+export async function mergeMetaFullTextHistoryAnalysis(
+  id: string,
+  analysis: MetaFullTextAnalysis,
+  sourceFile: MetaFullTextSourceFile | null,
+  scope: MetaFullTextHistoryScope = {},
+) {
+  const data = await readHistoryData(scope);
+  const index = data.records.findIndex((record) => record.id === id);
+  if (index < 0) return null;
+  const current = data.records[index];
+  const normalizedSourceFile = normalizeMetaFullTextSourceFile(sourceFile) ?? current.sourceFile;
+  const nextAnalysis = mergeFullTextAnalyses(current.analysis, analysis);
+
+  data.records[index] = {
+    ...current,
+    fileName: current.fileName || analysis.fileName,
+    sourceFile: normalizedSourceFile,
+    analysis: {
+      ...nextAnalysis,
+      sourceFileSha256:
+        cleanString(normalizedSourceFile?.sha256) || nextAnalysis.sourceFileSha256 || current.analysis.sourceFileSha256,
+    },
+    analysisArchive: [
+      {
+        archivedAt: new Date().toISOString(),
+        analysis: current.analysis,
+      },
+      ...(current.analysisArchive ?? []),
+    ].slice(0, 10),
+  };
+  await writeHistoryData(data, scope);
+  return data.records[index];
+}
+
 export async function listMetaFullTextHistory(limit = 50, scope: MetaFullTextHistoryScope = {}) {
   const data = await readHistoryData(scope);
   return data.records
@@ -425,6 +499,10 @@ function toSummary(record: MetaFullTextHistoryRecord): MetaFullTextHistorySummar
   };
 }
 
+export function summarizeMetaFullTextHistoryRecord(record: MetaFullTextHistoryRecord): MetaFullTextHistorySummary {
+  return toSummary(record);
+}
+
 function emptyReviewerSettings(): MetaFullTextReviewerSettings {
   return {
     reviewerOneName: "",
@@ -587,6 +665,74 @@ function normalizeAnalysisArchiveEntry(value: unknown): MetaFullTextAnalysisArch
     archivedAt: cleanString(record.archivedAt) || new Date().toISOString(),
     analysis: normalizeStoredAnalysis(record.analysis as Partial<MetaFullTextAnalysis>),
   };
+}
+
+function mergeFullTextAnalyses(current: MetaFullTextAnalysis, selected: MetaFullTextAnalysis): MetaFullTextAnalysis {
+  const selectedReviews = Array.isArray(selected.modelReviews) ? selected.modelReviews : [];
+  const currentReviews = Array.isArray(current.modelReviews) ? current.modelReviews : [];
+  const selectedHasUsableAi = selected.aiUsed && selectedReviews.some((review) => review.aiUsed);
+  const mergedReviews = mergeModelReviews(currentReviews, selectedReviews);
+
+  if (!selectedHasUsableAi) {
+    return normalizeStoredAnalysis({
+      ...current,
+      analyzedAt: new Date().toISOString(),
+      aiWarning: selected.aiWarning ?? current.aiWarning,
+      modelReviews: mergedReviews,
+      extraction: {
+        ...current.extraction,
+        validationIssues: Array.from(
+          new Set([
+            ...current.extraction.validationIssues,
+            ...selected.extraction.validationIssues,
+          ].filter(Boolean)),
+        ),
+      },
+    });
+  }
+
+  return normalizeStoredAnalysis({
+    ...selected,
+    analyzedAt: new Date().toISOString(),
+    aiWarning: selected.aiWarning ?? current.aiWarning,
+    modelReviews: mergedReviews,
+    nextActions: Array.from(new Set([...selected.nextActions, ...current.nextActions].filter(Boolean))).slice(0, 8),
+    extraction: {
+      ...selected.extraction,
+      validationIssues: Array.from(
+        new Set([
+          ...selected.extraction.validationIssues,
+          ...current.extraction.validationIssues,
+        ].filter(Boolean)),
+      ),
+    },
+  });
+}
+
+function mergeModelReviews(
+  current: MetaFullTextAnalysis["modelReviews"],
+  selected: MetaFullTextAnalysis["modelReviews"],
+) {
+  const mergedReviews: MetaFullTextAnalysis["modelReviews"] = [];
+  const reviewById = new Map<string, MetaFullTextAnalysis["modelReviews"][number]>();
+  for (const review of current) reviewById.set(review.reviewerId, review);
+  for (const review of selected) reviewById.set(review.reviewerId, review);
+  const preferredOrder = [...current, ...selected].map((review) => review.reviewerId);
+  for (const reviewerId of preferredOrder) {
+    const review = reviewById.get(reviewerId);
+    if (review && !mergedReviews.some((item) => item.reviewerId === reviewerId)) mergedReviews.push(review);
+  }
+  return mergedReviews;
+}
+
+function duplicateTextKey(value: string) {
+  const withoutExtension = value.replace(/\.[a-z0-9]{1,8}$/i, "");
+  return withoutExtension
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^a-z0-9\uAC00-\uD7A3]+/g, "")
+    .trim()
+    .slice(0, 180);
 }
 
 function normalizeStoredAnalysis(analysis: Partial<MetaFullTextAnalysis>): MetaFullTextAnalysis {

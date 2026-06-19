@@ -658,6 +658,18 @@ function reviewerProviderReady(reviewer: MetaAiReviewerConfig) {
 function normalizeAiReviewerForRequest(reviewer: MetaAiReviewerConfig): MetaAiReviewerConfig {
   if (
     reviewer.providerType === "OPENAI_COMPATIBLE" &&
+    !reviewer.baseUrl &&
+    looksLikeOpenAiModel(reviewer.modelName)
+  ) {
+    return {
+      ...reviewer,
+      providerType: "OPENAI",
+      baseUrl: null,
+    };
+  }
+
+  if (
+    reviewer.providerType === "OPENAI_COMPATIBLE" &&
     isGoogleGeminiOpenAiBaseUrl(reviewer.baseUrl) &&
     reviewer.modelName.trim().toLowerCase() === "gemini-3.5"
   ) {
@@ -1163,6 +1175,12 @@ function formatAiReviewerRequestError(error: unknown, reviewer: MetaAiReviewerCo
         "The OpenAI-compatible provider returned 404. Check the Base URL and exact model id saved for this reviewer.",
       );
     }
+  }
+
+  if (looksLikeNotFound && looksLikeOpenAiModel(reviewer.modelName)) {
+    hints.push(
+      "This looks like an OpenAI model id. If the request still returns 404 after using the OpenAI Responses route, check the exact model id and whether this API key has access to that model.",
+    );
   }
 
   if (reviewer.providerType === "OPENAI_COMPATIBLE" && !baseUrl && !looksLikeOpenAiModel(reviewer.modelName)) {

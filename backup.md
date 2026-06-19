@@ -1,3 +1,39 @@
+# 2026-06-20 duplicate full-text merge prompt and OpenAI-like reviewer routing
+
+User issue:
+
+- When a new AI model is used on an already uploaded paper, the app should ask whether to merge with the existing paper record instead of creating a duplicate.
+- If merged, the saved full-text list must not show the paper twice; previous AI decisions/model reviews should remain visible together with the new model result.
+- AI reviewer 3 using `gpt-5.5` did not work.
+
+Implemented:
+
+- Added duplicate detection in the full-text upload UI by normalized uploaded file name versus saved history record file name.
+- If duplicate candidates are found before a new upload analysis:
+  - the app asks whether to merge into the existing saved article record,
+  - OK sends `duplicatePolicy=merge` and the target history id,
+  - Cancel stops the run so a duplicate saved article is not created.
+- Added backend merge support to `/api/meta-analysis/full-text/analyze`:
+  - `duplicatePolicy=merge` finds the target record by id, source SHA-256, file name, or title,
+  - new AI model reviews are merged into the existing record,
+  - previous analysis is kept in `analysisArchive`,
+  - the response returns the existing record summary, so the UI updates the same row instead of adding another paper.
+- Exported a shared history summary helper so analyze responses include model-review counts consistently.
+- Fixed OpenAI-like reviewer routing:
+  - `OPENAI_COMPATIBLE` slots without Base URL but with OpenAI-like model ids such as `gpt-*`, `o-*`, `chatgpt-*`, or `ft:*` now route through the OpenAI Responses API.
+  - AI settings no longer warns that Base URL is required for OpenAI-like models.
+  - If an OpenAI-like model still returns 404, the warning now explains that the exact model id/key access should be checked.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.55`
+  - UI label: `Ver 1.90 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed
+npm.cmd run lint: passed
+npm.cmd run build: passed
+```
 # 2026-06-19 legacy source upload auto-runs selected AI reviewers
 
 User issue:
