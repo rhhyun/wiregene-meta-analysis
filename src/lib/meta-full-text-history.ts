@@ -955,8 +955,10 @@ async function backupCorruptHistory(raw: string, parseError: SyntaxError, scope:
 function storageBackend(): "local-json" | "google-drive" {
   const configured = process.env.META_FULL_TEXT_HISTORY_STORAGE_BACKEND?.trim().toLowerCase();
   if (configured === "local-json" || configured === "google-drive") return configured;
-  const inherited = (process.env.REPORT_STORAGE_BACKEND ?? process.env.GRANT_STORAGE_BACKEND ?? "").trim().toLowerCase();
-  if (inherited === "local-json" || inherited === "google-drive") return inherited;
+
+  const projectBackend = process.env.META_PROJECT_STORAGE_BACKEND?.trim().toLowerCase();
+  if (projectBackend === "local-json" || projectBackend === "google-drive") return projectBackend;
+
   if (isServerlessRuntime() && getGoogleDriveAuthMode()) return "google-drive";
   return "local-json";
 }

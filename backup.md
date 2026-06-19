@@ -1,3 +1,44 @@
+# 2026-06-20 fix Meta local storage routing OAuth error storm
+
+User issue:
+
+- A previously usable Meta page became filled with repeated Google OAuth `invalid_grant` errors.
+- The page showed `Synology/local folder`, but project file storage, study list sync, and workbook shared state were still trying to use Google Drive.
+- The error made the Screening page hard to use even though the intended deployment was Synology/local Docker.
+
+Root cause:
+
+- Meta project storage and user-project storage could inherit `REPORT_STORAGE_BACKEND=google-drive`.
+- Full-text history storage could also inherit non-Meta storage backend variables.
+- On Synology this caused Meta-specific local storage flows to call Google Drive when old/invalid Google OAuth values existed in the runtime `.env`.
+- The UI also displayed `Synology/local folder` while storage was still loading or had failed, which made the diagnosis misleading.
+
+Implemented:
+
+- Stopped Meta project file storage from inheriting `REPORT_STORAGE_BACKEND`.
+- Stopped Meta user-project storage from inheriting `REPORT_STORAGE_BACKEND`; it now follows explicit `META_USER_PROJECTS_STORAGE_BACKEND`, explicit `META_PROJECT_STORAGE_BACKEND`, serverless Google fallback, then local.
+- Stopped Meta full-text history storage from inheriting `REPORT_STORAGE_BACKEND` / `GRANT_STORAGE_BACKEND`; it now follows explicit `META_FULL_TEXT_HISTORY_STORAGE_BACKEND`, explicit `META_PROJECT_STORAGE_BACKEND`, serverless Google fallback, then local.
+- Updated Synology start script to correct runtime `.env` values to local Meta storage:
+  - `REPORT_STORAGE_BACKEND=local-json`
+  - `META_PROJECT_STORAGE_BACKEND=local-json`
+  - `META_USER_PROJECTS_STORAGE_BACKEND=local-json`
+  - `META_AI_SETTINGS_STORAGE_BACKEND=local-json`
+  - `META_FULL_TEXT_HISTORY_STORAGE_BACKEND=local-json`
+  - `META_FULL_TEXT_SOURCE_STORAGE_BACKEND=local-file`
+- Added source storage defaults to `synology/docker/meta/.env.example`.
+- Fixed Project file storage UI so storage mode shows `Loading...` when storage has not loaded instead of incorrectly implying Synology/local.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.60`
+  - UI label: `Ver 1.95 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed
+npm.cmd run lint: passed
+npm.cmd run build: passed
+```
+
 # 2026-06-20 batch deletion for saved full-text history records
 
 User issue:

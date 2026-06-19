@@ -274,9 +274,6 @@ function projectFileStorageBackend(): MetaProjectStorageBackend {
   const configured = process.env.META_PROJECT_STORAGE_BACKEND?.trim().toLowerCase();
   if (configured === "local-json" || configured === "google-drive") return configured;
 
-  const inherited = (process.env.REPORT_STORAGE_BACKEND ?? "").trim().toLowerCase();
-  if (inherited === "local-json" || inherited === "google-drive") return inherited;
-
   if (isServerlessRuntime() && getGoogleDriveAuthMode()) return "google-drive";
   return "local-json";
 }
@@ -304,8 +301,8 @@ function userProjectsStorageBackend(): MetaUserProjectsStorageBackend {
   const configured = process.env.META_USER_PROJECTS_STORAGE_BACKEND?.trim().toLowerCase();
   if (configured === "local-json" || configured === "google-drive") return configured;
 
-  const inherited = (process.env.META_PROJECT_STORAGE_BACKEND ?? process.env.REPORT_STORAGE_BACKEND ?? "").trim().toLowerCase();
-  if (inherited === "local-json" || inherited === "google-drive") return inherited;
+  const projectBackend = process.env.META_PROJECT_STORAGE_BACKEND?.trim().toLowerCase();
+  if (projectBackend === "local-json" || projectBackend === "google-drive") return projectBackend;
 
   if (isServerlessRuntime() && getGoogleDriveAuthMode()) return "google-drive";
   return "local-json";

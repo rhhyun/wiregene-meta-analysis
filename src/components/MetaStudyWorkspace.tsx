@@ -2890,7 +2890,8 @@ function ProjectStoragePanel({ project }: { project: MetaStudyProject }) {
     try {
       setStorage(await loadProjectStorage(project.id));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Project storage could not be loaded.");
+      const message = caught instanceof Error ? caught.message : "Project storage could not be loaded.";
+      setError(`Project file storage could not be loaded. ${message}`);
     } finally {
       setLoading(false);
     }
@@ -3016,7 +3017,10 @@ function ProjectStoragePanel({ project }: { project: MetaStudyProject }) {
       <div className="mt-4 grid gap-3 lg:grid-cols-3">
         <Metric label="Project folder" value={storage?.folderName ?? "..."} />
         <Metric label="Saved files" value={loading ? "..." : files.length.toLocaleString()} />
-        <Metric label="Storage mode" value={storage?.storageBackend === "google-drive" ? "Google Drive" : "Synology/local folder"} />
+        <Metric
+          label="Storage mode"
+          value={!storage ? "Loading..." : storage.storageBackend === "google-drive" ? "Google Drive" : "Synology/local folder"}
+        />
       </div>
 
       <div className="mt-4 grid gap-2 rounded-md border border-sky-200 bg-white p-3 text-xs leading-5 text-zinc-600">
@@ -3033,7 +3037,11 @@ function ProjectStoragePanel({ project }: { project: MetaStudyProject }) {
         <p>
           <span className="font-semibold text-zinc-950">Root option:</span>{" "}
           <span className="break-all">
-            {storage?.storageBackend === "google-drive" ? "META_PROJECT_STORAGE_BACKEND=google-drive, META_PROJECT_DRIVE_PREFIX" : "META_PROJECT_STORAGE_ROOT"}
+            {!storage
+              ? "Loading..."
+              : storage.storageBackend === "google-drive"
+                ? "META_PROJECT_STORAGE_BACKEND=google-drive, META_PROJECT_DRIVE_PREFIX"
+                : "META_PROJECT_STORAGE_ROOT"}
           </span>
         </p>
       </div>
