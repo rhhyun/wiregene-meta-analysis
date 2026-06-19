@@ -519,7 +519,8 @@ export async function analyzeMetaFullTextUpload(input: AnalyzeMetaFullTextInput)
   const modelReviews: MetaFullTextModelReview[] = [];
   let primaryAi: { analysis: AiMetaFullTextAnalysis; reviewer: MetaAiReviewerConfig } | null = null;
 
-  for (const reviewer of enabledReviewers) {
+  for (const configuredReviewer of enabledReviewers) {
+    const reviewer = normalizeAiReviewerForRequest(configuredReviewer);
     const ai = await analyzeWithAiReviewer({
       fileName: input.fileName,
       fileType,
@@ -652,6 +653,24 @@ function normalizeReviewerIds(value: string[] | null | undefined) {
 
 function reviewerProviderReady(reviewer: MetaAiReviewerConfig) {
   return reviewer.providerType === "OPENAI" || Boolean(reviewer.baseUrl) || looksLikeOpenAiModel(reviewer.modelName);
+}
+
+function normalizeAiReviewerForRequest(reviewer: MetaAiReviewerConfig): MetaAiReviewerConfig {
+  if (
+    reviewer.providerType === "OPENAI_COMPATIBLE" &&
+    isGoogleGeminiOpenAiBaseUrl(reviewer.baseUrl) &&
+    reviewer.modelName.trim().toLowerCase() === "gemini-3.5"
+  ) {
+    return {
+      ...reviewer,
+      modelName: "gemini-3.5-flash",
+    };
+  }
+  return reviewer;
+}
+
+function isGoogleGeminiOpenAiBaseUrl(baseUrl: string | null | undefined) {
+  return /generativelanguage\.googleapis\.com\/v1beta\/openai\/?$/i.test(baseUrl?.trim() ?? "");
 }
 
 function looksLikeOpenAiModel(modelName: string) {
@@ -1045,7 +1064,7 @@ ${text}`;
     });
     return {
       analysis: null,
-      warning: `${reviewer.label} (${reviewer.modelName}) request failed. Details: ${formatOpenAIError(error)}`,
+      warning: `${reviewer.label} (${reviewer.modelName}) request failed. Details: ${formatAiReviewerRequestError(error, reviewer)}`,
     };
   }
 }
@@ -1126,6 +1145,31 @@ function createModelReviewSummary(
 function formatOpenAIError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   return message.replace(/\s+/g, " ").trim().slice(0, 800);
+}
+
+function formatAiReviewerRequestError(error: unknown, reviewer: MetaAiReviewerConfig) {
+  const message = formatOpenAIError(error);
+  const hints: string[] = [];
+  const baseUrl = reviewer.baseUrl?.trim() ?? "";
+  const looksLikeNotFound = /\b404\b|not\s+found/i.test(message);
+
+  if (reviewer.providerType === "OPENAI_COMPATIBLE" && looksLikeNotFound) {
+    if (isGoogleGeminiOpenAiBaseUrl(baseUrl)) {
+      hints.push(
+        "Google Gemini OpenAI-compatible endpoint returned 404. This usually means the model id is not found for that endpoint or account. Check AI settings: use the Google OpenAI-compatible Base URL and an exact supported Gemini model id such as gemini-3.5-flash rather than gemini-3.5.",
+      );
+    } else {
+      hints.push(
+        "The OpenAI-compatible provider returned 404. Check the Base URL and exact model id saved for this reviewer.",
+      );
+    }
+  }
+
+  if (reviewer.providerType === "OPENAI_COMPATIBLE" && !baseUrl && !looksLikeOpenAiModel(reviewer.modelName)) {
+    hints.push("This OpenAI-compatible reviewer has no Base URL, so the saved provider settings are incomplete.");
+  }
+
+  return [message, ...hints].filter(Boolean).join(" ");
 }
 
 function normalizeAnalysis(analysis: MetaFullTextAnalysis): MetaFullTextAnalysis {

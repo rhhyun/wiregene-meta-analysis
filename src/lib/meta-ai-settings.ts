@@ -458,7 +458,7 @@ function defaultReviewerSlots({
       label: "AI reviewer 3",
       providerType: "OPENAI_COMPATIBLE",
       enabled: false,
-      modelName: "gemini-3.5",
+      modelName: "gemini-3.5-flash",
       baseUrl: null,
       apiKeyEncrypted: null,
     },

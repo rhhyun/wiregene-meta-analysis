@@ -9,7 +9,11 @@
 - Added a `Legacy/no source` filter and fixed Google Drive binary source upload so small PDFs do not fail with `Malformed multipart body`.
 - Changed the saved-source rerun button into a state-aware action that explains what is missing and can save source + rerun in one click for legacy records.
 - Added explicit Korean UI explanation that `legacy/no source` means the full-text article files are not stored and must be uploaded once before new AI model rerun.
-- Active version after this checkpoint: `Ver 1.87`, package `0.1.52`.
+- Active version after this checkpoint: `Ver 1.88`, package `0.1.53`.
+- Added a duplicate guard for normal full-text upload: if legacy/no source records exist and no saved record is selected, the UI warns that the upload will create NEW saved article record(s) and can increase the saved count.
+- Added the same duplicate guard when a saved record is selected but the user clicks the normal upload analysis button.
+- Clarified saved-source rerun labels and notices so the user can see that this path updates the same saved record and does not create duplicates.
+- Fixed Google Gemini OpenAI-compatible `gemini-3.5` shorthand by mapping it to `gemini-3.5-flash` for Google Base URL requests, and improved 404 warnings to point to model id/Base URL settings.
 - Public deployment URL corrected to `https://search.wiregene.com`; `search.wiregen.com` is also accepted as a typed alias and treated as Meta mode.
 - Next priority: PRISMA/Search/Screening outputs should persist to the same project-scoped workspace so a generated topic can move from search strategy -> RIS upload -> screening -> full-text -> extraction -> R analysis without global cross-project mixing.
 

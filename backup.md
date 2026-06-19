@@ -1,3 +1,32 @@
+# 2026-06-19 saved-record rerun duplicate guard and Gemini 404 fix
+
+User issue:
+
+- Uploading one of the existing 72 full-text PDFs through the normal upload path could create a new saved history record instead of updating the old `gpt-5-nano` legacy record.
+- AI reviewer 2 using Google Gemini failed with `404 status code (no body)`, and the comparison count showed total reviewers without separating successful and failed model drafts.
+
+Implemented:
+
+- Normal upload button now says `Analyze as NEW saved record` or `Analyze queue as NEW records (...)`.
+- If legacy/no source records exist and no saved record is selected, normal upload now asks for confirmation before creating new saved article record(s).
+- If any saved record is selected, normal upload also asks for confirmation because that path still creates new saved article record(s); the saved-record update button is the non-duplicating path.
+- Saved-source action labels now say the selected saved record will be updated, and helper text states that the saved article count does not increase.
+- Saved-source rerun completion notice states that the same saved article record was updated and no duplicate was created.
+- AI model comparison now displays succeeded / failed / total counts.
+- Google Gemini OpenAI-compatible legacy shorthand `gemini-3.5` is mapped to `gemini-3.5-flash` at request time when the Base URL is `https://generativelanguage.googleapis.com/v1beta/openai/`.
+- Gemini 404 warnings now explain that the model id/Base URL should be checked instead of showing only a raw status code.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.53`
+  - UI label: `Ver 1.88 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed.
+npm.cmd run lint: passed.
+npm.cmd run build: passed.
+```
+
 # 2026-06-19 explicit legacy source storage explanation
 
 Clarification:

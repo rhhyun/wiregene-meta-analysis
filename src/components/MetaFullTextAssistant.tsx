@@ -520,6 +520,21 @@ function looksLikeOpenAiModel(modelName: string) {
   return /^(gpt-|o\d|o-|chatgpt-|ft:)/i.test(modelName.trim());
 }
 
+function isGoogleGeminiOpenAiBaseUrl(baseUrl: string | null | undefined) {
+  return /generativelanguage\.googleapis\.com\/v1beta\/openai\/?$/i.test(baseUrl?.trim() ?? "");
+}
+
+function aiReviewerModelDisplay(slot: MetaAiReviewerSlotSummary) {
+  if (
+    slot.providerType === "OPENAI_COMPATIBLE" &&
+    isGoogleGeminiOpenAiBaseUrl(slot.baseUrl) &&
+    slot.modelName.trim().toLowerCase() === "gemini-3.5"
+  ) {
+    return "gemini-3.5 -> gemini-3.5-flash";
+  }
+  return slot.modelName;
+}
+
 export function MetaFullTextAssistant({ extractionColumns, focus, projectId, worksheetOptions = [] }: MetaFullTextAssistantProps) {
   const analyzingRef = useRef(false);
   const [files, setFiles] = useState<File[]>([]);
@@ -616,10 +631,17 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
       : !currentHistoryItem
         ? "Select a saved record first"
         : currentHistoryItem.sourceFileSaved
-          ? "Run selected AI reviewers on saved full text"
+          ? "Update this saved record with selected AI reviewers"
           : canSaveSourceToLegacyRecord
-            ? "Save source, then run selected AI reviewers"
+            ? "Save source to this record, then rerun"
             : "Choose one matching file for this legacy record";
+  const savedSourceActionHelp = !currentHistoryItem
+    ? "Select one saved article record first. This saved-source path updates that record instead of creating another saved article."
+    : currentHistoryItem.sourceFileSaved
+      ? "This will reuse the stored full-text source and replace the AI analysis in the same saved record. The saved article count does not increase."
+      : canSaveSourceToLegacyRecord
+        ? "This will attach the selected full-text file to this legacy record, then replace the AI analysis in this same record. It does not create a duplicate."
+        : "Legacy/no source means the previous AI result exists, but the original full-text file is not stored. Select exactly one matching full-text file to update this record.";
   const aiOnlyVerificationMode = verificationMode === "ai_only";
   const historyDecisionCounts = useMemo(
     () => ({
@@ -682,13 +704,25 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
   );
   const analyzeButtonLabel = isAnalyzing
     ? "Analyzing"
+    : currentHistoryItem && !currentHistoryItem.sourceFileSaved && files.length === 1
+      ? "Use saved-record update button above"
     : files.length > 1
-      ? `Analyze queue (${files.length})`
-      : "Analyze full text";
+      ? `Analyze queue as NEW records (${files.length})`
+      : files.length === 1
+        ? "Analyze as NEW saved record"
+        : "Analyze full text";
 
   const extractionCsv = useMemo(() => {
     if (!analysis) return "";
     return csvRows(analysis.extraction.columns, analysis.extraction.rows);
+  }, [analysis]);
+  const modelReviewCounts = useMemo(() => {
+    const reviews = analysis?.modelReviews ?? [];
+    return {
+      total: reviews.length,
+      succeeded: reviews.filter((review) => review.aiUsed && !review.warning).length,
+      failed: reviews.filter((review) => !review.aiUsed || Boolean(review.warning)).length,
+    };
   }, [analysis]);
 
   const selectedWorksheet = useMemo(
@@ -1136,6 +1170,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
       setNotice(
         [
           `Ran selected AI reviewer(s) on saved full-text source: ${selectedAiReviewerLabel}.`,
+          "Updated the same saved article record; no duplicate saved article was created.",
           `Primary AI decision/extraction now uses the selected rerun result: ${decisionLabel(record.analysis.eligibility.decision)}.`,
           decisionChanged ? "Recheck reviewer/PI adjudication because the primary AI decision changed." : "",
         ]
@@ -1389,6 +1424,17 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
       setError("Select at least one ready AI reviewer model before full-text analysis.");
       return;
     }
+    if (currentHistoryItem) {
+      const confirmed = window.confirm(
+        "A saved record is selected, but this upload button creates NEW saved article record(s). To update the selected record without duplication, cancel this and use the saved-record update button.",
+      );
+      if (!confirmed) return;
+    } else if (historyDecisionCounts.legacy_source > 0) {
+      const confirmed = window.confirm(
+        "No saved record is selected. This upload path creates NEW saved article record(s) and can increase the saved count (for example, 72 -> 73). To update an old GPT-5-nano legacy record without duplication, cancel this, select the matching legacy/no source record, choose the PDF, then use the saved-record update button.",
+      );
+      if (!confirmed) return;
+    }
     const queuedFiles = files;
     analyzingRef.current = true;
     setError("");
@@ -1626,7 +1672,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                       />
                       <span className="min-w-0">
                         <span className="block truncate font-semibold text-zinc-950">{slot.label}</span>
-                        <span className="mt-1 block truncate text-xs font-semibold text-zinc-700">{slot.modelName}</span>
+                        <span className="mt-1 block truncate text-xs font-semibold text-zinc-700">{aiReviewerModelDisplay(slot)}</span>
                       </span>
                     </span>
                     <span className={`shrink-0 rounded-md px-2 py-1 text-xs font-semibold ${runnable ? "bg-white text-emerald-800 ring-1 ring-emerald-200" : "bg-white text-zinc-500 ring-1 ring-zinc-200"}`}>
@@ -1691,6 +1737,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
           </span>
           Existing GPT-5-nano legacy rerun: select a `legacy/no source` saved record, choose the matching full-text file once, save the source to that record, then run the selected AI reviewers on the saved full text.
           <span className="mt-1 block text-amber-900">Current button action: {savedSourceActionLabel}.</span>
+          <span className="mt-1 block text-amber-900">{savedSourceActionHelp}</span>
         </div>
         <p className="mt-2 text-xs font-semibold leading-5 text-zinc-600">
           {currentHistoryItem?.sourceFileSaved
@@ -1899,6 +1946,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                       {savedSourceActionLabel}
                     </button>
                   </div>
+                  <p className="mt-2 text-xs font-semibold leading-5 text-emerald-950">{savedSourceActionHelp}</p>
                   <p className="text-xs font-medium leading-5 text-zinc-600">
                     {currentHistoryItem.sourceSheet ?? "no sheet"} · {decisionLabel(currentHistoryItem.decision)} · confidence{" "}
                     {currentHistoryItem.confidence} · {currentHistoryItem.aiUsed ? `AI ${currentHistoryItem.model}` : "fallback"} · review{" "}
@@ -1969,12 +2017,17 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
             </p>
             {!currentHistoryItem && files.length > 0 ? (
               <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs font-semibold leading-5 text-amber-950">
-                No saved record is selected. `Analyze full text` creates a new saved analysis; to update an old GPT-5-nano legacy record, select that `legacy/no source` record above first.
+                No saved record is selected. This upload path creates a NEW saved article record and can increase the saved count, for example 72 -&gt; 73. To update an old GPT-5-nano legacy record without duplication, select that `legacy/no source` record above first, choose the matching file, then use the saved-record update button.
               </p>
             ) : null}
             {currentHistoryItem && !currentHistoryItem.sourceFileSaved ? (
               <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs font-semibold leading-5 text-amber-950">
-                This saved result was created before source-file persistence. Select exactly one matching full-text file, save it to this record, then run the selected AI reviewers on the saved source.
+                This saved result was created before source-file persistence. Select exactly one matching full-text file, then use the saved-record update button. The source and new AI result are written back to this same record, not saved as another article.
+              </p>
+            ) : null}
+            {currentHistoryItem?.sourceFileSaved && files.length > 0 ? (
+              <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs font-semibold leading-5 text-amber-950">
+                A saved record is selected, but this upload button still creates a NEW saved article record. To re-run AI on the selected article without duplication, clear the upload or use the saved-record update button above.
               </p>
             ) : null}
           </div>
@@ -2164,7 +2217,8 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                   </p>
                 </div>
                 <span className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-semibold text-zinc-700">
-                  {(analysis.modelReviews?.length ?? 0).toLocaleString("ko-KR")} model reviewer(s)
+                  {modelReviewCounts.succeeded.toLocaleString("ko-KR")} succeeded / {modelReviewCounts.failed.toLocaleString("ko-KR")} failed /{" "}
+                  {modelReviewCounts.total.toLocaleString("ko-KR")} total
                 </span>
               </div>
               <div className="mt-3 overflow-x-auto rounded-md border border-zinc-200">

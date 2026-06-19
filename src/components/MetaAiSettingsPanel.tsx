@@ -66,7 +66,7 @@ function defaultReviewerSlots(settings: MetaAiSettingsSummary): MetaAiReviewerSl
       label: "AI reviewer 3",
       providerType: "OPENAI_COMPATIBLE",
       enabled: false,
-      modelName: "gemini-3.5",
+      modelName: "gemini-3.5-flash",
       baseUrl: null,
       apiKeyMasked: null,
       apiKeySource: "missing",
