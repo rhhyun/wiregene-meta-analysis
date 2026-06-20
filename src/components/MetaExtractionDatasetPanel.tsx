@@ -268,7 +268,7 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
       const nextRecord = payload.records.find((record) => record.id === selectedRecord.id) ?? payload.records[0];
       if (nextRecord) selectRecord(nextRecord);
       setNotice(
-        `??μ셿猷? Excel dataset saved. Excel rows: ${payload.stats.excelRowCount}; verified: ${payload.stats.verifiedRowCount}; manual fields: ${payload.stats.manualRequiredFieldCount}.`,
+        `저장완료: Excel dataset saved. Excel rows: ${payload.stats.excelRowCount}; verified: ${payload.stats.verifiedRowCount}; manual fields: ${payload.stats.manualRequiredFieldCount}.`,
       );
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Extraction dataset could not be saved.");
@@ -490,7 +490,7 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
         <section className="rounded-md border border-emerald-200 bg-white">
           <div className="border-b border-emerald-100 p-3">
             <p className="text-sm font-semibold text-zinc-950">Included full-text records</p>
-            <p className="mt-1 text-xs leading-5 text-zinc-500">寃利앸맂 include ?쇰Ц留?Excel row ?꾨낫濡??섑??⑸땲??</p>
+            <p className="mt-1 text-xs leading-5 text-zinc-500">검증된 include 논문만 Excel row 후보로 표시합니다.</p>
           </div>
           <div className="max-h-[34rem] overflow-y-auto p-2">
             {overview?.records.length ? (
@@ -505,7 +505,7 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
                 >
                   <span className="truncate text-sm font-semibold text-zinc-950">{record.fileName}</span>
                   <span className="text-xs font-medium leading-5 text-zinc-600">
-                    {record.sourceSheet ?? "no sheet"} 쨌 {record.finalDecision} 쨌 evidence {record.evidenceCount}
+                    {record.sourceSheet ?? "no sheet"} / {record.finalDecision} / evidence {record.evidenceCount}
                   </span>
                   <span
                     className={`w-fit rounded-full px-2 py-1 text-xs font-semibold ${
@@ -518,7 +518,7 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
               ))
             ) : (
               <p className="rounded-md border border-dashed border-zinc-200 bg-zinc-50 p-3 text-sm font-semibold text-zinc-500">
-                ?꾩쭅 include濡?寃利앸맂 full-text 湲곕줉???놁뒿?덈떎.
+                아직 include로 검증된 full-text 기록이 없습니다.
               </p>
             )}
           </div>

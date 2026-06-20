@@ -3905,3 +3905,42 @@ Regular Synology deploy/run command after GitHub push:
 ```sh
 git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
 ```
+
+## 2026-06-20 Extraction dataset included-records Korean UI repair
+
+User issue:
+
+- The `Included full-text records` panel in Extraction showed mojibake text instead of Korean:
+  - Broken description under the panel title.
+  - Broken empty-state text when no included full-text records exist.
+  - Broken saved notice prefix.
+  - Broken `쨌` separator in record metadata.
+
+Implemented:
+
+- Repaired the Korean UI text in `src/components/MetaExtractionDatasetPanel.tsx`.
+- Updated the included-records helper text to:
+  - `검증된 include 논문만 Excel row 후보로 표시합니다.`
+- Updated the empty state to:
+  - `아직 include로 검증된 full-text 기록이 없습니다.`
+- Updated dataset save notice prefix to `저장완료`.
+- Replaced the broken record metadata separator with ` / `.
+- Confirmed no remaining mojibake markers in `MetaExtractionDatasetPanel.tsx`.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.80`
+  - UI label: `Ver 2.15 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed.
+git diff --check: passed.
+npm.cmd run lint: passed.
+npm.cmd run build: passed.
+```
+
+Regular Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
