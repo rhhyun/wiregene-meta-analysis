@@ -1,3 +1,48 @@
+# 2026-06-20 add official Google Drive health verification
+
+User issue:
+
+- User made clear that Google Drive must be fixed formally, not hidden behind fallback behavior.
+- The user believed Google Drive had been connected, but needed a definitive answer: connected OAuth approval alone is not enough unless Vercel Production has the matching refresh token and redeployed environment.
+- The connected Vercel MCP account only exposed project `diabetic-foot-screening-wiregene-demo`; it did not expose the actual `meta.wiregene.com` Vercel project, so this session could not directly inspect or mutate the live Production env vars.
+- Direct unauthenticated curl to `https://meta.wiregene.com/api/meta-analysis/storage-policy` and `/api/google-drive/oauth/start?diagnose=1` returned Basic Auth `401`, so live health must be checked from inside the authenticated app session.
+
+Implemented:
+
+- `src/lib/google-drive-health.ts`
+  - Added a formal Google Drive health check.
+  - Checks complete credential configuration.
+  - Checks OAuth access-token refresh.
+  - Checks Meta storage backend policy; on Vercel/serverless all shared Meta stores must resolve to `google-drive`.
+  - Writes a small Google Drive probe JSON file, reads it back, lists it by name, and deletes it.
+  - Returns a redacted client id, runtime, check list, and required actions without exposing secrets.
+- `src/app/api/meta-analysis/storage-policy/route.ts`
+  - Added `POST /api/meta-analysis/storage-policy?googleDriveHealth=1`.
+  - The probe is POST-only because it performs write/read/delete.
+  - `GET ?googleDriveHealth=1` returns 405 and does not mutate Drive.
+- `src/components/MetaAiSettingsPanel.tsx`
+  - Added `Google Drive verify` button in the AI settings Google Drive panel.
+  - Shows `Official Drive health: PASSED/FAILED`, each check result, and required actions.
+  - Google Drive is not considered solved unless all checks pass.
+- `guide.md`
+  - Updated to Ver 2.13 and documented the formal Google Drive resolution criterion.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.78`
+  - UI label: `Ver 2.13 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed
+npm.cmd run lint: passed
+git diff --check: passed
+npm.cmd run build: passed
+next start --port 3233: started from production build
+POST with Host: meta.wiregene.com to /api/meta-analysis/storage-policy?googleDriveHealth=1: returned JSON health report and 503 on missing local credentials
+GET with Host: meta.wiregene.com to /api/meta-analysis/storage-policy?googleDriveHealth=1: returned 405 and did not run write probe
+GET with Host: meta.wiregene.com to /api/meta-analysis/storage-policy: returned normal storage policy JSON
+```
+
 # 2026-06-20 protect Screening history from unsafe storage fallback
 
 User issue:

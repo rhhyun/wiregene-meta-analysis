@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, CheckCircle2, Cloud, ExternalLink, HardDrive, KeyRound, Loader2, Save, Trash2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, Cloud, ExternalLink, HardDrive, KeyRound, Loader2, RefreshCw, Save, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { apiErrorMessage } from "@/components/grant-error-message";
 
@@ -41,6 +41,24 @@ type MetaAiReviewerSlotSummary = {
 type ReviewerSlotForm = MetaAiReviewerSlotSummary & {
   apiKeyInput: string;
   clearApiKey: boolean;
+};
+
+type GoogleDriveHealthStatus = "passed" | "failed" | "warning";
+
+type GoogleDriveHealthReport = {
+  ok: boolean;
+  checkedAt: string;
+  authMode: "oauth" | "service-account" | null;
+  clientIdMasked: string | null;
+  targetConfigured: boolean;
+  runtime: "serverless" | "local-node";
+  checks: {
+    id: string;
+    label: string;
+    status: GoogleDriveHealthStatus;
+    message: string;
+  }[];
+  requiredActions: string[];
 };
 
 const sourceLabels: Record<MetaAiSettingsSummary["apiKeySource"], string> = {
@@ -93,6 +111,8 @@ export function MetaAiSettingsPanel() {
   const [reviewerSlots, setReviewerSlots] = useState<ReviewerSlotForm[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [healthChecking, setHealthChecking] = useState(false);
+  const [googleDriveHealth, setGoogleDriveHealth] = useState<GoogleDriveHealthReport | null>(null);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
@@ -187,6 +207,37 @@ export function MetaAiSettingsPanel() {
     }
   }
 
+  async function runGoogleDriveHealthCheck() {
+    setHealthChecking(true);
+    setNotice("");
+    setError("");
+    try {
+      const response = await fetch("/api/meta-analysis/storage-policy?googleDriveHealth=1", {
+        method: "POST",
+        cache: "no-store",
+      });
+      const payload = (await response.json().catch(() => ({}))) as {
+        health?: GoogleDriveHealthReport;
+        error?: string;
+      };
+      if (payload.health) {
+        setGoogleDriveHealth(payload.health);
+        if (payload.health.ok) {
+          setNotice("Google Drive health check passed: token refresh and Drive write/read/delete probe succeeded.");
+        } else {
+          setError("Google Drive health check failed. Follow the required actions shown in the checklist.");
+        }
+        return;
+      }
+      if (!response.ok) throw new Error(payload.error || "Google Drive health check failed.");
+      throw new Error("Google Drive health check did not return a report.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Google Drive health check failed.");
+    } finally {
+      setHealthChecking(false);
+    }
+  }
+
   return (
     <section className="rounded-lg border border-zinc-200 bg-white p-5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -263,15 +314,60 @@ export function MetaAiSettingsPanel() {
                   </p>
                 ) : null}
               </div>
-              <a
-                href="/api/google-drive/oauth/start?diagnose=1"
-                className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md bg-sky-700 px-4 text-sm font-semibold text-white transition hover:bg-sky-800"
-              >
-                <Cloud className="h-4 w-4" aria-hidden />
-                {googleDriveButtonLabel(settings)}
-                <ExternalLink className="h-4 w-4" aria-hidden />
-              </a>
+              <div className="grid shrink-0 gap-2">
+                <a
+                  href="/api/google-drive/oauth/start?diagnose=1"
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-sky-700 px-4 text-sm font-semibold text-white transition hover:bg-sky-800"
+                >
+                  <Cloud className="h-4 w-4" aria-hidden />
+                  {googleDriveButtonLabel(settings)}
+                  <ExternalLink className="h-4 w-4" aria-hidden />
+                </a>
+                <button
+                  type="button"
+                  onClick={() => void runGoogleDriveHealthCheck()}
+                  disabled={healthChecking}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-sky-300 bg-white px-4 text-sm font-semibold text-sky-800 transition hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {healthChecking ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <RefreshCw className="h-4 w-4" aria-hidden />}
+                  Google Drive verify
+                </button>
+              </div>
             </div>
+            {googleDriveHealth ? (
+              <div className="mt-4 rounded-md border border-white/70 bg-white p-3">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm font-semibold text-zinc-950">
+                    Official Drive health: {googleDriveHealth.ok ? "PASSED" : "FAILED"}
+                  </p>
+                  <p className="text-xs font-semibold text-zinc-500">
+                    {new Date(googleDriveHealth.checkedAt).toLocaleString("ko-KR")} · {googleDriveHealth.runtime} ·{" "}
+                    {googleDriveHealth.authMode ?? "no auth"} · {googleDriveHealth.clientIdMasked ?? "no client id"}
+                  </p>
+                </div>
+                <div className="mt-3 grid gap-2">
+                  {googleDriveHealth.checks.map((check) => (
+                    <div
+                      key={check.id}
+                      className={`rounded-md border p-2 text-xs font-semibold leading-5 ${googleDriveHealthCheckClass(check.status)}`}
+                    >
+                      <span className="mr-2 uppercase">{check.status}</span>
+                      <span className="text-zinc-950">{check.label}:</span> {check.message}
+                    </div>
+                  ))}
+                </div>
+                {googleDriveHealth.requiredActions.length ? (
+                  <div className="mt-3 rounded-md border border-rose-200 bg-rose-50 p-3 text-xs font-semibold leading-5 text-rose-950">
+                    <p>Required actions before this can be considered solved:</p>
+                    {googleDriveHealth.requiredActions.map((action) => (
+                      <p key={action} className="mt-1">
+                        - {action}
+                      </p>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </section>
 
           <div className="grid gap-4 lg:grid-cols-[0.7fr_1fr]">
@@ -542,6 +638,12 @@ function googleDrivePanelClass(storageHealth: MetaAiSettingsSummary["storageHeal
   if (storageHealth === "google-drive-connected") return "border-emerald-200 bg-emerald-50";
   if (storageHealth === "google-drive-unavailable") return "border-amber-200 bg-amber-50";
   return "border-sky-200 bg-sky-50";
+}
+
+function googleDriveHealthCheckClass(status: GoogleDriveHealthStatus) {
+  if (status === "passed") return "border-emerald-200 bg-emerald-50 text-emerald-950";
+  if (status === "warning") return "border-amber-200 bg-amber-50 text-amber-950";
+  return "border-rose-200 bg-rose-50 text-rose-950";
 }
 
 function providerModelHint(slot: ReviewerSlotForm) {

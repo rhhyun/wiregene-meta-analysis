@@ -1,6 +1,6 @@
 # Wiregene Meta 사용 가이드
 
-문서 버전: Ver 2.12
+문서 버전: Ver 2.13
 최종 업데이트: 2026-06-20  
 적용 사이트: `https://meta.wiregene.com`  
 소스 저장소: `rhhyun/wiregene-meta-analysis`
@@ -237,6 +237,15 @@ Google Cloud에서 반드시 `승인된 리디렉션 URI` 항목에 위 URI를 �
 Google Drive AI 설정 저장소의 refresh token이 만료되었거나 틀린 경우에도 AI 평가 설정 화면은 깨지지 않고 빈 설정 또는 Vercel `OPENAI_API_KEY` 환경변수 fallback을 보여주는 것이 원칙입니다. 실제 저장된 AI key를 다시 읽으려면 Google Drive refresh token을 새로 발급하고 Vercel Production을 재배포해야 합니다.
 
 AI 평가 설정 화면에서 Google Drive read 오류가 발생하면 앱은 error message뿐 아니라 `details.message`, `details.code`, nested cause까지 검사해 OAuth 오류를 fallback 대상으로 분류합니다. 따라서 `GOOGLE_OAUTH_INVALID_GRANT`가 저장소 상세 정보 안에만 있어도 AI reviewer slots 화면에는 raw storage read failed 오류가 노출되지 않아야 합니다. 단, 사용자가 설정을 저장할 때 Google Drive token이 여전히 잘못되어 있으면 write 오류는 표시됩니다. 저장은 실제 원격 저장소에 기록되어야 하기 때문입니다.
+
+Ver 2.13부터 `AI 평가 설정` 화면에는 `Google Drive verify` 버튼이 있습니다. Google Drive 문제는 이 검증이 모두 통과해야 해결된 것으로 봅니다. 검증은 실제로 다음 단계를 수행합니다.
+
+1. `GOOGLE_DRIVE_CLIENT_ID`, `GOOGLE_DRIVE_CLIENT_SECRET`, `GOOGLE_DRIVE_REFRESH_TOKEN` 구성이 완전한지 확인합니다.
+2. OAuth refresh token으로 새 access token을 발급합니다.
+3. Vercel/serverless에서 Meta shared storage backend가 모두 `google-drive`인지 확인합니다.
+4. Google Drive에 작은 probe JSON 파일을 쓰고, 다시 읽고, 목록에서 찾고, 삭제합니다.
+
+하나라도 `FAILED`이면 연결이 완료된 것이 아닙니다. Google 로그인 승인을 했더라도, 새 refresh token을 Vercel Production 환경변수에 저장하고 Production redeploy를 하지 않으면 기존 배포는 계속 예전 token으로 동작합니다. 이 경우 `Google Drive verify` 결과의 `Required actions`를 그대로 수행한 뒤 다시 검증해야 합니다.
 
 ## 7. full-text 업로드와 AI 분석 저장 흐름
 
