@@ -3911,6 +3911,42 @@ Regular Synology deploy/run command after GitHub push:
 git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
 ```
 
+## 2026-06-20 Full-text upload block moved before saved analyses
+
+User issue:
+
+- In Screening, the `full-text 파일` and `Excel source sheet` inputs appeared after `Saved full-text analyses`.
+- This forced researchers to scroll between upload/source selection and the saved-record AI model update controls.
+- Desired workflow is to keep AI reviewer selection, full-text upload/source sheet selection, and saved-record update controls close enough to continue working in one screen.
+
+Implemented:
+
+- Reordered `src/components/MetaFullTextAssistant.tsx` JSX only.
+- New visible order:
+  1. `AI model reviewers for this run`
+  2. `full-text 파일` and `Excel source sheet`
+  3. `Saved full-text analyses`
+- Logic and state handling were not changed.
+- Updated `guide.md` with the Ver 2.16 workflow order.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.81`
+  - UI label: `Ver 2.16 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed.
+git diff --check: passed.
+npm.cmd run lint: passed.
+npm.cmd run build: passed.
+```
+
+Regular Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 ## 2026-06-20 Extraction dataset included-records Korean UI repair
 
 User issue:

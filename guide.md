@@ -56,6 +56,8 @@ PDF, Word, TXT, MD full-text를 업로드하고 AI가 포함/제외 후보, 서�
 
 한 번에 여러 파일을 업로드할 수 있습니다. 업로드된 원문은 저장된 source file로 관리되므로, 다른 AI 모델을 추가로 돌릴 때 같은 파일을 다시 업로드하지 않는 것이 원칙입니다.
 
+Ver 2.16부터 화면 순서는 `AI model reviewers for this run` → `full-text 파일 / Excel source sheet` → `Saved full-text analyses`입니다. 먼저 실행할 AI reviewer를 고르고, 바로 아래에서 원문 파일과 Excel source sheet를 지정한 뒤, 같은 화면 아래쪽의 저장된 분석 목록에서 기존 기록을 선택해 `Run selected AI on saved full text` 또는 source update를 이어서 진행합니다.
+
 ### AI Model Reviewer Comparison
 
 AI reviewer 1, 2, 3이 같은 논문을 독립적으로 판정합니다.

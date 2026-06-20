@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import {
   AlertCircle,
@@ -2081,6 +2081,110 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
           {aiComparisonProgress.savedSourceNeedsRun}; legacy records needing source upload: {aiComparisonProgress.uploadNeeded}.
         </p>
       </section>
+      <div className="mt-4 grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">
+        <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+          full-text 파일
+          <div className="rounded-md border border-dashed border-emerald-300 bg-white p-4">
+            <div className="flex items-center gap-3">
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100">
+                <UploadCloud className="h-5 w-5" aria-hidden />
+              </span>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-zinc-950">{selectedFileLabel}</p>
+                <p className="mt-1 text-xs font-medium text-zinc-500">{selectedFileDetail}</p>
+              </div>
+            </div>
+            <input
+              type="file"
+              multiple
+              accept=".pdf,.doc,.docx,.txt,.md,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+              onChange={(event) => handleFilesChange(Array.from(event.target.files ?? []))}
+              disabled={isAnalyzing}
+              className="mt-3 w-full text-sm text-zinc-700 disabled:cursor-not-allowed disabled:opacity-60 file:mr-3 file:rounded-md file:border-0 file:bg-zinc-900 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-zinc-700"
+            />
+            {currentHistoryItem && !currentHistoryItem.sourceFileSaved ? (
+              <button
+                type="button"
+                onClick={() => void saveSourceToSelectedHistory({ rerunAfterSave: true })}
+                disabled={!canUpgradeLegacyRecordWithAi}
+                className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-4 text-sm font-semibold text-amber-950 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:border-zinc-200 disabled:bg-zinc-100 disabled:text-zinc-400"
+              >
+                {isSavingSourceToHistory ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Save className="h-4 w-4" aria-hidden />}
+                Save this file and run selected AI reviewers
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={analyzeFullText}
+              disabled={
+                isAnalyzing ||
+                files.length === 0 ||
+                selectedRunnableAiReviewerIds.length === 0 ||
+                Boolean(currentHistoryItem && !currentHistoryItem.sourceFileSaved && files.length === 1)
+              }
+              className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
+            >
+              {isAnalyzing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <SearchCheck className="h-4 w-4" aria-hidden />}
+              {analyzeButtonLabel}
+            </button>
+            <p className="mt-2 text-xs font-semibold leading-5 text-zinc-600">
+              Select multiple PDF, Word, TXT, or MD files once. The app analyzes them one by one and saves each result as a separate history record.
+            </p>
+            <p className="mt-2 text-xs font-semibold leading-5 text-zinc-600">
+              AI reviewer run: {selectedAiReviewerLabel}
+            </p>
+            {!currentHistoryItem && files.length > 0 ? (
+              <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs font-semibold leading-5 text-amber-950">
+                No saved record is selected. This upload path creates a NEW saved article record and can increase the saved count, for example 72 -&gt; 73. To update an old GPT-5-nano legacy record without duplication, select that `legacy/no source` record above first, choose the matching file, then use the saved-record update button.
+              </p>
+            ) : null}
+            {currentHistoryItem && !currentHistoryItem.sourceFileSaved ? (
+              <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs font-semibold leading-5 text-amber-950">
+                This saved result was created before source-file persistence. Select exactly one matching full-text file, then use the saved-record update button. The source and selected AI reviewer results are written back to this same record, not saved as another article.
+              </p>
+            ) : null}
+            {currentHistoryItem?.sourceFileSaved && files.length > 0 ? (
+              <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs font-semibold leading-5 text-amber-950">
+                A saved record is selected, but this upload button still creates a NEW saved article record. To re-run AI on the selected article without duplication, clear the upload or use the saved-record update button above.
+              </p>
+            ) : null}
+          </div>
+        </label>
+
+        <div className="grid gap-3">
+          {worksheetOptions.length > 0 ? (
+            <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+              Excel source sheet
+              <select
+                value={worksheetName}
+                onChange={(event) => setWorksheetName(event.target.value)}
+                className="h-10 rounded-md border border-emerald-300 bg-white px-3 text-sm font-semibold text-zinc-900 outline-none focus:border-emerald-500"
+              >
+                {worksheetOptions.map((worksheet) => (
+                  <option key={worksheet.sheetName} value={worksheet.sheetName}>
+                    {worksheet.sheetName} · {worksheet.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          {selectedWorksheet?.reviewMode === "cautious" ? (
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-900">
+              Manual_FullText_Check는 AI 판정을 낮은 신뢰도의 초안으로 보고, 원문 table/figure/supplement와 exclusion reason을 더 엄격히 확인합니다.
+            </div>
+          ) : null}
+          <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+            엑셀 screening row 또는 논문 정보
+            <textarea
+              value={referenceRecord}
+              onChange={(event) => setReferenceRecord(stripGeneratedReferenceContext(event.target.value))}
+              rows={6}
+              placeholder="Screening_ID, first author, year, title, DOI, PMID, abstract 등을 엑셀에서 한 행 복사해 붙여 넣으세요."
+              className="rounded-md border border-emerald-300 bg-white px-3 py-2 text-sm font-normal leading-6 text-zinc-800 outline-none focus:border-emerald-500"
+            />
+          </label>
+        </div>
+      </div>
 
       <section className="mt-4 rounded-md border border-emerald-200 bg-white p-3">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -2380,110 +2484,6 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
         </div>
       </section>
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">
-        <label className="grid gap-2 text-sm font-semibold text-zinc-700">
-          full-text 파일
-          <div className="rounded-md border border-dashed border-emerald-300 bg-white p-4">
-            <div className="flex items-center gap-3">
-              <span className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100">
-                <UploadCloud className="h-5 w-5" aria-hidden />
-              </span>
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-zinc-950">{selectedFileLabel}</p>
-                <p className="mt-1 text-xs font-medium text-zinc-500">{selectedFileDetail}</p>
-              </div>
-            </div>
-            <input
-              type="file"
-              multiple
-              accept=".pdf,.doc,.docx,.txt,.md,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
-              onChange={(event) => handleFilesChange(Array.from(event.target.files ?? []))}
-              disabled={isAnalyzing}
-              className="mt-3 w-full text-sm text-zinc-700 disabled:cursor-not-allowed disabled:opacity-60 file:mr-3 file:rounded-md file:border-0 file:bg-zinc-900 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-zinc-700"
-            />
-            {currentHistoryItem && !currentHistoryItem.sourceFileSaved ? (
-              <button
-                type="button"
-                onClick={() => void saveSourceToSelectedHistory({ rerunAfterSave: true })}
-                disabled={!canUpgradeLegacyRecordWithAi}
-                className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-4 text-sm font-semibold text-amber-950 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:border-zinc-200 disabled:bg-zinc-100 disabled:text-zinc-400"
-              >
-                {isSavingSourceToHistory ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Save className="h-4 w-4" aria-hidden />}
-                Save this file and run selected AI reviewers
-              </button>
-            ) : null}
-            <button
-              type="button"
-              onClick={analyzeFullText}
-              disabled={
-                isAnalyzing ||
-                files.length === 0 ||
-                selectedRunnableAiReviewerIds.length === 0 ||
-                Boolean(currentHistoryItem && !currentHistoryItem.sourceFileSaved && files.length === 1)
-              }
-              className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
-            >
-              {isAnalyzing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <SearchCheck className="h-4 w-4" aria-hidden />}
-              {analyzeButtonLabel}
-            </button>
-            <p className="mt-2 text-xs font-semibold leading-5 text-zinc-600">
-              Select multiple PDF, Word, TXT, or MD files once. The app analyzes them one by one and saves each result as a separate history record.
-            </p>
-            <p className="mt-2 text-xs font-semibold leading-5 text-zinc-600">
-              AI reviewer run: {selectedAiReviewerLabel}
-            </p>
-            {!currentHistoryItem && files.length > 0 ? (
-              <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs font-semibold leading-5 text-amber-950">
-                No saved record is selected. This upload path creates a NEW saved article record and can increase the saved count, for example 72 -&gt; 73. To update an old GPT-5-nano legacy record without duplication, select that `legacy/no source` record above first, choose the matching file, then use the saved-record update button.
-              </p>
-            ) : null}
-            {currentHistoryItem && !currentHistoryItem.sourceFileSaved ? (
-              <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs font-semibold leading-5 text-amber-950">
-                This saved result was created before source-file persistence. Select exactly one matching full-text file, then use the saved-record update button. The source and selected AI reviewer results are written back to this same record, not saved as another article.
-              </p>
-            ) : null}
-            {currentHistoryItem?.sourceFileSaved && files.length > 0 ? (
-              <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs font-semibold leading-5 text-amber-950">
-                A saved record is selected, but this upload button still creates a NEW saved article record. To re-run AI on the selected article without duplication, clear the upload or use the saved-record update button above.
-              </p>
-            ) : null}
-          </div>
-        </label>
-
-        <div className="grid gap-3">
-          {worksheetOptions.length > 0 ? (
-            <label className="grid gap-2 text-sm font-semibold text-zinc-700">
-              Excel source sheet
-              <select
-                value={worksheetName}
-                onChange={(event) => setWorksheetName(event.target.value)}
-                className="h-10 rounded-md border border-emerald-300 bg-white px-3 text-sm font-semibold text-zinc-900 outline-none focus:border-emerald-500"
-              >
-                {worksheetOptions.map((worksheet) => (
-                  <option key={worksheet.sheetName} value={worksheet.sheetName}>
-                    {worksheet.sheetName} · {worksheet.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-          {selectedWorksheet?.reviewMode === "cautious" ? (
-            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-900">
-              Manual_FullText_Check는 AI 판정을 낮은 신뢰도의 초안으로 보고, 원문 table/figure/supplement와 exclusion reason을 더 엄격히 확인합니다.
-            </div>
-          ) : null}
-          <label className="grid gap-2 text-sm font-semibold text-zinc-700">
-            엑셀 screening row 또는 논문 정보
-            <textarea
-              value={referenceRecord}
-              onChange={(event) => setReferenceRecord(stripGeneratedReferenceContext(event.target.value))}
-              rows={6}
-              placeholder="Screening_ID, first author, year, title, DOI, PMID, abstract 등을 엑셀에서 한 행 복사해 붙여 넣으세요."
-              className="rounded-md border border-emerald-300 bg-white px-3 py-2 text-sm font-normal leading-6 text-zinc-800 outline-none focus:border-emerald-500"
-            />
-          </label>
-        </div>
-      </div>
 
       {batchResults.length > 0 ? (
         <section className="mt-4 rounded-md border border-emerald-200 bg-white p-3">
