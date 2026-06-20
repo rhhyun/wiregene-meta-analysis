@@ -1,6 +1,6 @@
 # Wiregene Meta 사용 가이드
 
-문서 버전: Ver 2.05  
+문서 버전: Ver 2.06  
 최종 업데이트: 2026-06-20  
 적용 사이트: `https://meta.wiregene.com`  
 소스 저장소: `rhhyun/wiregene-meta-analysis`
@@ -179,6 +179,8 @@ https://meta.wiregene.com/api/google-drive/oauth/start?diagnose=1
 ```
 
 Ver 2.05부터는 `Google Drive 연결 시작`을 눌러도 바로 Google 로그인으로 이동하지 않습니다. 먼저 Meta 내부 `Google Drive connection preflight` 화면에서 실제 redirect URI, redirect source, masked Client ID를 보여줍니다. 이후 `Continue to Google login`을 눌렀을 때도 서버가 Google authorization URL을 먼저 검사합니다. Google이 `redirect_uri_mismatch` 또는 `invalid_client`를 반환하면 사용자를 Google 오류 화면으로 보내지 않고 Meta 내부 `Google rejected this OAuth request before login` 화면에서 멈춥니다. 이 화면에 표시되는 redirect URI와 Client ID 일부가 Vercel Production에서 실제 사용 중인 값입니다.
+
+Ver 2.06부터는 AI 평가 설정 화면의 `Google Drive 연결 시작` 버튼 자체가 `/api/google-drive/oauth/start?diagnose=1`로 이동합니다. 따라서 버튼 클릭 직후 Google 오류 화면으로 직행하면 아직 최신 배포가 반영되지 않은 것입니다. 최신 배포에서는 반드시 Meta 내부 OAuth redirect URI check 화면이 먼저 보여야 합니다.
 
 Google Cloud에서 반드시 `승인된 리디렉션 URI` 항목에 위 URI를 넣어야 합니다. `승인된 JavaScript 원본`에 `https://meta.wiregene.com`만 넣은 것은 충분하지 않습니다. URI를 정확히 넣었는데도 같은 오류가 계속되면, Vercel Production의 `GOOGLE_DRIVE_CLIENT_ID`가 지금 수정한 Google Cloud OAuth client가 아닌 다른 client를 가리키고 있는 것입니다.
 

@@ -1,3 +1,30 @@
+# 2026-06-20 force AI settings Google Drive button to diagnostic screen
+
+User issue:
+
+- The user remained stuck on Google's `redirect_uri_mismatch` page and could not proceed.
+- Even though `/api/google-drive/oauth/start` was changed to show preflight first, the UI button still pointed to `/api/google-drive/oauth/start`, so an older or cached deployment could still appear to go straight to Google.
+
+Implemented:
+
+- Changed the AI settings panel button from:
+  - `/api/google-drive/oauth/start`
+  - to `/api/google-drive/oauth/start?diagnose=1`
+- This forces the first click to the Meta internal OAuth redirect URI check page.
+- If clicking the button still goes directly to Google's error page, the deployed app is not yet running this version.
+- Updated `guide.md`.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.71`
+  - UI label: `Ver 2.06 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed
+npm.cmd run lint: passed
+npm.cmd run build: passed
+```
+
 # 2026-06-20 stop direct Google OAuth redirect mismatch screen
 
 User issue:
