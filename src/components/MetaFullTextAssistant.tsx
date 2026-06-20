@@ -897,6 +897,8 @@ const fixedExclusionReasons = [
   "duplicate/overlap cohort",
 ];
 
+const recommendedGeminiReviewerModelName = "gemini-2.5-flash-lite";
+
 function aiReviewerRunnable(slot: MetaAiReviewerSlotSummary) {
   return Boolean(slot.apiKeySource !== "missing" && (slot.providerType === "OPENAI" || slot.baseUrl || looksLikeOpenAiModel(slot.modelName)));
 }
@@ -921,11 +923,16 @@ function aiReviewerModelDisplay(slot: MetaAiReviewerSlotSummary) {
   if (
     slot.providerType === "OPENAI_COMPATIBLE" &&
     isGoogleGeminiOpenAiBaseUrl(slot.baseUrl) &&
-    slot.modelName.trim().toLowerCase() === "gemini-3.5"
+    isLegacyGeminiReviewerModel(slot.modelName)
   ) {
-    return "gemini-3.5 -> gemini-3.5-flash";
+    return `${slot.modelName} -> ${recommendedGeminiReviewerModelName}`;
   }
   return slot.modelName;
+}
+
+function isLegacyGeminiReviewerModel(modelName: string) {
+  const normalized = modelName.trim().toLowerCase();
+  return normalized === "gemini-3.5" || normalized === "gemini-3.5-flash";
 }
 
 export function MetaFullTextAssistant({ extractionColumns, focus, projectId, worksheetOptions = [] }: MetaFullTextAssistantProps) {

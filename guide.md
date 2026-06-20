@@ -1,6 +1,6 @@
 # Wiregene Meta 사용 가이드
 
-문서 버전: Ver 2.22
+문서 버전: Ver 2.23
 최종 업데이트: 2026-06-21
 적용 사이트: `https://meta.wiregene.com`  
 소스 저장소: `rhhyun/wiregene-meta-analysis`
@@ -69,6 +69,10 @@ Ver 2.20부터 대량 full-text AI 분석 큐는 장시간 작업을 전제로 �
 Ver 2.21부터 Project file storage 목록은 내부 저장용 파일명 대신 사람이 알아볼 수 있는 표시명을 먼저 보여줍니다. `full-text-files__해시-논문제목.pdf` 같은 Google Drive/Synology 저장 키는 제목 중심의 이름으로 정리되어 보이고, 원래 저장 키는 보조 정보로만 남습니다. Path 컬럼도 Storage 컬럼으로 바뀌어 `Google Drive` 또는 `Synology/local` 위치를 먼저 표시합니다. Download 링크는 내부 저장 키를 그대로 사용하므로 기존 파일 다운로드 동작은 유지됩니다.
 
 Ver 2.22부터 Screening 화면의 저장소 파일 목록은 기본적으로 접혀 있습니다. full-text source PDF/Word는 일반적으로 아래 `Saved AI review article list`에서 다시 선택해 확인하므로, `Project file storage`에는 저장 위치와 DB bundle/snapshot 기능만 먼저 보이고, 실제 source/audit 파일표와 다운로드 링크는 `Show stored file list`를 눌렀을 때만 열립니다. 저장된 AI review 논문 목록은 파일명을 제목처럼 크게 보여주지 않고, 원문 파일 앞 번호와 확인된 논문 제목만 먼저 표시합니다. 파일명, source 저장소, sheet, confidence, reviewer 상태, AI review 수는 해당 논문 행을 클릭했을 때 행 안과 아래 상세 패널에만 표시됩니다.
+
+Ver 2.23부터 Gemini reviewer의 권장 모델은 `gemini-2.5-flash-lite`입니다. `gemini-3.5-flash`는 고성능 모델이지만 full-text 논문 수십-수백 건을 순차 screening하는 용도에서는 429 quota 오류와 timeout, 비용 부담이 커질 수 있습니다. Google 공식 가격표에서 `gemini-2.5-flash-lite`는 at-scale 사용을 위한 가장 비용 효율적인 모델로 안내되므로, Wiregene Meta에서는 Gemini reviewer 2/3의 기본 비용형 모델로 사용합니다.
+
+Google Gemini를 OpenAI-compatible slot으로 쓸 때 Base URL은 그대로 `https://generativelanguage.googleapis.com/v1beta/openai`를 사용하고, 모델명만 `gemini-2.5-flash-lite`로 입력합니다. 이전에 저장된 `gemini-3.5` 또는 `gemini-3.5-flash` 값은 Google Gemini Base URL에서 실행될 때 자동으로 `gemini-2.5-flash-lite`로 보정됩니다. 이미 저장된 full-text 원문과 이전 AI review history는 삭제하지 않으며, 새 모델을 선택해 다시 실행하면 같은 논문 record에 모델별 draft가 추가됩니다.
 
 ### AI Model Reviewer Comparison
 

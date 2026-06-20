@@ -67,6 +67,8 @@ const sourceLabels: Record<MetaAiSettingsSummary["apiKeySource"], string> = {
   missing: "not configured",
 };
 
+const recommendedGeminiReviewerModelName = "gemini-2.5-flash-lite";
+
 function defaultReviewerSlots(settings: MetaAiSettingsSummary): MetaAiReviewerSlotSummary[] {
   return [
     {
@@ -94,7 +96,7 @@ function defaultReviewerSlots(settings: MetaAiSettingsSummary): MetaAiReviewerSl
       label: "AI reviewer 3",
       providerType: "OPENAI_COMPATIBLE",
       enabled: false,
-      modelName: "gemini-3.5-flash",
+      modelName: recommendedGeminiReviewerModelName,
       baseUrl: null,
       apiKeyMasked: null,
       apiKeySource: "missing",
@@ -651,6 +653,16 @@ function providerModelHint(slot: ReviewerSlotForm) {
   const baseUrl = slot.baseUrl?.toLowerCase() ?? "";
   if (slot.providerType === "OPENAI_COMPATIBLE" && (modelName.includes("deepseek") || baseUrl.includes("deepseek"))) {
     return "DeepSeek V4 model ids must be exact lowercase: deepseek-v4-flash or deepseek-v4-pro. DeepSeekV4Flash is saved as deepseek-v4-flash.";
+  }
+
+  if (
+    slot.providerType === "OPENAI_COMPATIBLE" &&
+    (modelName.includes("gemini") || baseUrl.includes("generativelanguage.googleapis.com"))
+  ) {
+    if (modelName === "gemini-3.5" || modelName === "gemini-3.5-flash") {
+      return `For high-volume full-text screening, use ${recommendedGeminiReviewerModelName}. Legacy Gemini 3.5 entries are normalized to this value at request time to reduce 429/timeouts and cost.`;
+    }
+    return `Recommended value Gemini reviewer for high-volume full-text screening: ${recommendedGeminiReviewerModelName}. Keep the Base URL as https://generativelanguage.googleapis.com/v1beta/openai.`;
   }
 
   return "";

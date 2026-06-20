@@ -1,3 +1,53 @@
+# 2026-06-21 Gemini reviewer value-model switch
+
+User issue:
+
+- AI reviewer 2 using `gemini-3.5-flash` repeatedly failed during full-text screening with `429 status code (no body)` and `Request timed out`.
+- The user asked to choose the best cost-effective Gemini model for the current purpose.
+- The current purpose is high-volume independent full-text screening/extraction draft generation, not final PI adjudication.
+
+Decision:
+
+- Set the Gemini reviewer recommendation and default to `gemini-2.5-flash-lite`.
+- Keep the Google OpenAI-compatible Base URL unchanged: `https://generativelanguage.googleapis.com/v1beta/openai`.
+- Rationale from official Gemini docs/pricing checked on 2026-06-21:
+  - `gemini-3.5-flash` is positioned as a more capable model with much higher paid token pricing.
+  - `gemini-2.5-flash-lite` is documented as the smallest and most cost-effective Gemini model for at-scale usage.
+- The two other reviewer slots can still use GPT/DeepSeek or another provider; PI adjudication remains the final decision layer.
+
+Implemented:
+
+- `src/lib/meta-ai-settings.ts`
+  - default AI reviewer 3 Gemini model changed from `gemini-3.5-flash` to `gemini-2.5-flash-lite`.
+  - stored legacy Gemini reviewer values `gemini-3.5` and `gemini-3.5-flash` are normalized to `gemini-2.5-flash-lite` for OpenAI-compatible Gemini slots.
+- `src/lib/meta-full-text-analysis.ts`
+  - runtime request normalization now converts legacy Gemini 3.5 model ids to `gemini-2.5-flash-lite`.
+  - Gemini 429/quota/timeout errors now include a model-specific hint instead of only a generic failure.
+- `src/components/MetaAiSettingsPanel.tsx`
+  - default Gemini reviewer value and inline hint changed to `gemini-2.5-flash-lite`.
+- `src/components/MetaFullTextAssistant.tsx`
+  - AI reviewer slot display shows legacy Gemini values as `legacy -> gemini-2.5-flash-lite`.
+- `guide.md`
+  - documented the recommended Gemini model, the unchanged Base URL, and legacy model normalization.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.88`
+  - UI label: `Ver 2.23 | 2026 copyright by JK Hyun`
+
+Verification completed:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed
+git diff --check: passed
+npm.cmd run lint: passed
+npm.cmd run build: passed
+```
+
+Regular Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 # 2026-06-21 Screening full-text page declutter
 
 User issue:
@@ -1131,7 +1181,7 @@ Implemented:
 - Saved-source action labels now say the selected saved record will be updated, and helper text states that the saved article count does not increase.
 - Saved-source rerun completion notice states that the same saved article record was updated and no duplicate was created.
 - AI model comparison now displays succeeded / failed / total counts.
-- Google Gemini OpenAI-compatible legacy shorthand `gemini-3.5` is mapped to `gemini-3.5-flash` at request time when the Base URL is `https://generativelanguage.googleapis.com/v1beta/openai/`.
+- At that time, Google Gemini OpenAI-compatible legacy shorthand `gemini-3.5` was mapped to `gemini-3.5-flash`; this was superseded on 2026-06-21 by `gemini-2.5-flash-lite` because of repeated 429/timeouts and cost concerns.
 - Gemini 404 warnings now explain that the model id/Base URL should be checked instead of showing only a raw status code.
 - Version bumped:
   - `package.json` / `package-lock.json`: `0.1.53`

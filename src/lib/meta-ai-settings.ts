@@ -127,6 +127,8 @@ export class MetaAiSettingsStorageError extends Error {
 }
 
 const defaultModelName = "gpt-5-nano";
+const recommendedGeminiReviewerModelName = "gemini-2.5-flash-lite";
+const legacyGeminiReviewerModels = new Set(["gemini-3.5", "gemini-3.5-flash"]);
 const encryptionPrefix = "aesgcm:v1:";
 const defaultStoragePath = ".data/meta/meta-ai-settings.json";
 const defaultDriveFileName = "meta-ai-settings.json";
@@ -526,7 +528,7 @@ function defaultReviewerSlots({
       label: "AI reviewer 3",
       providerType: "OPENAI_COMPATIBLE",
       enabled: false,
-      modelName: "gemini-3.5-flash",
+      modelName: recommendedGeminiReviewerModelName,
       baseUrl: null,
       apiKeyEncrypted: null,
     },
@@ -545,13 +547,16 @@ function normalizeStoredReviewers(
   return defaults.map((fallback, index) => {
     const raw = saved.find((slot) => slot?.id === fallback.id) ?? saved[index];
     if (!raw || typeof raw !== "object") return fallback;
+    const providerType: MetaAiProviderType =
+      raw.providerType === "OPENAI_COMPATIBLE" ? "OPENAI_COMPATIBLE" : "OPENAI";
+    const baseUrl = normalizeBaseUrl(raw.baseUrl);
     return {
       id: cleanSlotId(raw.id, fallback.id),
       label: cleanSlotLabel(raw.label, fallback.label),
-      providerType: raw.providerType === "OPENAI_COMPATIBLE" ? "OPENAI_COMPATIBLE" : "OPENAI",
+      providerType,
       enabled: typeof raw.enabled === "boolean" ? raw.enabled : fallback.enabled,
-      modelName: normalizeModelName(raw.modelName || fallback.modelName),
-      baseUrl: normalizeBaseUrl(raw.baseUrl),
+      modelName: normalizeReviewerModelName(raw.modelName || fallback.modelName, providerType, baseUrl),
+      baseUrl,
       apiKeyEncrypted:
         typeof raw.apiKeyEncrypted === "string" && raw.apiKeyEncrypted ? raw.apiKeyEncrypted : fallback.apiKeyEncrypted,
     };
@@ -588,13 +593,14 @@ function normalizeReviewerSlotUpdates(
         : slot.apiKeyEncrypted;
     const providerType: MetaAiProviderType =
       update.providerType === "OPENAI_COMPATIBLE" ? "OPENAI_COMPATIBLE" : "OPENAI";
+    const baseUrl = normalizeBaseUrl(update.baseUrl);
     return {
       id: slot.id,
       label: cleanSlotLabel(update.label, slot.label),
       providerType,
       enabled: typeof update.enabled === "boolean" ? update.enabled : slot.enabled,
-      modelName: normalizeModelName(update.modelName || slot.modelName),
-      baseUrl: normalizeBaseUrl(update.baseUrl),
+      modelName: normalizeReviewerModelName(update.modelName || slot.modelName, providerType, baseUrl),
+      baseUrl,
       apiKeyEncrypted,
     };
   });
@@ -620,6 +626,19 @@ function normalizeBaseUrl(value: string | null | undefined) {
 function normalizeModelName(value: string) {
   const normalized = value.replace(/\s+/g, "").trim();
   return normalizeKnownProviderModelAlias(normalized || defaultModelName);
+}
+
+function normalizeReviewerModelName(value: string, providerType: MetaAiProviderType, baseUrl: string | null) {
+  const normalized = normalizeModelName(value);
+  if (providerType !== "OPENAI_COMPATIBLE") return normalized;
+  if (!isGoogleGeminiReviewerModel(normalized, baseUrl)) return normalized;
+  return legacyGeminiReviewerModels.has(normalized.toLowerCase())
+    ? recommendedGeminiReviewerModelName
+    : normalized;
+}
+
+function isGoogleGeminiReviewerModel(modelName: string, baseUrl: string | null) {
+  return /^gemini-/i.test(modelName) || /generativelanguage\.googleapis\.com\/v1beta\/openai\/?$/i.test(baseUrl ?? "");
 }
 
 function normalizeKnownProviderModelAlias(modelName: string) {

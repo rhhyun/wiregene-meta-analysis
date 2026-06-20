@@ -155,6 +155,7 @@ type AiMetaFullTextAnalysis = Partial<
 
 const primitiveCellSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
 const metaFullTextAnalysisSchemaVersion = "2026-06-18-multi-ai-v1";
+const recommendedGeminiReviewerModelName = "gemini-2.5-flash-lite";
 const aiReviewCriterionSchema = z
   .object({
     score: z.coerce.number().optional(),
@@ -916,14 +917,19 @@ function normalizeAiReviewerForRequest(reviewer: MetaAiReviewerConfig): MetaAiRe
   if (
     reviewer.providerType === "OPENAI_COMPATIBLE" &&
     isGoogleGeminiOpenAiBaseUrl(reviewer.baseUrl) &&
-    reviewer.modelName.trim().toLowerCase() === "gemini-3.5"
+    isLegacyGeminiReviewerModel(reviewer.modelName)
   ) {
     return {
       ...reviewer,
-      modelName: "gemini-3.5-flash",
+      modelName: recommendedGeminiReviewerModelName,
     };
   }
   return reviewer;
+}
+
+function isLegacyGeminiReviewerModel(modelName: string) {
+  const normalized = modelName.trim().toLowerCase();
+  return normalized === "gemini-3.5" || normalized === "gemini-3.5-flash";
 }
 
 function isGoogleGeminiOpenAiBaseUrl(baseUrl: string | null | undefined) {
@@ -1418,6 +1424,7 @@ function formatAiReviewerRequestError(error: unknown, reviewer: MetaAiReviewerCo
   const hints: string[] = [];
   const baseUrl = reviewer.baseUrl?.trim() ?? "";
   const looksLikeNotFound = /\b404\b|not\s+found/i.test(message);
+  const looksLikeRateOrTimeout = /\b429\b|rate\s*limit|quota|timed?\s*out|timeout/i.test(message);
   const looksLikeDeepSeek =
     /deepseek/i.test(baseUrl) || /deepseek/i.test(reviewer.modelName) || /deepseek/i.test(message);
 
@@ -1434,7 +1441,7 @@ function formatAiReviewerRequestError(error: unknown, reviewer: MetaAiReviewerCo
   if (reviewer.providerType === "OPENAI_COMPATIBLE" && looksLikeNotFound) {
     if (isGoogleGeminiOpenAiBaseUrl(baseUrl)) {
       hints.push(
-        "Google Gemini OpenAI-compatible endpoint returned 404. This usually means the model id is not found for that endpoint or account. Check AI settings: use the Google OpenAI-compatible Base URL and an exact supported Gemini model id such as gemini-3.5-flash rather than gemini-3.5.",
+        `Google Gemini OpenAI-compatible endpoint returned 404. This usually means the model id is not found for that endpoint or account. Check AI settings: use the Google OpenAI-compatible Base URL and an exact supported Gemini model id such as ${recommendedGeminiReviewerModelName}.`,
       );
     } else {
       hints.push(
@@ -1446,6 +1453,16 @@ function formatAiReviewerRequestError(error: unknown, reviewer: MetaAiReviewerCo
   if (looksLikeNotFound && looksLikeOpenAiModel(reviewer.modelName)) {
     hints.push(
       "This looks like an OpenAI model id. If the request still returns 404 after using the OpenAI Responses route, check the exact model id and whether this API key has access to that model.",
+    );
+  }
+
+  if (
+    reviewer.providerType === "OPENAI_COMPATIBLE" &&
+    isGoogleGeminiOpenAiBaseUrl(baseUrl) &&
+    looksLikeRateOrTimeout
+  ) {
+    hints.push(
+      `Gemini reviewer rate limit/timeout detected. For high-volume full-text screening, use ${recommendedGeminiReviewerModelName}; it is the value Gemini reviewer configured by Wiregene Meta.`,
     );
   }
 
