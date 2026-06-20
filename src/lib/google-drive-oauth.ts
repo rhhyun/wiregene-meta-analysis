@@ -6,13 +6,24 @@ import {
 
 const tokenUrl = "https://oauth2.googleapis.com/token";
 
-export async function refreshGoogleDriveOauthAccessToken(refreshToken = googleDriveOauthRefreshToken()) {
+type GoogleDriveRefreshClient = {
+  clientId: string;
+  clientSecret: string;
+};
+
+export async function refreshGoogleDriveOauthAccessToken(
+  refreshToken = googleDriveOauthRefreshToken(),
+  client?: GoogleDriveRefreshClient,
+) {
+  const clientId = client?.clientId.trim() || googleDriveOauthClientId();
+  const clientSecret = client?.clientSecret.trim() || googleDriveOauthClientSecret();
+
   const response = await fetch(tokenUrl, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
-      client_id: googleDriveOauthClientId(),
-      client_secret: googleDriveOauthClientSecret(),
+      client_id: clientId,
+      client_secret: clientSecret,
       refresh_token: refreshToken.trim(),
       grant_type: "refresh_token",
     }),

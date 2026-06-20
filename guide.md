@@ -1,6 +1,6 @@
 # Wiregene Meta 사용 가이드
 
-문서 버전: Ver 2.08
+문서 버전: Ver 2.09
 최종 업데이트: 2026-06-20  
 적용 사이트: `https://meta.wiregene.com`  
 소스 저장소: `rhhyun/wiregene-meta-analysis`
@@ -187,6 +187,10 @@ Ver 2.07부터는 링크나 URL 파라미터만으로 Google 로그인으로 이
 Ver 2.08부터는 production Meta OAuth redirect URI가 코드 안에서 잠겨 있습니다. 진단 화면의 redirect source가 `meta-production-locked`로 표시되어야 하며, 이 경우 Vercel의 `GOOGLE_DRIVE_OAUTH_REDIRECT_URI` 값이 잘못되어 있어도 Google로 보내는 `redirect_uri`는 항상 `https://meta.wiregene.com/api/google-drive/oauth/callback`입니다. 이 상태에서도 Google이 `redirect_uri_mismatch`를 표시하면 남는 원인은 Vercel Production의 `GOOGLE_DRIVE_CLIENT_ID`가 Google Cloud에서 수정한 Web OAuth client와 다르거나, 해당 client의 `승인된 리디렉션 URI` 항목에 callback이 정확히 등록되지 않은 경우입니다.
 
 Google Drive 연결은 반드시 `https://meta.wiregene.com`에서 시작합니다. `search.wiregene.com`, `mata.wiregene.com`, production Vercel preview host처럼 Meta로 취급되는 공개 별칭에서 OAuth 시작 주소를 열면 앱이 먼저 `meta.wiregene.com`으로 이동시킵니다. OAuth cookie와 callback host가 다르면 인증이 깨질 수 있기 때문입니다.
+
+Ver 2.09부터는 Meta가 검증하지 못한 Vercel `GOOGLE_DRIVE_CLIENT_ID`로 Google 로그인에 계속 보내지 않습니다. Production Meta에서는 `GOOGLE_DRIVE_OAUTH_EXPECTED_CLIENT_ID`가 설정되어 있고 그 값이 현재 `GOOGLE_DRIVE_CLIENT_ID`와 일치할 때만 기본 `Continue to Google login`이 활성화됩니다. 값이 없거나 다르면 Google 오류 화면으로 보내지 않고 Meta 내부 진단 화면에서 멈춥니다.
+
+Vercel 환경변수를 먼저 고치기 어려운 경우에는 같은 진단 화면의 `Repair with the correct Google Web OAuth client` 양식에 Google Cloud의 올바른 Web OAuth Client ID와 Client Secret을 붙여넣어 바로 OAuth를 실행할 수 있습니다. 이 임시 client 값은 URL이나 state에 넣지 않고 15분짜리 암호화 HttpOnly cookie로만 callback까지 전달합니다. 성공하면 화면에 Vercel Production에 넣을 `GOOGLE_DRIVE_CLIENT_ID`, `GOOGLE_DRIVE_CLIENT_SECRET`, `GOOGLE_DRIVE_OAUTH_EXPECTED_CLIENT_ID`, `GOOGLE_DRIVE_REFRESH_TOKEN`, 저장소 backend env block이 한 번에 표시됩니다. 이 값을 저장하고 redeploy하면 이후에는 같은 redirect mismatch 루프가 재발하지 않아야 합니다.
 
 Google Cloud에서 반드시 `승인된 리디렉션 URI` 항목에 위 URI를 넣어야 합니다. `승인된 JavaScript 원본`에 `https://meta.wiregene.com`만 넣은 것은 충분하지 않습니다. URI를 정확히 넣었는데도 같은 오류가 계속되면, Vercel Production의 `GOOGLE_DRIVE_CLIENT_ID`가 지금 수정한 Google Cloud OAuth client가 아닌 다른 client를 가리키고 있는 것입니다.
 

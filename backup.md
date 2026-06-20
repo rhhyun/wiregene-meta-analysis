@@ -1,3 +1,45 @@
+# 2026-06-20 block unsafe Google OAuth client loop and add repair flow
+
+User issue:
+
+- User showed that Ver 2.08 correctly locked the redirect URI to `https://meta.wiregene.com/api/google-drive/oauth/callback` and displayed `meta-production-locked`, but clicking `Continue to Google login` still reached Google's `400 redirect_uri_mismatch` page.
+- This proved the remaining failure was the running Vercel `GOOGLE_DRIVE_CLIENT_ID`, not the redirect URI.
+- The app still allowed users to continue with an unverified client id, which kept creating the same external Google error loop.
+
+Implemented:
+
+- `src/lib/google-drive-web-oauth.ts`
+  - Added `GOOGLE_DRIVE_OAUTH_EXPECTED_CLIENT_ID` guard.
+  - Production Meta default OAuth is allowed only when current `GOOGLE_DRIVE_CLIENT_ID` matches expected client id.
+  - Added masked client status helpers.
+  - Added short-lived encrypted HttpOnly temporary OAuth client cookie support.
+  - OAuth state now records temporary client id when a repair client is used, and callback rejects missing/mismatched temporary client state.
+  - Authorization URL and token exchange can now use either configured env client or temporary repair client.
+- `src/lib/google-drive-oauth.ts`
+  - Refresh-token verification can use the same temporary client id/secret that issued the token.
+- `src/app/api/google-drive/oauth/start/route.ts`
+  - Diagnostic/preflight page now shows current client id, expected client id, client status, and blocks Google redirect when production client status is not verified.
+  - The old checkbox path no longer sends users to Google when expected client id is missing or mismatched.
+  - Added `Repair with the correct Google Web OAuth client` form. User can paste the correct Google Cloud Web OAuth Client ID/Secret; the app stores it only as a short-lived encrypted HttpOnly cookie for the OAuth callback.
+- `src/app/api/google-drive/oauth/callback/route.ts`
+  - Callback exchanges and verifies token with temporary repair client when used.
+  - Success page includes a complete Vercel Production env block: `GOOGLE_DRIVE_CLIENT_ID`, `GOOGLE_DRIVE_CLIENT_SECRET`, `GOOGLE_DRIVE_OAUTH_EXPECTED_CLIENT_ID`, `GOOGLE_DRIVE_REFRESH_TOKEN`, and Meta Google Drive backend envs.
+  - Failure page links to diagnostics instead of looping through `Start again`.
+- `guide.md`
+  - Updated OAuth instructions for Ver 2.09.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.74`
+  - UI label: `Ver 2.09 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed
+npm.cmd run lint: passed
+git diff --check: passed
+npm.cmd run build: passed
+```
+
 # 2026-06-20 lock Meta production Google OAuth redirect URI
 
 User issue:

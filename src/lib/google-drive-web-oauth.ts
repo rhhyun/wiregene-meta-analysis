@@ -8,6 +8,7 @@ import { refreshGoogleDriveOauthAccessToken } from "./google-drive-oauth";
 
 export const googleDriveOAuthCallbackPath = "/api/google-drive/oauth/callback";
 export const googleDriveOAuthCookieName = "wiregene_gdrive_oauth_nonce";
+export const googleDriveOAuthTemporaryClientCookieName = "wiregene_gdrive_oauth_temp_client";
 export const googleDriveOAuthCookieMaxAgeSeconds = 15 * 60;
 export const googleDriveOAuthProductionRedirectUri = `https://meta.wiregene.com${googleDriveOAuthCallbackPath}`;
 
@@ -19,6 +20,7 @@ type GoogleDriveOAuthStatePayload = {
   purpose: "google-drive-oauth";
   nonce: string;
   redirectUri: string;
+  clientId?: string;
   issuedAt: number;
 };
 
@@ -29,6 +31,27 @@ export type GoogleDriveOAuthTokenResult = {
   scope: string | null;
   tokenType: string | null;
 };
+
+export type GoogleDriveOAuthClientCredentials = {
+  clientId: string;
+  clientSecret: string;
+};
+
+export type GoogleDriveOAuthClientStatus =
+  | {
+      ok: true;
+      code: "client_match" | "unlocked_non_production";
+      clientId: string;
+      expectedClientId: string | null;
+      message: string;
+    }
+  | {
+      ok: false;
+      code: "missing_client_id" | "expected_client_id_missing" | "client_id_mismatch";
+      clientId: string;
+      expectedClientId: string | null;
+      message: string;
+    };
 
 export type GoogleDriveOAuthRedirectUriDescription = {
   redirectUri: string;
@@ -75,6 +98,67 @@ export function describeGoogleDriveOAuthRedirectUri(requestUrl: string | URL): G
   return { redirectUri: `${url.origin}${googleDriveOAuthCallbackPath}`, source: "request-origin" };
 }
 
+export function checkGoogleDriveOAuthClientForRedirect(
+  redirect: GoogleDriveOAuthRedirectUriDescription,
+): GoogleDriveOAuthClientStatus {
+  const clientId = googleDriveOauthClientId();
+  const expectedClientId = googleDriveOAuthExpectedClientId();
+
+  if (!clientId) {
+    return {
+      ok: false,
+      code: "missing_client_id",
+      clientId,
+      expectedClientId,
+      message: "GOOGLE_DRIVE_CLIENT_ID is missing in the running deployment.",
+    };
+  }
+
+  if (redirect.source !== "meta-production-locked") {
+    return {
+      ok: true,
+      code: "unlocked_non_production",
+      clientId,
+      expectedClientId,
+      message: "This non-production OAuth route can use the configured client id.",
+    };
+  }
+
+  if (!expectedClientId) {
+    return {
+      ok: false,
+      code: "expected_client_id_missing",
+      clientId,
+      expectedClientId,
+      message:
+        "Production Meta cannot verify that the running GOOGLE_DRIVE_CLIENT_ID is the Web OAuth client that owns this callback. Set GOOGLE_DRIVE_OAUTH_EXPECTED_CLIENT_ID to the correct Web OAuth client id, or use the temporary repair form below.",
+    };
+  }
+
+  if (clientId !== expectedClientId) {
+    return {
+      ok: false,
+      code: "client_id_mismatch",
+      clientId,
+      expectedClientId,
+      message:
+        "Vercel Production is using a different GOOGLE_DRIVE_CLIENT_ID than the Web OAuth client expected for this callback.",
+    };
+  }
+
+  return {
+    ok: true,
+    code: "client_match",
+    clientId,
+    expectedClientId,
+    message: "The running Google Drive OAuth client id matches the expected production Web OAuth client id.",
+  };
+}
+
+export function googleDriveOAuthExpectedClientId() {
+  return (process.env.GOOGLE_DRIVE_OAUTH_EXPECTED_CLIENT_ID ?? "").trim() || null;
+}
+
 export function createGoogleDriveOAuthNonce() {
   return crypto.randomBytes(24).toString("base64url");
 }
@@ -82,14 +166,17 @@ export function createGoogleDriveOAuthNonce() {
 export function createGoogleDriveOAuthState({
   nonce,
   redirectUri,
+  clientId,
 }: {
   nonce: string;
   redirectUri: string;
+  clientId?: string;
 }) {
   const payload: GoogleDriveOAuthStatePayload = {
     purpose: "google-drive-oauth",
     nonce,
     redirectUri,
+    ...(clientId ? { clientId } : {}),
     issuedAt: Date.now(),
   };
   const encodedPayload = base64Url(JSON.stringify(payload));
@@ -100,10 +187,12 @@ export function verifyGoogleDriveOAuthState({
   state,
   nonce,
   redirectUri,
+  clientId,
 }: {
   state: string;
   nonce: string;
   redirectUri: string;
+  clientId?: string;
 }) {
   const [encodedPayload, signature] = state.split(".");
   if (!encodedPayload || !signature) {
@@ -125,6 +214,12 @@ export function verifyGoogleDriveOAuthState({
   if (payload.redirectUri !== redirectUri) {
     throw new Error("Google Drive OAuth redirect URI changed during authorization.");
   }
+  if (clientId && payload.clientId !== clientId) {
+    throw new Error("Google Drive OAuth client changed during authorization.");
+  }
+  if (!clientId && payload.clientId) {
+    throw new Error("Google Drive OAuth client changed during authorization.");
+  }
   if (!Number.isFinite(payload.issuedAt) || Date.now() - payload.issuedAt > googleDriveOAuthCookieMaxAgeSeconds * 1000) {
     throw new Error("Google Drive OAuth state expired. Start the connection again.");
   }
@@ -135,16 +230,18 @@ export function verifyGoogleDriveOAuthState({
 export function buildGoogleDriveOAuthAuthorizationUrl({
   redirectUri,
   state,
+  clientId,
 }: {
   redirectUri: string;
   state: string;
+  clientId?: string;
 }) {
-  const clientId = googleDriveOauthClientId();
-  if (!clientId) throw new Error("GOOGLE_DRIVE_CLIENT_ID is missing.");
+  const resolvedClientId = clientId?.trim() || googleDriveOauthClientId();
+  if (!resolvedClientId) throw new Error("GOOGLE_DRIVE_CLIENT_ID is missing.");
 
   const url = new URL(googleAuthorizationUrl);
   url.searchParams.set("response_type", "code");
-  url.searchParams.set("client_id", clientId);
+  url.searchParams.set("client_id", resolvedClientId);
   url.searchParams.set("redirect_uri", redirectUri);
   url.searchParams.set("scope", driveFileScope);
   url.searchParams.set("access_type", "offline");
@@ -205,12 +302,14 @@ export async function preflightGoogleDriveOAuthAuthorizationUrl(
 export async function exchangeGoogleDriveOAuthCode({
   code,
   redirectUri,
+  client,
 }: {
   code: string;
   redirectUri: string;
+  client?: GoogleDriveOAuthClientCredentials;
 }): Promise<GoogleDriveOAuthTokenResult> {
-  const clientId = googleDriveOauthClientId();
-  const clientSecret = googleDriveOauthClientSecret();
+  const clientId = client?.clientId.trim() || googleDriveOauthClientId();
+  const clientSecret = client?.clientSecret.trim() || googleDriveOauthClientSecret();
   if (!clientId || !clientSecret) {
     throw new Error("GOOGLE_DRIVE_CLIENT_ID and GOOGLE_DRIVE_CLIENT_SECRET are required.");
   }
@@ -246,7 +345,10 @@ export async function exchangeGoogleDriveOAuthCode({
     );
   }
 
-  const verifiedAccessToken = await refreshGoogleDriveOauthAccessToken(payload.refresh_token);
+  const verifiedAccessToken = await refreshGoogleDriveOauthAccessToken(payload.refresh_token, {
+    clientId,
+    clientSecret,
+  });
   return {
     accessToken: payload.access_token ?? verifiedAccessToken,
     refreshToken: payload.refresh_token,
@@ -257,10 +359,65 @@ export async function exchangeGoogleDriveOAuthCode({
 }
 
 export function maskGoogleDriveClientId() {
-  const clientId = googleDriveOauthClientId();
+  return maskGoogleDriveClientIdValue(googleDriveOauthClientId());
+}
+
+export function maskGoogleDriveClientIdValue(clientId: string) {
   if (!clientId) return "not configured";
   if (clientId.length <= 12) return `${clientId.slice(0, 3)}...`;
   return `${clientId.slice(0, 8)}...${clientId.slice(-8)}`;
+}
+
+export function sealGoogleDriveOAuthTemporaryClient(client: GoogleDriveOAuthClientCredentials) {
+  const payload = JSON.stringify({
+    clientId: client.clientId.trim(),
+    clientSecret: client.clientSecret.trim(),
+    issuedAt: Date.now(),
+  });
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", googleDriveOAuthEncryptionKey(), iv);
+  const encrypted = Buffer.concat([cipher.update(payload, "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return [iv, tag, encrypted].map((part) => part.toString("base64url")).join(".");
+}
+
+export function openGoogleDriveOAuthTemporaryClient(value: string): GoogleDriveOAuthClientCredentials {
+  const [encodedIv, encodedTag, encodedEncrypted] = value.split(".");
+  if (!encodedIv || !encodedTag || !encodedEncrypted) {
+    throw new Error("Temporary Google OAuth client cookie is malformed.");
+  }
+
+  const decipher = crypto.createDecipheriv(
+    "aes-256-gcm",
+    googleDriveOAuthEncryptionKey(),
+    Buffer.from(encodedIv, "base64url"),
+  );
+  decipher.setAuthTag(Buffer.from(encodedTag, "base64url"));
+  const decrypted = Buffer.concat([
+    decipher.update(Buffer.from(encodedEncrypted, "base64url")),
+    decipher.final(),
+  ]).toString("utf8");
+  const payload = JSON.parse(decrypted) as {
+    clientId?: unknown;
+    clientSecret?: unknown;
+    issuedAt?: unknown;
+  };
+
+  if (typeof payload.clientId !== "string" || typeof payload.clientSecret !== "string") {
+    throw new Error("Temporary Google OAuth client cookie is incomplete.");
+  }
+  if (
+    typeof payload.issuedAt !== "number" ||
+    !Number.isFinite(payload.issuedAt) ||
+    Date.now() - payload.issuedAt > googleDriveOAuthCookieMaxAgeSeconds * 1000
+  ) {
+    throw new Error("Temporary Google OAuth client expired. Start the connection again.");
+  }
+
+  return {
+    clientId: payload.clientId,
+    clientSecret: payload.clientSecret,
+  };
 }
 
 function formatGoogleDriveOAuthTokenError(
@@ -295,6 +452,10 @@ function googleDriveOAuthStateSecret() {
     throw new Error("GOOGLE_DRIVE_OAUTH_STATE_SECRET or GOOGLE_DRIVE_CLIENT_SECRET is required.");
   }
   return secret;
+}
+
+function googleDriveOAuthEncryptionKey() {
+  return crypto.createHash("sha256").update(googleDriveOAuthStateSecret()).digest();
 }
 
 function base64Url(value: string) {

@@ -6,9 +6,13 @@ import {
   exchangeGoogleDriveOAuthCode,
   googleDriveOAuthCallbackPath,
   googleDriveOAuthCookieName,
+  googleDriveOAuthTemporaryClientCookieName,
   maskGoogleDriveClientId,
+  maskGoogleDriveClientIdValue,
+  openGoogleDriveOAuthTemporaryClient,
   resolveGoogleDriveOAuthRedirectUri,
   verifyGoogleDriveOAuthState,
+  type GoogleDriveOAuthClientCredentials,
 } from "@/lib/google-drive-web-oauth";
 
 export const runtime = "nodejs";
@@ -23,9 +27,17 @@ export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
   const state = request.nextUrl.searchParams.get("state");
   const nonce = request.cookies.get(googleDriveOAuthCookieName)?.value ?? "";
+  const temporaryClientCookie = request.cookies.get(googleDriveOAuthTemporaryClientCookieName)?.value ?? "";
 
   const clearCookie = (response: NextResponse) => {
     response.cookies.set(googleDriveOAuthCookieName, "", {
+      httpOnly: true,
+      maxAge: 0,
+      path: "/",
+      sameSite: "lax",
+      secure: request.nextUrl.protocol === "https:",
+    });
+    response.cookies.set(googleDriveOAuthTemporaryClientCookieName, "", {
       httpOnly: true,
       maxAge: 0,
       path: "/",
@@ -36,14 +48,26 @@ export async function GET(request: NextRequest) {
   };
 
   try {
+    const temporaryClient = temporaryClientCookie
+      ? openGoogleDriveOAuthTemporaryClient(temporaryClientCookie)
+      : null;
     if (error) throw new Error(`Google authorization failed: ${error}`);
     if (!code) throw new Error("Google did not return an authorization code.");
     if (!state) throw new Error("Google did not return OAuth state.");
     if (!nonce) throw new Error("OAuth browser session expired. Start the connection again.");
 
-    verifyGoogleDriveOAuthState({ state, nonce, redirectUri });
-    const token = await exchangeGoogleDriveOAuthCode({ code, redirectUri });
-    return clearCookie(htmlResponse(successPage({ refreshToken: token.refreshToken, redirectUri })));
+    verifyGoogleDriveOAuthState({
+      state,
+      nonce,
+      redirectUri,
+      ...(temporaryClient ? { clientId: temporaryClient.clientId } : {}),
+    });
+    const token = await exchangeGoogleDriveOAuthCode({
+      code,
+      redirectUri,
+      ...(temporaryClient ? { client: temporaryClient } : {}),
+    });
+    return clearCookie(htmlResponse(successPage({ refreshToken: token.refreshToken, redirectUri, temporaryClient })));
   } catch (caught) {
     return clearCookie(htmlResponse(errorPage(errorMessage(caught), redirectUri), 400));
   }
@@ -78,11 +102,20 @@ function googleDriveOAuthAdminOnly() {
 function successPage({
   refreshToken,
   redirectUri,
+  temporaryClient,
 }: {
   refreshToken: string;
   redirectUri: string;
+  temporaryClient: GoogleDriveOAuthClientCredentials | null;
 }) {
   const envBlock = [
+    ...(temporaryClient
+      ? [
+          `GOOGLE_DRIVE_CLIENT_ID=${temporaryClient.clientId}`,
+          `GOOGLE_DRIVE_CLIENT_SECRET=${temporaryClient.clientSecret}`,
+          `GOOGLE_DRIVE_OAUTH_EXPECTED_CLIENT_ID=${temporaryClient.clientId}`,
+        ]
+      : []),
     `GOOGLE_DRIVE_REFRESH_TOKEN=${refreshToken}`,
     "META_ALLOW_GOOGLE_DRIVE_STORAGE=true",
     "META_PROJECT_STORAGE_BACKEND=google-drive",
@@ -110,12 +143,12 @@ function successPage({
   <h1>Google Drive connection verified</h1>
   <div class="ok">
     <p>The refresh token was issued and verified with the current Web OAuth client and Google Drive permission.</p>
-    <p>Client ID: <code>${escapeHtml(maskGoogleDriveClientId())}</code></p>
+    <p>Client ID: <code>${escapeHtml(temporaryClient ? maskGoogleDriveClientIdValue(temporaryClient.clientId) : maskGoogleDriveClientId())}</code></p>
     <p>Callback URI: <code>${escapeHtml(redirectUri)}</code></p>
   </div>
   <h2>Values to add to Vercel Production Environment Variables</h2>
   <textarea readonly>${escapeHtml(envBlock)}</textarea>
-  <p>After saving these values in Vercel, redeploy Production. <code>GOOGLE_DRIVE_CLIENT_ID</code>, <code>GOOGLE_DRIVE_CLIENT_SECRET</code>, and this refresh token must belong to the same Web OAuth client. Meta production uses the fixed callback URI in code, so <code>GOOGLE_DRIVE_OAUTH_REDIRECT_URI</code> is no longer required for production.</p>
+  <p>After saving these values in Vercel, redeploy Production. <code>GOOGLE_DRIVE_CLIENT_ID</code>, <code>GOOGLE_DRIVE_CLIENT_SECRET</code>, <code>GOOGLE_DRIVE_OAUTH_EXPECTED_CLIENT_ID</code>, and this refresh token must belong to the same Web OAuth client. Meta production uses the fixed callback URI in code, so <code>GOOGLE_DRIVE_OAUTH_REDIRECT_URI</code> is no longer required for production.</p>
   <p><a href="/api/meta-analysis/storage-policy">Check storage policy</a> · <a href="/">Return to Meta</a></p>
 </body>
 </html>`;
@@ -140,7 +173,8 @@ function errorPage(detail: string, redirectUri: string) {
   <div class="error">${escapeHtml(detail)}</div>
   <p>The Google Cloud authorized redirect URI must exactly match this value.</p>
   <p><code>${escapeHtml(redirectUri || `https://meta.wiregene.com${googleDriveOAuthCallbackPath}`)}</code></p>
-  <p><a href="/api/google-drive/oauth/start">Start again</a> · <a href="/">Return to Meta</a></p>
+  <p>Current Client ID: <code>${escapeHtml(maskGoogleDriveClientId())}</code></p>
+  <p><a href="/api/google-drive/oauth/start?diagnose=1">Review OAuth diagnostics</a> · <a href="/">Return to Meta</a></p>
 </body>
 </html>`;
 }
