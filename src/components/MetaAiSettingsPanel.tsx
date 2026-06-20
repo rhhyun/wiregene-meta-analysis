@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, CheckCircle2, KeyRound, Loader2, Save, Trash2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, Cloud, ExternalLink, KeyRound, Loader2, Save, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { apiErrorMessage } from "@/components/grant-error-message";
 
@@ -209,6 +209,29 @@ export function MetaAiSettingsPanel() {
             />
             <StatusBox label="Updated" value={settings?.updatedAt ? new Date(settings.updatedAt).toLocaleString("ko-KR") : "not saved"} />
           </div>
+
+          <section className="rounded-md border border-sky-200 bg-sky-50 p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-sky-950">Google Drive online storage</p>
+                <p className="mt-1 text-sm leading-6 text-zinc-700">
+                  Web OAuth client로 Google Drive refresh token을 새로 발급하고 검증합니다. Google Cloud redirect URI는
+                  <code className="mx-1 rounded bg-white px-1.5 py-0.5 text-xs font-semibold text-sky-950">
+                    https://meta.wiregene.com/api/google-drive/oauth/callback
+                  </code>
+                  로 등록되어 있어야 합니다.
+                </p>
+              </div>
+              <a
+                href="/api/google-drive/oauth/start"
+                className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md bg-sky-700 px-4 text-sm font-semibold text-white transition hover:bg-sky-800"
+              >
+                <Cloud className="h-4 w-4" aria-hidden />
+                Google Drive 연결 시작
+                <ExternalLink className="h-4 w-4" aria-hidden />
+              </a>
+            </div>
+          </section>
 
           <div className="grid gap-4 lg:grid-cols-[0.7fr_1fr]">
             <label className="flex items-center gap-3 rounded-md border border-zinc-200 bg-zinc-50 p-4 text-sm font-semibold text-zinc-800">

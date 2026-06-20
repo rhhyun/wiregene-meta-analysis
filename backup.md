@@ -1,3 +1,50 @@
+# 2026-06-20 implement Meta Google Drive Web OAuth connection flow
+
+User issue:
+
+- User should not manually assemble or execute OAuth parameter URLs.
+- Existing `meta.wiregene.com` Web OAuth client should be usable through the app.
+- The app must provide a direct Google Drive connection action and callback route.
+
+Implemented:
+
+- Added `src/lib/google-drive-web-oauth.ts`.
+  - Builds Google OAuth authorization URLs for Web OAuth.
+  - Uses Drive-only scope: `https://www.googleapis.com/auth/drive.file`.
+  - Uses signed, short-lived OAuth `state` plus an HttpOnly nonce cookie.
+  - Exchanges authorization `code` at `https://oauth2.googleapis.com/token`.
+  - Verifies the returned refresh token by obtaining an access token.
+- Added production callback routes:
+  - `GET /api/google-drive/oauth/start`
+  - `GET /api/google-drive/oauth/callback`
+- Updated `src/proxy.ts` so Meta mode permits `/api/google-drive/oauth/*`.
+- Added a Google Drive connection section and button to `MetaAiSettingsPanel`.
+  - Button label: `Google Drive 연결 시작`.
+  - Required Google Cloud redirect URI displayed in the UI:
+    - `https://meta.wiregene.com/api/google-drive/oauth/callback`
+- Callback success page shows the verified `GOOGLE_DRIVE_REFRESH_TOKEN` and Meta Google Drive storage env values for Vercel Production.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.65`
+  - UI label: `Ver 2.00 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed
+npm.cmd run lint: passed
+npm.cmd run build: passed
+next build route list includes:
+  /api/google-drive/oauth/start
+  /api/google-drive/oauth/callback
+```
+
+Remaining user-side action after deployment:
+
+- In Google Cloud Web OAuth client, register the exact redirect URI:
+  - `https://meta.wiregene.com/api/google-drive/oauth/callback`
+- In Vercel Production, ensure `GOOGLE_DRIVE_CLIENT_ID` and `GOOGLE_DRIVE_CLIENT_SECRET` are the same Web OAuth client values.
+- After using the new in-app button, copy the callback success page env block into Vercel Production and redeploy.
+
 # 2026-06-20 remove raw Google OAuth credential instructions from user-facing Meta errors
 
 User issue:
