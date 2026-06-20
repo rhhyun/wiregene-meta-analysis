@@ -83,7 +83,6 @@ function successPage({
   redirectUri: string;
 }) {
   const envBlock = [
-    `GOOGLE_DRIVE_OAUTH_REDIRECT_URI=${redirectUri}`,
     `GOOGLE_DRIVE_REFRESH_TOKEN=${refreshToken}`,
     "META_ALLOW_GOOGLE_DRIVE_STORAGE=true",
     "META_PROJECT_STORAGE_BACKEND=google-drive",
@@ -116,7 +115,7 @@ function successPage({
   </div>
   <h2>Values to add to Vercel Production Environment Variables</h2>
   <textarea readonly>${escapeHtml(envBlock)}</textarea>
-  <p>After saving these values in Vercel, redeploy Production. <code>GOOGLE_DRIVE_CLIENT_ID</code>, <code>GOOGLE_DRIVE_CLIENT_SECRET</code>, and this refresh token must belong to the same Web OAuth client.</p>
+  <p>After saving these values in Vercel, redeploy Production. <code>GOOGLE_DRIVE_CLIENT_ID</code>, <code>GOOGLE_DRIVE_CLIENT_SECRET</code>, and this refresh token must belong to the same Web OAuth client. Meta production uses the fixed callback URI in code, so <code>GOOGLE_DRIVE_OAUTH_REDIRECT_URI</code> is no longer required for production.</p>
   <p><a href="/api/meta-analysis/storage-policy">Check storage policy</a> · <a href="/">Return to Meta</a></p>
 </body>
 </html>`;

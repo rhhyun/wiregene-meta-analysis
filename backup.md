@@ -1,3 +1,39 @@
+# 2026-06-20 lock Meta production Google OAuth redirect URI
+
+User issue:
+
+- The user still reached Google's Korean `400 redirect_uri_mismatch` screen after starting Google Drive OAuth.
+- The previous safety flow stopped direct GET redirects and required POST confirmation, but production could still inherit a stale/wrong `GOOGLE_DRIVE_OAUTH_REDIRECT_URI` environment variable before falling back to the built-in Meta callback.
+- The user asked to stop making them adjust repeated commands manually and put the stable value inside the program when it is not meant to change like AI model settings.
+
+Implemented:
+
+- `src/lib/google-drive-web-oauth.ts`
+  - `meta.wiregene.com`, `mata.wiregene.com`, and Vercel production `WIREGENE_APP_MODE=meta` now always resolve Google Drive OAuth redirect URI to:
+    - `https://meta.wiregene.com/api/google-drive/oauth/callback`
+  - Production Meta returns redirect source `meta-production-locked`.
+  - `GOOGLE_DRIVE_OAUTH_REDIRECT_URI` is now honored only after the production Meta lock check, so stale Vercel env values cannot change the production callback.
+- `src/app/api/google-drive/oauth/start/route.ts`
+  - Diagnostic/preflight page now explicitly says production Meta ignores `GOOGLE_DRIVE_OAUTH_REDIRECT_URI` and always sends the fixed callback to Google.
+  - Public Meta aliases such as `search.wiregene.com`, `search.wiregen.com`, `mata.wiregene.com`, and production `.vercel.app` hosts now redirect OAuth start requests to canonical `https://meta.wiregene.com/...` before creating nonce/cookies.
+- `src/app/api/google-drive/oauth/callback/route.ts`
+  - Successful OAuth env block no longer tells the user to set `GOOGLE_DRIVE_OAUTH_REDIRECT_URI`, because production Meta now locks the callback in code.
+- `guide.md`
+  - Updated Google Drive OAuth instructions for Ver 2.08.
+  - Clarified that if `meta-production-locked` is visible and Google still returns `redirect_uri_mismatch`, the remaining cause is the wrong `GOOGLE_DRIVE_CLIENT_ID` in Vercel Production or a missing exact Authorized redirect URI on that specific Google Cloud Web OAuth client.
+  - Clarified that Google Drive OAuth must start from canonical `https://meta.wiregene.com` so the host that sets the nonce cookie is the host receiving Google's callback.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.73`
+  - UI label: `Ver 2.08 | 2026 copyright by JK Hyun`
+
+Verification to run:
+
+```text
+npx.cmd tsc --noEmit --pretty false
+npm.cmd run lint
+npm.cmd run build
+```
+
 # 2026-06-20 replace OAuth start link flow with POST confirmation gate
 
 User issue:

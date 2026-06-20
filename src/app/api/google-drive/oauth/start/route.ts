@@ -24,6 +24,8 @@ const googleDriveOAuthConfirmCookieName = "wiregene_gdrive_oauth_confirm";
 export async function GET(request: NextRequest) {
   const auth = await requireMetaUser(request);
   if (auth) return auth;
+  const canonical = canonicalMetaOAuthRedirect(request);
+  if (canonical) return canonical;
 
   try {
     const redirect = describeGoogleDriveOAuthRedirectUri(request.nextUrl);
@@ -42,6 +44,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = await requireMetaUser(request);
   if (auth) return auth;
+  const canonical = canonicalMetaOAuthRedirect(request);
+  if (canonical) return canonical;
 
   try {
     const redirect = describeGoogleDriveOAuthRedirectUri(request.nextUrl);
@@ -131,6 +135,27 @@ async function requireMetaUser(request: NextRequest) {
 
 function googleDriveOAuthAdminOnly() {
   return /^(1|true|yes|on)$/i.test((process.env.META_GOOGLE_DRIVE_OAUTH_ADMIN_ONLY ?? "").trim());
+}
+
+function canonicalMetaOAuthRedirect(request: NextRequest) {
+  const host = request.nextUrl.hostname.toLowerCase();
+  if (host === "meta.wiregene.com") return null;
+  if (!isPublicMetaOAuthAlias(host)) return null;
+
+  const url = new URL(request.nextUrl);
+  url.protocol = "https:";
+  url.hostname = "meta.wiregene.com";
+  url.port = "";
+  return NextResponse.redirect(url, 303);
+}
+
+function isPublicMetaOAuthAlias(host: string) {
+  return (
+    host === "mata.wiregene.com" ||
+    host === "search.wiregene.com" ||
+    host === "search.wiregen.com" ||
+    (host.endsWith(".vercel.app") && process.env.VERCEL_ENV === "production")
+  );
 }
 
 function htmlResponse(html: string, status = 200) {
@@ -259,9 +284,14 @@ function shellPage({
 }
 
 function runtimeValueBox(redirect: GoogleDriveOAuthRedirectUriDescription) {
+  const lockNotice =
+    redirect.source === "meta-production-locked"
+      ? "<p><strong>Production lock:</strong> Meta production ignores <code>GOOGLE_DRIVE_OAUTH_REDIRECT_URI</code> and always sends this fixed callback to Google.</p>"
+      : "";
   return `<div class="box">
     <p>The app will use this exact redirect URI for Google Drive OAuth.</p>
     <textarea readonly>${escapeHtml(redirect.redirectUri)}</textarea>
+    ${lockNotice}
     <p>Default production URI: <code>${escapeHtml(googleDriveOAuthProductionRedirectUri)}</code></p>
     <p>Redirect source: <code>${escapeHtml(redirect.source)}</code></p>
     <p>Current Client ID: <code>${escapeHtml(maskGoogleDriveClientId())}</code></p>

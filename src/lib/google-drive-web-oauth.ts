@@ -32,7 +32,10 @@ export type GoogleDriveOAuthTokenResult = {
 
 export type GoogleDriveOAuthRedirectUriDescription = {
   redirectUri: string;
-  source: "GOOGLE_DRIVE_OAUTH_REDIRECT_URI" | "meta-production-default" | "request-origin";
+  source:
+    | "meta-production-locked"
+    | "GOOGLE_DRIVE_OAUTH_REDIRECT_URI"
+    | "request-origin";
 };
 
 export type GoogleDriveOAuthAuthorizationPreflight =
@@ -50,22 +53,24 @@ export function resolveGoogleDriveOAuthRedirectUri(requestUrl: string | URL) {
 }
 
 export function describeGoogleDriveOAuthRedirectUri(requestUrl: string | URL): GoogleDriveOAuthRedirectUriDescription {
-  const configured = process.env.GOOGLE_DRIVE_OAUTH_REDIRECT_URI?.trim();
-  if (configured) return { redirectUri: configured, source: "GOOGLE_DRIVE_OAUTH_REDIRECT_URI" };
-
   const url = typeof requestUrl === "string" ? new URL(requestUrl) : requestUrl;
   const host = url.hostname.toLowerCase();
   const explicitMode = (process.env.WIREGENE_APP_MODE ?? process.env.NEXT_PUBLIC_WIREGENE_APP_MODE ?? "")
     .trim()
     .toLowerCase();
 
+  if (host === "meta.wiregene.com" || host === "mata.wiregene.com") {
+    return { redirectUri: googleDriveOAuthProductionRedirectUri, source: "meta-production-locked" };
+  }
+
   if (
-    host === "meta.wiregene.com" ||
-    host === "mata.wiregene.com" ||
     (process.env.VERCEL_ENV === "production" && explicitMode === "meta")
   ) {
-    return { redirectUri: googleDriveOAuthProductionRedirectUri, source: "meta-production-default" };
+    return { redirectUri: googleDriveOAuthProductionRedirectUri, source: "meta-production-locked" };
   }
+
+  const configured = process.env.GOOGLE_DRIVE_OAUTH_REDIRECT_URI?.trim();
+  if (configured) return { redirectUri: configured, source: "GOOGLE_DRIVE_OAUTH_REDIRECT_URI" };
 
   return { redirectUri: `${url.origin}${googleDriveOAuthCallbackPath}`, source: "request-origin" };
 }

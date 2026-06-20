@@ -1,6 +1,6 @@
 # Wiregene Meta 사용 가이드
 
-문서 버전: Ver 2.07  
+문서 버전: Ver 2.08
 최종 업데이트: 2026-06-20  
 적용 사이트: `https://meta.wiregene.com`  
 소스 저장소: `rhhyun/wiregene-meta-analysis`
@@ -170,7 +170,7 @@ Google Cloud Web OAuth client에는 아래 redirect URI가 정확히 등록되�
 https://meta.wiregene.com/api/google-drive/oauth/callback
 ```
 
-Meta production 앱은 기본적으로 위 callback URI를 Google OAuth `redirect_uri`로 고정해서 보냅니다. 별도 환경변수 `GOOGLE_DRIVE_OAUTH_REDIRECT_URI`가 있으면 그 값이 우선합니다.
+Meta production 앱은 위 callback URI를 Google OAuth `redirect_uri`로 강제로 고정해서 보냅니다. Ver 2.08부터 `meta.wiregene.com` 또는 production meta mode에서는 별도 환경변수 `GOOGLE_DRIVE_OAUTH_REDIRECT_URI`가 있어도 그 값은 무시됩니다. 이 값은 local/dev 또는 다른 호스트에서만 보조 override로 사용할 수 있습니다.
 
 Google 로그인 화면에서 `400 오류: redirect_uri_mismatch`가 나오면 아래 주소를 먼저 열어 앱이 실제 Google에 보내는 redirect URI와 Client ID 일부를 확인합니다.
 
@@ -183,6 +183,10 @@ Ver 2.05부터는 `Google Drive 연결 시작`을 눌러도 바로 Google 로그
 Ver 2.06부터는 AI 평가 설정 화면의 `Google Drive 연결 시작` 버튼 자체가 `/api/google-drive/oauth/start?diagnose=1`로 이동합니다. 따라서 버튼 클릭 직후 Google 오류 화면으로 직행하면 아직 최신 배포가 반영되지 않은 것입니다. 최신 배포에서는 반드시 Meta 내부 OAuth redirect URI check 화면이 먼저 보여야 합니다.
 
 Ver 2.07부터는 링크나 URL 파라미터만으로 Google 로그인으로 이동할 수 없습니다. `GET /api/google-drive/oauth/start`와 `GET /api/google-drive/oauth/start?go=1`은 모두 Meta 내부 진단/확인 화면만 보여줍니다. 실제 Google 이동은 해당 화면에서 redirect URI와 Client ID를 확인한 뒤 체크박스를 선택하고 `POST`로 제출할 때만 가능합니다. 확인용 nonce/cookie가 맞지 않으면 다시 진단 화면으로 돌아갑니다.
+
+Ver 2.08부터는 production Meta OAuth redirect URI가 코드 안에서 잠겨 있습니다. 진단 화면의 redirect source가 `meta-production-locked`로 표시되어야 하며, 이 경우 Vercel의 `GOOGLE_DRIVE_OAUTH_REDIRECT_URI` 값이 잘못되어 있어도 Google로 보내는 `redirect_uri`는 항상 `https://meta.wiregene.com/api/google-drive/oauth/callback`입니다. 이 상태에서도 Google이 `redirect_uri_mismatch`를 표시하면 남는 원인은 Vercel Production의 `GOOGLE_DRIVE_CLIENT_ID`가 Google Cloud에서 수정한 Web OAuth client와 다르거나, 해당 client의 `승인된 리디렉션 URI` 항목에 callback이 정확히 등록되지 않은 경우입니다.
+
+Google Drive 연결은 반드시 `https://meta.wiregene.com`에서 시작합니다. `search.wiregene.com`, `mata.wiregene.com`, production Vercel preview host처럼 Meta로 취급되는 공개 별칭에서 OAuth 시작 주소를 열면 앱이 먼저 `meta.wiregene.com`으로 이동시킵니다. OAuth cookie와 callback host가 다르면 인증이 깨질 수 있기 때문입니다.
 
 Google Cloud에서 반드시 `승인된 리디렉션 URI` 항목에 위 URI를 넣어야 합니다. `승인된 JavaScript 원본`에 `https://meta.wiregene.com`만 넣은 것은 충분하지 않습니다. URI를 정확히 넣었는데도 같은 오류가 계속되면, Vercel Production의 `GOOGLE_DRIVE_CLIENT_ID`가 지금 수정한 Google Cloud OAuth client가 아닌 다른 client를 가리키고 있는 것입니다.
 
