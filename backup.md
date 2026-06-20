@@ -3887,6 +3887,11 @@ npx.cmd tsc --noEmit --pretty false: passed.
 git diff --check: passed.
 npm.cmd run lint: passed.
 npm.cmd run build: passed.
+GitHub push: main 7416f99 Fix extraction included records Korean text.
+Vercel production auto-deploy: Ready.
+Deployment: https://wiregene-meta-analysis-bt6euvlml-rhhyuns-projects.vercel.app
+Alias: https://meta.wiregene.com
+Vercel error logs after deploy: no recent errors found.
 ```
 
 Remaining deployment verification:
