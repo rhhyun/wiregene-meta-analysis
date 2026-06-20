@@ -25,14 +25,19 @@ Implemented:
   - `package.json` / `package-lock.json`: `0.1.87`
   - UI label: `Ver 2.22 | 2026 copyright by JK Hyun`
 
-Verification status:
+Verification completed:
 
-- `npx.cmd tsc --noEmit --pretty false`: passed.
-- Remaining checks to run before final handoff:
-  - `git diff --check`
-  - `npm.cmd run lint`
-  - `npm.cmd run build`
-  - GitHub push and Vercel production readiness/log scan
+```text
+npx.cmd tsc --noEmit --pretty false: passed
+git diff --check: passed
+npm.cmd run lint: passed
+npm.cmd run build: passed
+GitHub push: d70f9fb Declutter screening full-text workflow
+Vercel production deployment: Ready
+Deployment URL: https://wiregene-meta-analysis-rdkqwi7yc-rhhyuns-projects.vercel.app
+Production alias: https://meta.wiregene.com
+Vercel error log scan: no logs found in the post-deploy scan window
+```
 
 Regular Synology deploy/run command after GitHub push:
 
