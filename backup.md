@@ -1,3 +1,42 @@
+# 2026-06-21 Saved full-text article list sorting
+
+User issue:
+
+- In Screening, the saved full-text list needed to be listed by the existing article number.
+- The user also asked for sorting by article title and first author.
+- The change must not disturb saved full-text source files, AI reviewer drafts, reviewer verification, or delete-selection behavior.
+
+Implemented:
+
+- `src/lib/meta-full-text-history.ts`
+  - Added `firstAuthor` to the full-text history summary returned by the history overview API.
+  - First author is inferred from the Excel screening row/referenceRecord first, with a conservative filename fallback only when the row has no author-like value.
+- `src/components/MetaFullTextAssistant.tsx`
+  - Added saved-list sort state and controls: `번호순`, `제목순`, `1저자순`.
+  - Default order is article-number ascending, based on the leading number in the full-text filename.
+  - Re-clicking the active sort button toggles ascending/descending order.
+  - The visible article rows and `Select shown`/batch delete target list now use the same sorted list.
+  - Each article row shows the inferred `1저자` as compact context, while full source details remain hidden until selection.
+- `guide.md`
+  - Added Ver 2.25 guidance for saved full-text list sorting.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.90`
+  - UI label: `Ver 2.25 | 2026 copyright by JK Hyun`
+
+Verification completed:
+
+- `npx.cmd tsc --noEmit --pretty false`: passed
+- `git diff --check`: passed
+- `npm.cmd run lint`: passed
+- `npm.cmd run build`: passed
+- GitHub push and Vercel production verification: pending at commit time
+
+Regular Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 # 2026-06-21 Gemini reviewer value-model switch
 
 User issue:

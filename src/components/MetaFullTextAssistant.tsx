@@ -47,6 +47,8 @@ type HistoryFilter =
   | "verification_pending"
   | "verification_complete"
   | MetaFullTextAnalysis["eligibility"]["decision"];
+type HistorySortKey = "number" | "title" | "first_author";
+type HistorySortDirection = "asc" | "desc";
 
 type MetaFullTextHistorySummary = {
   id: string;
@@ -57,6 +59,7 @@ type MetaFullTextHistorySummary = {
   savedAt: string;
   analyzedAt: string;
   titleGuess: string | null;
+  firstAuthor: string | null;
   decision: MetaFullTextAnalysis["eligibility"]["decision"];
   confidence: number;
   aiUsed: boolean;
@@ -865,9 +868,33 @@ function historyArticleNumber(item: Pick<MetaFullTextHistorySummary, "fileName">
   return match?.[1] ?? String(fallbackIndex + 1);
 }
 
+function historyArticleNumberValue(item: Pick<MetaFullTextHistorySummary, "fileName">, fallbackIndex: number) {
+  const value = Number.parseInt(historyArticleNumber(item, fallbackIndex), 10);
+  return Number.isFinite(value) ? value : Number.MAX_SAFE_INTEGER;
+}
+
 function historyArticleTitle(item: Pick<MetaFullTextHistorySummary, "titleGuess">) {
   const title = item.titleGuess?.replace(/\s+/g, " ").trim();
   return title || "제목 확인 전 - 선택 후 원문/엑셀 정보를 확인";
+}
+
+function historyFirstAuthorLabel(item: Pick<MetaFullTextHistorySummary, "firstAuthor">) {
+  const author = item.firstAuthor?.replace(/\s+/g, " ").trim();
+  return author || "1저자 확인 전";
+}
+
+const historySortCollator = new Intl.Collator("ko-KR", { numeric: true, sensitivity: "base" });
+
+function compareNullableHistoryText(left: string | null | undefined, right: string | null | undefined, direction: HistorySortDirection) {
+  const leftText = left?.replace(/\s+/g, " ").trim() ?? "";
+  const rightText = right?.replace(/\s+/g, " ").trim() ?? "";
+  const leftMissing = !leftText;
+  const rightMissing = !rightText;
+  if (leftMissing && rightMissing) return 0;
+  if (leftMissing) return 1;
+  if (rightMissing) return -1;
+  const result = historySortCollator.compare(leftText, rightText);
+  return direction === "asc" ? result : -result;
 }
 
 const reviewerDecisionOptions: { value: ReviewerDecision; label: string }[] = [
@@ -895,6 +922,12 @@ const fixedExclusionReasons = [
   "non-English full text",
   "no extractable denominator-based outcome",
   "duplicate/overlap cohort",
+];
+
+const historySortOptions: { value: HistorySortKey; label: string }[] = [
+  { value: "number", label: "번호순" },
+  { value: "title", label: "제목순" },
+  { value: "first_author", label: "1저자순" },
 ];
 
 const recommendedGeminiReviewerModelName = "gemini-3.1-flash-lite";
@@ -981,6 +1014,8 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
   const [aiSettingsError, setAiSettingsError] = useState("");
   const [reviewerNamesSaved, setReviewerNamesSaved] = useState(false);
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("all");
+  const [historySortKey, setHistorySortKey] = useState<HistorySortKey>("number");
+  const [historySortDirection, setHistorySortDirection] = useState<HistorySortDirection>("asc");
 
   const reviewerNamesReady = Boolean(reviewerOneName.trim()) && Boolean(reviewerTwoName.trim());
   const reviewerSettingsReady = reviewerNamesReady && reviewerNamesSaved;
@@ -1019,6 +1054,10 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
   const currentHistoryIndex = useMemo(
     () => (currentHistoryItem ? historyItems.findIndex((item) => item.id === currentHistoryItem.id) : -1),
     [currentHistoryItem, historyItems],
+  );
+  const historyOriginalIndexById = useMemo(
+    () => new Map(historyItems.map((item, index) => [item.id, index])),
+    [historyItems],
   );
   const canSaveSourceToLegacyRecord = Boolean(
     currentHistoryItem &&
@@ -1136,11 +1175,34 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
       }),
     [historyFilter, historyItems],
   );
+  const sortedHistoryItems = useMemo(() => {
+    const directionMultiplier = historySortDirection === "asc" ? 1 : -1;
+    return [...filteredHistoryItems].sort((left, right) => {
+      const leftIndex = historyOriginalIndexById.get(left.id) ?? 0;
+      const rightIndex = historyOriginalIndexById.get(right.id) ?? 0;
+      const leftArticleNumber = historyArticleNumberValue(left, leftIndex);
+      const rightArticleNumber = historyArticleNumberValue(right, rightIndex);
+
+      let result = 0;
+      if (historySortKey === "number") {
+        result = (leftArticleNumber - rightArticleNumber) * directionMultiplier;
+      } else if (historySortKey === "title") {
+        result = compareNullableHistoryText(left.titleGuess, right.titleGuess, historySortDirection);
+      } else {
+        result = compareNullableHistoryText(left.firstAuthor, right.firstAuthor, historySortDirection);
+      }
+
+      if (result !== 0) return result;
+      if (leftArticleNumber !== rightArticleNumber) return leftArticleNumber - rightArticleNumber;
+      if (leftIndex !== rightIndex) return leftIndex - rightIndex;
+      return left.id.localeCompare(right.id);
+    });
+  }, [filteredHistoryItems, historyOriginalIndexById, historySortDirection, historySortKey]);
   const selectedHistoryDeleteSet = useMemo(
     () => new Set(selectedHistoryIdsForDelete),
     [selectedHistoryIdsForDelete],
   );
-  const visibleHistoryIds = useMemo(() => filteredHistoryItems.map((item) => item.id), [filteredHistoryItems]);
+  const visibleHistoryIds = useMemo(() => sortedHistoryItems.map((item) => item.id), [sortedHistoryItems]);
   const selectedVisibleHistoryDeleteCount = useMemo(
     () => visibleHistoryIds.filter((id) => selectedHistoryDeleteSet.has(id)).length,
     [selectedHistoryDeleteSet, visibleHistoryIds],
@@ -1438,6 +1500,15 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
 
   function clearHistoryDeleteSelection() {
     setSelectedHistoryIdsForDelete([]);
+  }
+
+  function updateHistorySort(nextKey: HistorySortKey) {
+    if (historySortKey === nextKey) {
+      setHistorySortDirection((current) => (current === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setHistorySortKey(nextKey);
+    setHistorySortDirection("asc");
   }
 
   async function deleteSavedHistoryRecord(id: string) {
@@ -2795,9 +2866,29 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
               <div>
                 <div className="flex items-center justify-between gap-3 text-xs font-semibold uppercase text-zinc-500">
                   <span>
-                    Article list ({filteredHistoryItems.length.toLocaleString("ko-KR")}/{historyItems.length.toLocaleString("ko-KR")} shown)
+                    Article list ({sortedHistoryItems.length.toLocaleString("ko-KR")}/{historyItems.length.toLocaleString("ko-KR")} shown)
                   </span>
                   <span>{historyItems.filter((item) => item.verificationComplete).length.toLocaleString("ko-KR")} verified</span>
+                </div>
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2">
+                  <span className="text-xs font-semibold text-zinc-600">정렬 기준</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {historySortOptions.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => updateHistorySort(option.value)}
+                        className={`inline-flex h-8 items-center rounded-md px-3 text-xs font-semibold transition ${
+                          historySortKey === option.value
+                            ? "bg-emerald-700 text-white"
+                            : "bg-white text-zinc-700 ring-1 ring-zinc-200 hover:bg-emerald-50 hover:text-emerald-800"
+                        }`}
+                      >
+                        {option.label}
+                        {historySortKey === option.value ? ` · ${historySortDirection === "asc" ? "오름차순" : "내림차순"}` : ""}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-md border border-zinc-200 bg-white px-3 py-2">
                   <label className="inline-flex items-center gap-2 text-xs font-semibold text-zinc-700">
@@ -2836,10 +2927,12 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                 </div>
                 <div className="mt-2 max-h-[34rem] overflow-y-auto rounded-md border border-zinc-200 bg-zinc-50">
                   <div className="divide-y divide-zinc-200">
-                    {filteredHistoryItems.map((item, index) => {
+                    {sortedHistoryItems.map((item, index) => {
                       const selected = item.id === currentHistoryId;
-                      const articleNumber = historyArticleNumber(item, index);
+                      const originalIndex = historyOriginalIndexById.get(item.id) ?? index;
+                      const articleNumber = historyArticleNumber(item, originalIndex);
                       const articleTitle = historyArticleTitle(item);
+                      const firstAuthor = historyFirstAuthorLabel(item);
                       return (
                         <div
                           key={item.id}
@@ -2870,6 +2963,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                                     </span>
                                     {articleTitle}
                                   </p>
+                                  <p className="mt-1 text-xs font-medium text-zinc-500">1저자: {firstAuthor}</p>
                                 </div>
                                 <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
                                   <span
@@ -2910,6 +3004,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                                   <span className="rounded-md bg-zinc-50 px-2 py-1 sm:col-span-2">
                                     source file: {item.fileName}
                                   </span>
+                                  <span className="rounded-md bg-zinc-50 px-2 py-1">1저자: {firstAuthor}</span>
                                 </div>
                               ) : null}
                             </button>
@@ -2917,7 +3012,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                         </div>
                       );
                     })}
-                    {filteredHistoryItems.length === 0 ? (
+                    {sortedHistoryItems.length === 0 ? (
                       <p className="bg-white p-3 text-sm font-semibold text-zinc-500">
                         No saved articles match this filter.
                       </p>
@@ -2929,11 +3024,19 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                 <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3">
                   <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                     <p className="truncate text-sm font-semibold text-zinc-950">
-                      Article {historyArticleNumber(currentHistoryItem, currentHistoryIndex >= 0 ? currentHistoryIndex : 0)} ·{" "}
+                      Article{" "}
+                      {historyArticleNumber(
+                        currentHistoryItem,
+                        historyOriginalIndexById.get(currentHistoryItem.id) ?? (currentHistoryIndex >= 0 ? currentHistoryIndex : 0),
+                      )}{" "}
+                      ·{" "}
                       {historyArticleTitle(currentHistoryItem)}
                     </p>
                     <p className="text-xs font-semibold text-zinc-500">{new Date(currentHistoryItem.savedAt).toLocaleString("ko-KR")}</p>
                   </div>
+                  <p className="mt-1 text-xs font-semibold leading-5 text-zinc-600">
+                    1저자: {historyFirstAuthorLabel(currentHistoryItem)}
+                  </p>
                   <p className="mt-1 break-words text-xs font-medium leading-5 text-zinc-600">
                     Source file: {currentHistoryItem.fileName}
                   </p>

@@ -76,6 +76,7 @@ export type MetaFullTextHistorySummary = {
   savedAt: string;
   analyzedAt: string;
   titleGuess: string | null;
+  firstAuthor: string | null;
   decision: MetaFullTextAnalysis["eligibility"]["decision"];
   confidence: number;
   aiUsed: boolean;
@@ -562,6 +563,7 @@ function toSummary(record: MetaFullTextHistoryRecord): MetaFullTextHistorySummar
     savedAt: record.savedAt,
     analyzedAt: record.analysis.analyzedAt,
     titleGuess: record.analysis.titleGuess,
+    firstAuthor: inferFirstAuthor(record),
     decision: record.analysis.eligibility.decision,
     confidence: record.analysis.eligibility.confidence,
     aiUsed: record.analysis.aiUsed,
@@ -595,6 +597,83 @@ function toSummary(record: MetaFullTextHistoryRecord): MetaFullTextHistorySummar
 
 export function summarizeMetaFullTextHistoryRecord(record: MetaFullTextHistoryRecord): MetaFullTextHistorySummary {
   return toSummary(record);
+}
+
+function inferFirstAuthor(record: MetaFullTextHistoryRecord) {
+  return firstAuthorFromReferenceRecord(record.referenceRecord) ?? firstAuthorFromFileName(record.fileName);
+}
+
+function firstAuthorFromReferenceRecord(value: string | null) {
+  const lines = (value ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !/^Excel source sheet: .+; review mode: .+$/i.test(line));
+
+  for (const line of lines) {
+    const labelledAuthor = line.match(/^(?:first\s*author|author)\s*[:=]\s*(.+)$/i);
+    if (labelledAuthor?.[1]) {
+      const candidate = cleanAuthorCandidate(labelledAuthor[1]);
+      if (candidate) return candidate;
+    }
+
+    const cells = splitReferenceRowCells(line);
+    if (cells.length === 0) continue;
+
+    const prioritizedCells = cells.length > 1 ? [cells[1], cells[0], ...cells.slice(2)] : cells;
+    const yearIndex = prioritizedCells.findIndex((cell) => /\b(?:19|20)\d{2}\b/.test(cell));
+    const beforeYearCells = yearIndex > 0 ? prioritizedCells.slice(0, yearIndex) : prioritizedCells;
+    for (const cell of beforeYearCells) {
+      const candidate = cleanAuthorCandidate(cell);
+      if (candidate) return candidate;
+    }
+    for (const cell of prioritizedCells) {
+      const candidate = cleanAuthorCandidate(cell);
+      if (candidate) return candidate;
+    }
+  }
+
+  return null;
+}
+
+function splitReferenceRowCells(line: string) {
+  if (line.includes("\t")) return line.split("\t").map((cell) => cell.trim()).filter(Boolean);
+  return line
+    .split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/)
+    .map((cell) => cell.trim())
+    .filter(Boolean);
+}
+
+function cleanAuthorCandidate(value: string) {
+  const cleaned = value.replace(/^["']+|["']+$/g, "").replace(/\s+/g, " ").trim();
+  if (!cleaned || cleaned.length > 80) return null;
+  if (!/[A-Za-z가-힣]/.test(cleaned)) return null;
+  if (/^(screening_?id|first author|author|year|title|doi|pmid|abstract)$/i.test(cleaned)) return null;
+  if (/^(screening[\s_-]*id|year|title|doi|pmid|abstract)\s*[:=]/i.test(cleaned)) return null;
+  if (/^(https?:\/\/|doi\b|pmid\b)/i.test(cleaned)) return null;
+  if (/^\d+$/.test(cleaned)) return null;
+  if (/^\b(?:19|20)\d{2}\b$/.test(cleaned)) return null;
+  if (/^(ebsco|full-?text|main|article|pdf|supplement|scan|s\d+)$/i.test(cleaned)) return null;
+  if (/\s/.test(cleaned) && cleaned.length > 48) return null;
+  return cleaned;
+}
+
+function firstAuthorFromFileName(fileName: string) {
+  const stem = baseName(fileName)
+    .replace(/\.[^.]+$/, "")
+    .replace(/^\d{1,6}[\s._-]+/, "")
+    .trim();
+  if (!stem) return null;
+  const yearMatch = stem.search(/(?:^|[\s._-])(?:19|20)\d{2}(?:$|[\s._-])/);
+  const beforeYear = yearMatch > 0 ? stem.slice(0, yearMatch) : stem;
+  let token = beforeYear.split(/\s+/)[0]?.replace(/^[-_.]+|[-_.]+$/g, "").trim();
+  const hyphenParts = token?.split("-").filter(Boolean) ?? [];
+  if (
+    hyphenParts.length > 1 &&
+    hyphenParts.slice(1).some((part) => part.length > 14 || /health|problem|musculoskeletal|pain|attitude|behavior/i.test(part))
+  ) {
+    token = hyphenParts[0];
+  }
+  return token ? cleanAuthorCandidate(token) : null;
 }
 
 function emptyReviewerSettings(): MetaFullTextReviewerSettings {

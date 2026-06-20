@@ -1,6 +1,6 @@
 # Wiregene Meta 사용 가이드
 
-문서 버전: Ver 2.24
+문서 버전: Ver 2.25
 최종 업데이트: 2026-06-21
 적용 사이트: `https://meta.wiregene.com`  
 소스 저장소: `rhhyun/wiregene-meta-analysis`
@@ -73,6 +73,8 @@ Ver 2.22부터 Screening 화면의 저장소 파일 목록은 기본적으로 �
 Ver 2.24부터 Gemini reviewer의 권장 모델은 `gemini-3.1-flash-lite`입니다. `gemini-3.5-flash`는 고성능 모델이지만 full-text 논문 수십-수백 건을 순차 screening하는 용도에서는 429 quota 오류와 timeout, 비용 부담이 커질 수 있습니다. Google 공식 가격표에서 `gemini-3.1-flash-lite`는 most cost-efficient Gemini 3.1 모델로 안내되므로, Wiregene Meta에서는 Gemini reviewer 2/3의 기본 비용형 모델로 사용합니다.
 
 Google Gemini를 OpenAI-compatible slot으로 쓸 때 Base URL은 그대로 `https://generativelanguage.googleapis.com/v1beta/openai`를 사용하고, 모델명만 `gemini-3.1-flash-lite`로 입력합니다. 이전에 저장된 `gemini-3.5` 또는 `gemini-3.5-flash` 값은 Google Gemini Base URL에서 실행될 때 자동으로 `gemini-3.1-flash-lite`로 보정됩니다. 이미 저장된 full-text 원문과 이전 AI review history는 삭제하지 않으며, 새 모델을 선택해 다시 실행하면 같은 논문 record에 모델별 draft가 추가됩니다.
+
+Ver 2.25부터 `Saved AI review article list`는 기본적으로 full-text 파일명 앞 번호를 기준으로 오름차순 정렬됩니다. 목록 위의 정렬 버튼에서 `번호순`, `제목순`, `1저자순`을 선택할 수 있고, 같은 버튼을 다시 누르면 오름차순과 내림차순이 전환됩니다. `1저자`는 엑셀 screening row/referenceRecord에서 우선 추출하며, 값이 없을 때만 파일명 앞부분에서 보조 추정합니다. 정렬은 화면 표시와 선택/일괄 삭제 대상에만 적용되고, 저장된 AI 분석 결과, reviewer 검증, source file 저장 상태는 변경하지 않습니다.
 
 ### AI Model Reviewer Comparison
 
