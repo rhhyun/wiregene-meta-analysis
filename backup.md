@@ -3892,7 +3892,12 @@ npm.cmd run build: passed.
 Remaining deployment verification:
 
 ```text
-Vercel production redeploy/auto-deploy check
+GitHub push: main 8622974 Harden OpenAI-compatible reviewer schema normalization.
+Vercel production auto-deploy: Ready.
+Deployment: https://wiregene-meta-analysis-j7n9tlqui-rhhyuns-projects.vercel.app
+Alias: https://meta.wiregene.com
+Vercel error logs after deploy: no recent errors found.
+Public curl to /api/meta-analysis/storage-policy returned "Authentication required", which is expected because production is auth protected.
 ```
 
 Regular Synology deploy/run command after GitHub push:
