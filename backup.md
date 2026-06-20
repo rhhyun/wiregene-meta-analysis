@@ -57,6 +57,51 @@ Regular Synology deploy/run command after GitHub push:
 git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
 ```
 
+## 2026-06-20 Project file storage display-name repair
+
+User issue:
+
+- In `Project file storage`, the file list showed raw internal storage names such
+  as `full-text-files__{hash}-{title}.pdf`.
+- The `Path` column also showed long Google Drive storage keys.
+- This made it impossible to quickly identify which PDF/article a file referred
+  to from the UI.
+
+Implemented:
+
+- Updated `src/components/MetaStudyWorkspace.tsx`.
+- Added a display-name layer for project storage files:
+  - `full-text-files__...pdf` now shows a readable article/file title first.
+  - leading checksum/hash prefixes are removed from the visible primary name.
+  - simple stored-title slugs are converted back to readable words.
+  - `full-text-history.json` displays as `Full-text AI history`.
+  - the original storage key remains visible only as secondary `Storage key`
+    text.
+- Renamed the table column from `Path` to `Storage`.
+- Storage cells now show `Google Drive`, `Synology/local`, or `Storage` first,
+  with the internal path lowered to small monospace detail.
+- Download links still use the original internal file name, so existing download
+  behavior is preserved.
+- Updated `guide.md` with the Ver 2.21 display rule.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.86`
+  - UI label: `Ver 2.21 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed.
+npm.cmd run lint: passed.
+git diff --check: passed.
+npm.cmd run build: passed.
+```
+
+Regular Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 # 2026-06-20 add official Google Drive health verification
 
 User issue:

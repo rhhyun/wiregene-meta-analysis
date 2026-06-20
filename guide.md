@@ -1,6 +1,6 @@
 # Wiregene Meta 사용 가이드
 
-문서 버전: Ver 2.13
+문서 버전: Ver 2.21
 최종 업데이트: 2026-06-20  
 적용 사이트: `https://meta.wiregene.com`  
 소스 저장소: `rhhyun/wiregene-meta-analysis`
@@ -65,6 +65,8 @@ Ver 2.18부터 기존 1개 AI 모델만 분석된 legacy record를 대량 업데
 Ver 2.19부터 `full-text 파일`의 파일 선택은 누적 방식입니다. 한 번에 일부 파일을 선택한 뒤 다시 `파일 선택`을 눌러 다른 PDF/Word 파일을 추가해도 기존 선택은 사라지지 않고 새 파일만 추가됩니다. 같은 파일은 파일명, 용량, 수정시각 기준으로 중복 제거됩니다. 선택을 처음부터 다시 시작하려면 `Clear selected files`를 누릅니다.
 
 Ver 2.20부터 대량 full-text AI 분석 큐는 장시간 작업을 전제로 더 단단하게 동작합니다. 전체 batch를 하나의 긴 서버 요청으로 보내지 않고 파일별 짧은 요청으로 나누어 처리하며, 각 파일의 upload session, chunk upload, AI 분석, saved-source reanalysis 요청에는 timeout과 자동 재시도가 적용됩니다. 네트워크 일시 장애, 429 rate limit, 5xx 서버 오류가 발생하면 해당 단계만 재시도하고, 그래도 실패하면 그 파일만 `failed`로 남긴 뒤 다음 파일로 진행합니다. 같은 PDF가 재시도 중 이미 저장된 경우에는 서버가 source-file checksum을 확인해 기존 record로 병합하므로 중복 record 생성을 줄입니다. 브라우저가 지원하면 분석 중 screen wake lock을 요청해 절전으로 인한 중단 가능성도 낮춥니다.
+
+Ver 2.21부터 Project file storage 목록은 내부 저장용 파일명 대신 사람이 알아볼 수 있는 표시명을 먼저 보여줍니다. `full-text-files__해시-논문제목.pdf` 같은 Google Drive/Synology 저장 키는 제목 중심의 이름으로 정리되어 보이고, 원래 저장 키는 보조 정보로만 남습니다. Path 컬럼도 Storage 컬럼으로 바뀌어 `Google Drive` 또는 `Synology/local` 위치를 먼저 표시합니다. Download 링크는 내부 저장 키를 그대로 사용하므로 기존 파일 다운로드 동작은 유지됩니다.
 
 ### AI Model Reviewer Comparison
 

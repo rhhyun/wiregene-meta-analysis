@@ -252,6 +252,79 @@ function projectStorageModeLabel(storage: ProjectStorageSummary | null) {
   return "Synology/local folder";
 }
 
+function projectStorageFileDisplay(file: ProjectStorageFileSummary) {
+  const fileName = file.fileName.trim();
+  const path = file.path.trim();
+  const primaryName = humanReadableProjectFileName(fileName);
+
+  return {
+    primaryName,
+    storageKey: primaryName === fileName ? "" : fileName,
+    typeLabel: projectFileTypeLabel(fileName),
+    storageLabel: projectStorageLocationLabel(path),
+    storageDetail: humanReadableProjectStoragePath(path, fileName),
+  };
+}
+
+function humanReadableProjectFileName(fileName: string) {
+  const trimmed = fileName.trim();
+
+  if (trimmed === "full-text-history.json") return "Full-text AI history";
+  if (trimmed === "extraction-dataset.csv") return "Extraction dataset CSV";
+
+  const scopedFullTextIndex = trimmed.lastIndexOf("full-text-files__");
+  if (scopedFullTextIndex >= 0) {
+    const sourceName = trimmed.slice(scopedFullTextIndex + "full-text-files__".length);
+    return prettifyStoredSourceFileName(sourceName);
+  }
+
+  return trimmed;
+}
+
+function prettifyStoredSourceFileName(fileName: string) {
+  const withoutChecksum = fileName.replace(/^[a-f0-9]{16,64}-/i, "");
+  const withoutNumericPrefix = withoutChecksum.replace(/^\d{2,6}-(?=[A-Za-z])/, "");
+  const extensionMatch = withoutNumericPrefix.match(/(\.[A-Za-z0-9]{2,8})$/);
+  const extension = extensionMatch?.[1] ?? "";
+  const baseName = extension ? withoutNumericPrefix.slice(0, -extension.length) : withoutNumericPrefix;
+  const readableBase = baseName.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+  const readable = readableBase ? `${capitalizeFirst(readableBase)}${extension.toLowerCase()}` : withoutNumericPrefix;
+
+  return readable;
+}
+
+function capitalizeFirst(value: string) {
+  return value ? `${value.charAt(0).toUpperCase()}${value.slice(1)}` : value;
+}
+
+function projectFileTypeLabel(fileName: string) {
+  if (fileName.includes("full-text-files__")) return "Full-text source file";
+  if (fileName === "full-text-history.json") return "Full-text AI history";
+  if (fileName.endsWith(".csv")) return "CSV dataset";
+  if (fileName.endsWith(".json")) return "JSON data";
+  if (fileName.endsWith(".md")) return "Markdown note";
+  if (fileName.endsWith(".txt")) return "Text note";
+  if (fileName.endsWith(".zip")) return "DB bundle";
+  return "Project file";
+}
+
+function projectStorageLocationLabel(path: string) {
+  if (path.startsWith("google-drive:")) return "Google Drive";
+  if (path.includes("/") || path.includes("\\")) return "Synology/local";
+  return "Storage";
+}
+
+function humanReadableProjectStoragePath(path: string, fileName: string) {
+  const withoutBackend = path.replace(/^google-drive:/, "");
+  const scopedFullTextIndex = withoutBackend.lastIndexOf("full-text-files__");
+
+  if (scopedFullTextIndex >= 0) {
+    return `source file object: ${fileName}`;
+  }
+
+  return withoutBackend || fileName;
+}
+
 const analysisReadinessRows = [
   ["Overall PRMD prevalence", "현재 61-column template에는 없음; 필요 시 overall_PRMD_n/total 추가", "Template extension candidate"],
   ["Neck prevalence", "neck_n + neck_total by mapped_asymmetry_group", "Primary region outcome"],
@@ -3169,30 +3242,47 @@ function ProjectStoragePanel({ project }: { project: MetaStudyProject }) {
                 <th className="border-b border-sky-200 px-3 py-3">File</th>
                 <th className="border-b border-sky-200 px-3 py-3">Bytes</th>
                 <th className="border-b border-sky-200 px-3 py-3">Updated</th>
-                <th className="border-b border-sky-200 px-3 py-3">Path</th>
+                <th className="border-b border-sky-200 px-3 py-3">Storage</th>
                 <th className="border-b border-sky-200 px-3 py-3">Action</th>
               </tr>
             </thead>
             <tbody>
-              {files.map((file) => (
-                <tr key={file.path}>
-                  <td className="border-b border-zinc-100 px-3 py-3 font-semibold text-zinc-950">{file.fileName}</td>
-                  <td className="border-b border-zinc-100 px-3 py-3 text-zinc-700">{file.bytes.toLocaleString()}</td>
-                  <td className="border-b border-zinc-100 px-3 py-3 text-zinc-700">{new Date(file.updatedAt).toLocaleString("ko-KR")}</td>
-                  <td className="border-b border-zinc-100 px-3 py-3 text-xs leading-5 text-zinc-500">
-                    <span className="break-all">{file.path}</span>
-                  </td>
-                  <td className="border-b border-zinc-100 px-3 py-3">
-                    <a
-                      href={`/api/meta-analysis/projects/${encodeURIComponent(project.id)}/files/${encodeURIComponent(file.fileName)}`}
-                      className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-sky-300 px-2 text-xs font-semibold text-sky-800 transition hover:bg-sky-50"
-                    >
-                      <ExternalLink className="h-3.5 w-3.5" aria-hidden />
-                      Download
-                    </a>
-                  </td>
-                </tr>
-              ))}
+              {files.map((file) => {
+                const display = projectStorageFileDisplay(file);
+
+                return (
+                  <tr key={file.path}>
+                    <td className="border-b border-zinc-100 px-3 py-3 text-zinc-950">
+                      <div className="max-w-[34rem]">
+                        <p className="break-words text-sm font-semibold leading-6">{display.primaryName}</p>
+                        <p className="mt-1 inline-flex rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-sky-800">
+                          {display.typeLabel}
+                        </p>
+                        {display.storageKey ? (
+                          <p className="mt-2 text-xs leading-5 text-zinc-500">
+                            Storage key: <span className="break-all font-mono">{display.storageKey}</span>
+                          </p>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td className="border-b border-zinc-100 px-3 py-3 text-zinc-700">{file.bytes.toLocaleString()}</td>
+                    <td className="border-b border-zinc-100 px-3 py-3 text-zinc-700">{new Date(file.updatedAt).toLocaleString("ko-KR")}</td>
+                    <td className="border-b border-zinc-100 px-3 py-3 text-xs leading-5 text-zinc-500">
+                      <p className="font-semibold text-zinc-700">{display.storageLabel}</p>
+                      <p className="mt-1 break-all font-mono">{display.storageDetail}</p>
+                    </td>
+                    <td className="border-b border-zinc-100 px-3 py-3">
+                      <a
+                        href={`/api/meta-analysis/projects/${encodeURIComponent(project.id)}/files/${encodeURIComponent(file.fileName)}`}
+                        className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-sky-300 px-2 text-xs font-semibold text-sky-800 transition hover:bg-sky-50"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+                        Download
+                      </a>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
