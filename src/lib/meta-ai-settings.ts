@@ -7,7 +7,11 @@ import {
   readTextFileFromGoogleDrive,
   writeTextFileToGoogleDrive,
 } from "./google-drive-storage";
-import { isServerlessRuntime, resolveMetaJsonStorageBackend } from "./meta-storage-policy";
+import {
+  isRecoverableGoogleDriveStorageError,
+  isServerlessRuntime,
+  resolveMetaJsonStorageBackend,
+} from "./meta-storage-policy";
 
 export type MetaAiProviderType = "OPENAI" | "OPENAI_COMPATIBLE";
 
@@ -118,7 +122,7 @@ const defaultStoragePath = ".data/meta/meta-ai-settings.json";
 const defaultDriveFileName = "meta-ai-settings.json";
 
 export async function getMetaAiSettingsSummary(): Promise<MetaAiSettingsSummary> {
-  const settings = await readStoredMetaAiSettings();
+  const settings = await readStoredMetaAiSettingsOrEmpty();
   return toSummary(settings);
 }
 
@@ -149,7 +153,7 @@ export async function updateMetaAiSettings(input: MetaAiSettingsUpdate): Promise
 }
 
 export async function resolveMetaOpenAIConfig(): Promise<MetaOpenAIConfig> {
-  const settings = await readStoredMetaAiSettings();
+  const settings = await readStoredMetaAiSettingsOrEmpty();
   const savedKey = decryptSecret(settings.apiKeyEncrypted);
   const envKey = config.openaiApiKey.trim();
   const apiKey = savedKey || envKey;
@@ -164,7 +168,7 @@ export async function resolveMetaOpenAIConfig(): Promise<MetaOpenAIConfig> {
 }
 
 export async function resolveMetaAiReviewerConfigs(): Promise<MetaAiReviewerConfig[]> {
-  const settings = await readStoredMetaAiSettings();
+  const settings = await readStoredMetaAiSettingsOrEmpty();
   const primarySavedKey = decryptSecret(settings.apiKeyEncrypted);
   const primaryEnvKey = config.openaiApiKey.trim();
   const primaryApiKey = primarySavedKey || primaryEnvKey;
@@ -274,6 +278,15 @@ async function readStoredMetaAiSettings(): Promise<StoredMetaAiSettings> {
   } catch (error) {
     if (!(error instanceof SyntaxError)) throw storageError(error, "read", targetPath);
     await moveCorruptSettingsAside(targetPath, error);
+    return emptySettings();
+  }
+}
+
+async function readStoredMetaAiSettingsOrEmpty(): Promise<StoredMetaAiSettings> {
+  try {
+    return await readStoredMetaAiSettings();
+  } catch (error) {
+    if (!isRecoverableGoogleDriveStorageError(error)) throw error;
     return emptySettings();
   }
 }
@@ -656,7 +669,7 @@ function storageError(
     : "local-json";
   const help =
     backend === "google-drive"
-      ? "Check Google Drive credentials and folder/file write permission. For Vercel, keep META_AI_SETTINGS_STORAGE_BACKEND=google-drive or set OPENAI_API_KEY directly."
+      ? "Google Drive settings storage is unavailable. Use Google Drive 연결 시작 to issue a new refresh token, then update Vercel Production env and redeploy. OPENAI_API_KEY in Vercel can be used as a direct fallback."
       : operation === "write"
         ? "Check that the runtime user can write to this path. On Synology, the expected writable host folder is /volume1/docker/meta/data via the /app/.data/meta Docker volume."
         : "Check the Meta AI settings JSON file path and permissions.";

@@ -1,6 +1,6 @@
 # Wiregene Meta 사용 가이드
 
-문서 버전: Ver 2.01  
+문서 버전: Ver 2.02  
 최종 업데이트: 2026-06-20  
 적용 사이트: `https://meta.wiregene.com`  
 소스 저장소: `rhhyun/wiregene-meta-analysis`
@@ -181,6 +181,10 @@ https://meta.wiregene.com/api/google-drive/oauth/callback
 7. `https://meta.wiregene.com/api/meta-analysis/storage-policy`에서 backends가 `google-drive`로 잡혔는지 확인합니다.
 
 중요합니다. 앱은 Vercel 환경변수를 자동으로 영구 수정할 수 없습니다. OAuth callback은 token을 발급하고 검증해 보여주는 역할입니다. Vercel에 붙여넣고 재배포하는 단계는 관리자 작업입니다.
+
+기본 설정에서는 로그인한 Meta 사용자가 Google Drive 연결을 시작할 수 있습니다. 운영자가 별도 제한을 원할 때만 `META_GOOGLE_DRIVE_OAUTH_ADMIN_ONLY=true`를 설정해 Portal admin 사용자만 연결을 시작하게 합니다.
+
+Google Drive AI 설정 저장소의 refresh token이 만료되었거나 틀린 경우에도 AI 평가 설정 화면은 깨지지 않고 빈 설정 또는 Vercel `OPENAI_API_KEY` 환경변수 fallback을 보여주는 것이 원칙입니다. 실제 저장된 AI key를 다시 읽으려면 Google Drive refresh token을 새로 발급하고 Vercel Production을 재배포해야 합니다.
 
 ## 7. full-text 업로드와 AI 분석 저장 흐름
 

@@ -15,7 +15,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
-  const auth = await requireMetaAdmin(request);
+  const auth = await requireMetaUser(request);
   if (auth) return auth;
 
   const redirectUri = resolveGoogleDriveOAuthRedirectUri(request.nextUrl);
@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-async function requireMetaAdmin(request: NextRequest) {
+async function requireMetaUser(request: NextRequest) {
   const mode = getWiregeneAppMode(request.headers.get("host"));
   if (mode !== "meta") {
     return htmlResponse(errorPage("Google Drive connection is available only on meta.wiregene.com", ""), 403);
@@ -64,11 +64,15 @@ async function requireMetaAdmin(request: NextRequest) {
       },
     });
   }
-  if (!user.isAdmin) {
+  if (googleDriveOAuthAdminOnly() && !user.isAdmin) {
     return htmlResponse(errorPage("Administrator permission is required", "Portal admin role is required."), 403);
   }
 
   return null;
+}
+
+function googleDriveOAuthAdminOnly() {
+  return /^(1|true|yes|on)$/i.test((process.env.META_GOOGLE_DRIVE_OAUTH_ADMIN_ONLY ?? "").trim());
 }
 
 function successPage({
@@ -103,16 +107,16 @@ function successPage({
 </head>
 <body>
   <p style="font-weight:700;color:#047857">Wiregene Meta Google Drive OAuth</p>
-  <h1>Google Drive 연결이 검증되었습니다.</h1>
+  <h1>Google Drive connection verified</h1>
   <div class="ok">
-    <p>이 refresh token은 현재 Web OAuth client와 Google Drive 권한으로 검증되었습니다.</p>
+    <p>The refresh token was issued and verified with the current Web OAuth client and Google Drive permission.</p>
     <p>Client ID: <code>${escapeHtml(maskGoogleDriveClientId())}</code></p>
     <p>Callback URI: <code>${escapeHtml(redirectUri)}</code></p>
   </div>
-  <h2>Vercel Production Environment Variables에 넣을 값</h2>
+  <h2>Values to add to Vercel Production Environment Variables</h2>
   <textarea readonly>${escapeHtml(envBlock)}</textarea>
-  <p>Vercel에서 저장한 뒤 Production을 다시 배포해야 적용됩니다. 기존 <code>GOOGLE_DRIVE_CLIENT_ID</code>와 <code>GOOGLE_DRIVE_CLIENT_SECRET</code>은 이 Web OAuth client 값과 같은 세트여야 합니다.</p>
-  <p><a href="/api/meta-analysis/storage-policy">storage-policy 확인</a> · <a href="/">Meta로 돌아가기</a></p>
+  <p>After saving these values in Vercel, redeploy Production. <code>GOOGLE_DRIVE_CLIENT_ID</code>, <code>GOOGLE_DRIVE_CLIENT_SECRET</code>, and this refresh token must belong to the same Web OAuth client.</p>
+  <p><a href="/api/meta-analysis/storage-policy">Check storage policy</a> · <a href="/">Return to Meta</a></p>
 </body>
 </html>`;
 }
@@ -132,11 +136,11 @@ function errorPage(detail: string, redirectUri: string) {
 </head>
 <body>
   <p style="font-weight:700;color:#be123c">Wiregene Meta Google Drive OAuth</p>
-  <h1>Google Drive 연결에 실패했습니다.</h1>
+  <h1>Google Drive connection failed</h1>
   <div class="error">${escapeHtml(detail)}</div>
-  <p>Google Cloud의 승인된 리디렉션 URI가 아래 값과 정확히 같아야 합니다.</p>
+  <p>The Google Cloud authorized redirect URI must exactly match this value.</p>
   <p><code>${escapeHtml(redirectUri || `https://meta.wiregene.com${googleDriveOAuthCallbackPath}`)}</code></p>
-  <p><a href="/api/google-drive/oauth/start">다시 연결 시작</a> · <a href="/">Meta로 돌아가기</a></p>
+  <p><a href="/api/google-drive/oauth/start">Start again</a> · <a href="/">Return to Meta</a></p>
 </body>
 </html>`;
 }

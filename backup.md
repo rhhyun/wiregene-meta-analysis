@@ -1,3 +1,34 @@
+# 2026-06-20 fix Google Drive OAuth permission block and AI settings read fallback
+
+User issue:
+
+- Clicking `Google Drive 연결 시작` showed `Administrator permission is required`.
+- The AI evaluation settings page showed a red `meta AI settings storage read failed` error with `GOOGLE_OAUTH_INVALID_GRANT`.
+- This broke a previously working settings screen and blocked the user from proceeding.
+
+Implemented:
+
+- Changed Google Drive OAuth start/callback route access:
+  - default now allows any authenticated Meta user.
+  - Portal admin-only restriction is available only if `META_GOOGLE_DRIVE_OAUTH_ADMIN_ONLY=true`.
+- Changed Meta AI settings reads:
+  - recoverable Google Drive/OAuth read failures no longer break the AI settings screen.
+  - read fallback returns empty settings or Vercel `OPENAI_API_KEY` environment fallback.
+  - write errors still surface, because persistent save cannot succeed until Google Drive credentials are fixed.
+- Sanitized the Google Drive OAuth callback success/error HTML text to avoid malformed/mojibake page strings.
+- Updated `guide.md` with the new permission and fallback behavior.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.67`
+  - UI label: `Ver 2.02 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed
+npm.cmd run lint: passed
+npm.cmd run build: passed
+```
+
 # 2026-06-20 add researcher-facing guide.md storage and workflow guide
 
 User issue:

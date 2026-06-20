@@ -15,7 +15,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
-  const auth = await requireMetaAdmin(request);
+  const auth = await requireMetaUser(request);
   if (auth) return auth;
 
   try {
@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-async function requireMetaAdmin(request: NextRequest) {
+async function requireMetaUser(request: NextRequest) {
   const mode = getWiregeneAppMode(request.headers.get("host"));
   if (mode !== "meta") {
     return htmlResponse(errorPage("Google Drive connection is available only on meta.wiregene.com", ""), 403);
@@ -54,11 +54,15 @@ async function requireMetaAdmin(request: NextRequest) {
       },
     });
   }
-  if (!user.isAdmin) {
+  if (googleDriveOAuthAdminOnly() && !user.isAdmin) {
     return htmlResponse(errorPage("Administrator permission is required", "Portal admin role is required."), 403);
   }
 
   return null;
+}
+
+function googleDriveOAuthAdminOnly() {
+  return /^(1|true|yes|on)$/i.test((process.env.META_GOOGLE_DRIVE_OAUTH_ADMIN_ONLY ?? "").trim());
 }
 
 function htmlResponse(html: string, status = 200) {
