@@ -94,7 +94,17 @@ npx.cmd tsc --noEmit --pretty false: passed.
 npm.cmd run lint: passed.
 git diff --check: passed.
 npm.cmd run build: passed.
+GitHub push: main 9565ea3 Improve project file storage display names.
+Vercel production auto-deploy: Ready.
+Deployment: https://wiregene-meta-analysis-11qmzttyy-rhhyuns-projects.vercel.app
+Alias: https://meta.wiregene.com
 ```
+
+Note:
+
+- Local `curl.exe` from this PC could not connect to the Vercel deployment or
+  `meta.wiregene.com`, but `npx.cmd --yes vercel@latest inspect` confirmed the
+  production deployment is `Ready` and aliases are attached.
 
 Regular Synology deploy/run command after GitHub push:
 
