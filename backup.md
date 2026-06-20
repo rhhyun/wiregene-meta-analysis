@@ -26,12 +26,13 @@ Implemented:
   - `package.json` / `package-lock.json`: `0.1.73`
   - UI label: `Ver 2.08 | 2026 copyright by JK Hyun`
 
-Verification to run:
+Verification:
 
 ```text
-npx.cmd tsc --noEmit --pretty false
-npm.cmd run lint
-npm.cmd run build
+npx.cmd tsc --noEmit --pretty false: passed
+npm.cmd run lint: passed
+git diff --check: passed
+npm.cmd run build: passed
 ```
 
 # 2026-06-20 replace OAuth start link flow with POST confirmation gate
