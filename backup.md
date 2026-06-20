@@ -3939,6 +3939,11 @@ npx.cmd tsc --noEmit --pretty false: passed.
 git diff --check: passed.
 npm.cmd run lint: passed.
 npm.cmd run build: passed.
+GitHub push: main 629e84b Move full-text upload before saved analyses.
+Vercel production auto-deploy: Ready.
+Deployment: https://wiregene-meta-analysis-1hrqsmr7y-rhhyuns-projects.vercel.app
+Alias: https://meta.wiregene.com
+Vercel error logs after deploy: no recent errors found.
 ```
 
 Regular Synology deploy/run command after GitHub push:
