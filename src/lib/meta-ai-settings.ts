@@ -127,7 +127,7 @@ export async function getMetaAiSettingsSummary(): Promise<MetaAiSettingsSummary>
 }
 
 export async function updateMetaAiSettings(input: MetaAiSettingsUpdate): Promise<MetaAiSettingsSummary> {
-  const current = await readStoredMetaAiSettings();
+  const current = await readStoredMetaAiSettingsOrEmpty();
   const nextModel = normalizeModelName(input.modelName ?? current.modelName);
   let apiKeyEncrypted = current.apiKeyEncrypted;
   const nextApiKey = input.apiKey?.trim();

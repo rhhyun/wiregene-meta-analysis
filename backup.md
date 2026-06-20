@@ -1,3 +1,39 @@
+# 2026-06-20 suppress Meta AI settings read failed OAuth details leak
+
+User issue:
+
+- `AI model reviewer slots` still showed a raw error:
+  - `meta AI settings storage read failed`
+  - `backend: google-drive`
+  - `GOOGLE_OAUTH_INVALID_GRANT`
+- The previous fallback did not catch this because the OAuth diagnostic lived inside the storage error `details`, not only in `error.message`.
+
+Implemented:
+
+- Expanded `isRecoverableGoogleDriveStorageError` to inspect:
+  - `error.message`
+  - `error.details`
+  - nested `error.cause`
+  - `GOOGLE_OAUTH_*` diagnostic codes
+- Updated Google Drive storage error code detection to read the expanded diagnostic text.
+- Changed `updateMetaAiSettings` to use the same read fallback as summary/config reads:
+  - `readStoredMetaAiSettingsOrEmpty()`
+  - stale Google Drive AI settings reads no longer block rendering or basic update preparation.
+- Write failures still surface because saving requires a working remote backend.
+- Updated `guide.md`.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.69`
+  - UI label: `Ver 2.04 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed
+npx.cmd tsx classifier reproduction: passed
+npm.cmd run lint: passed
+npm.cmd run build: passed
+```
+
 # 2026-06-20 fix Google Drive OAuth redirect_uri_mismatch hardening
 
 User issue:

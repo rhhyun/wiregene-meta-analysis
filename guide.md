@@ -1,6 +1,6 @@
 # Wiregene Meta 사용 가이드
 
-문서 버전: Ver 2.03  
+문서 버전: Ver 2.04  
 최종 업데이트: 2026-06-20  
 적용 사이트: `https://meta.wiregene.com`  
 소스 저장소: `rhhyun/wiregene-meta-analysis`
@@ -195,6 +195,8 @@ Google Cloud에서 반드시 `승인된 리디렉션 URI` 항목에 위 URI를 �
 기본 설정에서는 로그인한 Meta 사용자가 Google Drive 연결을 시작할 수 있습니다. 운영자가 별도 제한을 원할 때만 `META_GOOGLE_DRIVE_OAUTH_ADMIN_ONLY=true`를 설정해 Portal admin 사용자만 연결을 시작하게 합니다.
 
 Google Drive AI 설정 저장소의 refresh token이 만료되었거나 틀린 경우에도 AI 평가 설정 화면은 깨지지 않고 빈 설정 또는 Vercel `OPENAI_API_KEY` 환경변수 fallback을 보여주는 것이 원칙입니다. 실제 저장된 AI key를 다시 읽으려면 Google Drive refresh token을 새로 발급하고 Vercel Production을 재배포해야 합니다.
+
+AI 평가 설정 화면에서 Google Drive read 오류가 발생하면 앱은 error message뿐 아니라 `details.message`, `details.code`, nested cause까지 검사해 OAuth 오류를 fallback 대상으로 분류합니다. 따라서 `GOOGLE_OAUTH_INVALID_GRANT`가 저장소 상세 정보 안에만 있어도 AI reviewer slots 화면에는 raw storage read failed 오류가 노출되지 않아야 합니다. 단, 사용자가 설정을 저장할 때 Google Drive token이 여전히 잘못되어 있으면 write 오류는 표시됩니다. 저장은 실제 원격 저장소에 기록되어야 하기 때문입니다.
 
 ## 7. full-text 업로드와 AI 분석 저장 흐름
 

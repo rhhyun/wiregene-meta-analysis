@@ -41,7 +41,7 @@ export function resolveMetaSourceFileStorageBackend(configuredValue?: string | n
 }
 
 export function isRecoverableGoogleDriveStorageError(error: unknown) {
-  return /Google OAuth|invalid_grant|invalid_client|google-drive|Google Drive/i.test(errorMessage(error));
+  return /Google OAuth|invalid_grant|invalid_client|GOOGLE_OAUTH_|google-drive|Google Drive/i.test(errorSearchText(error));
 }
 
 export function googleDriveFallbackWarning(error: unknown) {
@@ -112,12 +112,33 @@ function errorMessage(error: unknown) {
 }
 
 function googleDriveStorageErrorCode(error: unknown) {
-  const message = errorMessage(error);
+  const message = errorSearchText(error);
   if (/invalid_grant/i.test(message)) return "GOOGLE_OAUTH_INVALID_GRANT";
   if (/invalid_client/i.test(message)) return "GOOGLE_OAUTH_INVALID_CLIENT";
+  if (/GOOGLE_OAUTH_INVALID_GRANT/i.test(message)) return "GOOGLE_OAUTH_INVALID_GRANT";
+  if (/GOOGLE_OAUTH_INVALID_CLIENT/i.test(message)) return "GOOGLE_OAUTH_INVALID_CLIENT";
   if (/Google OAuth/i.test(message)) return "GOOGLE_OAUTH_UNAVAILABLE";
   if (/Google Drive|google-drive/i.test(message)) return "GOOGLE_DRIVE_UNAVAILABLE";
   return "";
+}
+
+function errorSearchText(error: unknown) {
+  const parts = [errorMessage(error)];
+  if (error && typeof error === "object") {
+    const details = (error as { details?: unknown }).details;
+    if (details) parts.push(safeStringify(details));
+    const cause = (error as { cause?: unknown }).cause;
+    if (cause) parts.push(errorSearchText(cause));
+  }
+  return parts.filter(Boolean).join(" ");
+}
+
+function safeStringify(value: unknown) {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
 }
 
 function safeEnvValue(value: string | undefined) {
