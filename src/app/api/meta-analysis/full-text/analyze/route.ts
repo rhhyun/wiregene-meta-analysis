@@ -368,6 +368,52 @@ async function analyzeAndSave(input: AnalyzeRequestInput, context: AnalyzeReques
       });
     }
 
+    if (input.duplicatePolicy !== "merge") {
+      const duplicate = await findMetaFullTextDuplicateRecord(
+        {
+          fileName: input.fileName,
+          sourceFile,
+          analysis,
+        },
+        { projectId: input.projectId },
+      );
+      if (duplicate?.matchedBy === "source_sha256") {
+        const mergedRecord = await mergeMetaFullTextHistoryAnalysis(
+          duplicate.record.id,
+          analysis,
+          sourceFile,
+          { projectId: input.projectId },
+        );
+        if (mergedRecord) {
+          console.info("[meta-full-text/analyze] checksum duplicate merged into existing history record", {
+            ...diagnostics(context),
+            historyId: mergedRecord.id,
+            matchedBy: duplicate.matchedBy,
+          });
+
+          return NextResponse.json({
+            analysis: mergedRecord.analysis,
+            savedRecord: summarizeMetaFullTextHistoryRecord(mergedRecord),
+            duplicateAction: {
+              status: "merged",
+              targetId: mergedRecord.id,
+              matchedBy: duplicate.matchedBy,
+            },
+            diagnostics: {
+              ...diagnostics(context),
+              status: "merged",
+              historyId: mergedRecord.id,
+              matchedBy: duplicate.matchedBy,
+              extractedTextLength: mergedRecord.analysis.extractedTextLength,
+              aiUsed: mergedRecord.analysis.aiUsed,
+              help:
+                "An existing record with the same source-file checksum was found. The analysis was merged into that record to avoid duplicate records after retry or reupload.",
+            },
+          });
+        }
+      }
+    }
+
     const savedRecord = await saveMetaFullTextHistory({
       analysis,
       sourceSheet: input.sourceSheet,

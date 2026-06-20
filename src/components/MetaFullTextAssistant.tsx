@@ -29,6 +29,16 @@ type MetaFullTextAssistantProps = {
   }[];
 };
 
+type WakeLockSentinelLike = {
+  release: () => Promise<void>;
+};
+
+type WakeLockNavigator = Navigator & {
+  wakeLock?: {
+    request: (type: "screen") => Promise<WakeLockSentinelLike>;
+  };
+};
+
 type ReviewerDecision = "pending" | "include_quantitative" | "include_narrative_support" | "exclude" | "conflict";
 type PiFinalDecision = "pending" | "include_quantitative" | "include_narrative_support" | "exclude";
 type HistoryFilter =
@@ -167,6 +177,7 @@ type BatchAnalysisResult = {
   fileName: string;
   fileSize: number;
   status: BatchAnalysisStatus;
+  attempts: number;
   savedRecordId: string | null;
   decision: MetaFullTextAnalysis["eligibility"]["decision"] | null;
   confidence: number | null;
@@ -177,6 +188,13 @@ type BatchAnalysisResult = {
 const largeFileUploadThresholdBytes = 4 * 1024 * 1024;
 const googleDriveResumableChunkUnitBytes = 256 * 1024;
 const largeFileUploadChunkBytes = googleDriveResumableChunkUnitBytes * 9;
+const fullTextAnalysisRequestTimeoutMs = 330_000;
+const fullTextReanalysisRequestTimeoutMs = 330_000;
+const fullTextUploadSessionTimeoutMs = 60_000;
+const fullTextChunkUploadTimeoutMs = 120_000;
+const batchAnalysisMaxAttempts = 3;
+const longRequestMaxAttempts = 3;
+const chunkUploadMaxAttempts = 4;
 
 type ApiPayload = Record<string, unknown>;
 
@@ -326,6 +344,97 @@ async function readResponsePayload(response: Response): Promise<{ payload: ApiPa
     rawText,
     isJson: false,
   };
+}
+
+function retryableHttpStatus(status: number) {
+  return status === 408 || status === 409 || status === 425 || status === 429 || status >= 500;
+}
+
+function retryDelayFromResponse(response: Response | null, attempt: number) {
+  const retryAfter = response?.headers.get("retry-after");
+  if (retryAfter) {
+    const seconds = Number(retryAfter);
+    if (Number.isFinite(seconds) && seconds > 0) return Math.min(seconds * 1000, 120_000);
+    const retryAt = Date.parse(retryAfter);
+    if (Number.isFinite(retryAt)) return Math.min(Math.max(0, retryAt - Date.now()), 120_000);
+  }
+  const delays = [5_000, 15_000, 45_000, 90_000];
+  return delays[Math.min(attempt - 1, delays.length - 1)];
+}
+
+function delay(ms: number) {
+  return new Promise<void>((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+function errorText(error: unknown) {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
+function formatSeconds(ms: number) {
+  return `${Math.ceil(ms / 1000).toLocaleString("ko-KR")}s`;
+}
+
+async function fetchWithTimeoutAndRetry(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  options: {
+    label: string;
+    timeoutMs: number;
+    attempts: number;
+    onRetry?: (message: string) => void;
+  },
+) {
+  let lastError: unknown = null;
+  const attempts = Math.max(1, options.attempts);
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), options.timeoutMs);
+    try {
+      const response = await fetch(input, {
+        ...init,
+        signal: controller.signal,
+      });
+
+      if (!retryableHttpStatus(response.status) || attempt >= attempts) {
+        return response;
+      }
+
+      const waitMs = retryDelayFromResponse(response, attempt);
+      options.onRetry?.(
+        `${options.label} returned HTTP ${response.status}; retrying ${attempt + 1}/${attempts} after ${formatSeconds(waitMs)}.`,
+      );
+      await delay(waitMs);
+    } catch (error) {
+      lastError = error;
+      if (attempt >= attempts) {
+        throw new Error(
+          `${options.label} failed after ${attempts} attempt(s). ${
+            isAbortError(error) ? `Timed out after ${formatSeconds(options.timeoutMs)}.` : errorText(error)
+          }`,
+        );
+      }
+
+      const waitMs = retryDelayFromResponse(null, attempt);
+      options.onRetry?.(
+        `${options.label} ${isAbortError(error) ? `timed out after ${formatSeconds(options.timeoutMs)}` : "failed"}; retrying ${
+          attempt + 1
+        }/${attempts} after ${formatSeconds(waitMs)}.`,
+      );
+      await delay(waitMs);
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
+  }
+
+  throw new Error(`${options.label} failed. ${lastError ? errorText(lastError) : "No response was returned."}`);
 }
 
 function shortenErrorText(value: string) {
@@ -637,18 +746,27 @@ async function uploadLargeFileThroughServerChunks(
 
     let chunkResponse: Response;
     try {
-      chunkResponse = await fetch("/api/meta-analysis/full-text/upload-chunk", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/octet-stream",
-          "x-wiregene-upload-url": session.uploadUrl,
-          "x-wiregene-chunk-start": String(start),
-          "x-wiregene-chunk-end": String(end),
-          "x-wiregene-file-size": String(nextFile.size),
-          "x-wiregene-file-name": encodeURIComponent(nextFile.name).slice(0, 700),
+      chunkResponse = await fetchWithTimeoutAndRetry(
+        "/api/meta-analysis/full-text/upload-chunk",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/octet-stream",
+            "x-wiregene-upload-url": session.uploadUrl,
+            "x-wiregene-chunk-start": String(start),
+            "x-wiregene-chunk-end": String(end),
+            "x-wiregene-file-size": String(nextFile.size),
+            "x-wiregene-file-name": encodeURIComponent(nextFile.name).slice(0, 700),
+          },
+          body: chunk,
         },
-        body: chunk,
-      });
+        {
+          label: `Large-file chunk ${chunkIndex}/${totalChunks} for ${nextFile.name}`,
+          timeoutMs: fullTextChunkUploadTimeoutMs,
+          attempts: chunkUploadMaxAttempts,
+          onRetry: onStage,
+        },
+      );
     } catch (error) {
       throw new Error(
         `Large-file chunk upload failed before analysis. Details: ${
@@ -802,6 +920,7 @@ function aiReviewerModelDisplay(slot: MetaAiReviewerSlotSummary) {
 
 export function MetaFullTextAssistant({ extractionColumns, focus, projectId, worksheetOptions = [] }: MetaFullTextAssistantProps) {
   const analyzingRef = useRef(false);
+  const batchWakeLockRef = useRef<WakeLockSentinelLike | null>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [batchResults, setBatchResults] = useState<BatchAnalysisResult[]>([]);
   const [worksheetName, setWorksheetName] = useState(worksheetOptions[0]?.sheetName ?? "");
@@ -1621,11 +1740,20 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
     setNotice("");
     try {
       const payload = await readHistoryRecordPayload(
-        await fetch(fullTextHistoryRecordUrl(currentHistoryId, projectId, "reanalyze"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ projectId, reviewerIds: selectedRunnableAiReviewerIds }),
-        }),
+        await fetchWithTimeoutAndRetry(
+          fullTextHistoryRecordUrl(currentHistoryId, projectId, "reanalyze"),
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ projectId, reviewerIds: selectedRunnableAiReviewerIds }),
+          },
+          {
+            label: `Saved-source AI reanalysis for ${currentHistoryItem?.fileName ?? currentHistoryId}`,
+            timeoutMs: fullTextReanalysisRequestTimeoutMs,
+            attempts: batchAnalysisMaxAttempts,
+            onRetry: setNotice,
+          },
+        ),
       );
       const record = payload.record;
       setAnalysis(record.analysis);
@@ -1703,39 +1831,66 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
       if (shouldUseLargeFileUpload(sourceFile)) {
         setNotice("Uploading the large source file through the server chunk path.");
         const session = await readUploadSessionPayload(
-          await fetch("/api/meta-analysis/full-text/upload-session", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              fileName: sourceFile.name,
-              mimeType: sourceFile.type || "application/octet-stream",
-              fileSize: sourceFile.size,
-            }),
-          }),
+          await fetchWithTimeoutAndRetry(
+            "/api/meta-analysis/full-text/upload-session",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                fileName: sourceFile.name,
+                mimeType: sourceFile.type || "application/octet-stream",
+                fileSize: sourceFile.size,
+              }),
+            },
+            {
+              label: `Large-file upload session for ${sourceFile.name}`,
+              timeoutMs: fullTextUploadSessionTimeoutMs,
+              attempts: longRequestMaxAttempts,
+              onRetry: setNotice,
+            },
+          ),
         );
         const driveFile = await uploadLargeFileThroughServerChunks(sourceFile, session, (message) => setNotice(message));
         payload = await readHistoryRecordPayload(
-          await fetch(fullTextHistoryRecordUrl(currentHistoryId, projectId, "source"), {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              projectId,
-              driveFileId: driveFile.id,
-              fileName: driveFile.name || sourceFile.name,
-              mimeType: driveFile.mimeType || sourceFile.type || "application/octet-stream",
-              fileSize: Number(driveFile.size) || sourceFile.size,
-            }),
-          }),
+          await fetchWithTimeoutAndRetry(
+            fullTextHistoryRecordUrl(currentHistoryId, projectId, "source"),
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                projectId,
+                driveFileId: driveFile.id,
+                fileName: driveFile.name || sourceFile.name,
+                mimeType: driveFile.mimeType || sourceFile.type || "application/octet-stream",
+                fileSize: Number(driveFile.size) || sourceFile.size,
+              }),
+            },
+            {
+              label: `Saving source metadata for ${sourceFile.name}`,
+              timeoutMs: fullTextUploadSessionTimeoutMs,
+              attempts: longRequestMaxAttempts,
+              onRetry: setNotice,
+            },
+          ),
         );
       } else {
         const formData = new FormData();
         formData.set("file", sourceFile);
         formData.set("projectId", projectId);
         payload = await readHistoryRecordPayload(
-          await fetch(fullTextHistoryRecordUrl(currentHistoryId, projectId, "source"), {
-            method: "POST",
-            body: formData,
-          }),
+          await fetchWithTimeoutAndRetry(
+            fullTextHistoryRecordUrl(currentHistoryId, projectId, "source"),
+            {
+              method: "POST",
+              body: formData,
+            },
+            {
+              label: `Saving source file for ${sourceFile.name}`,
+              timeoutMs: fullTextUploadSessionTimeoutMs,
+              attempts: longRequestMaxAttempts,
+              onRetry: setNotice,
+            },
+          ),
         );
       }
 
@@ -1778,6 +1933,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
         fileName: nextFile.name,
         fileSize: nextFile.size,
         status: "pending",
+        attempts: 0,
         savedRecordId: null,
         decision: null,
         confidence: null,
@@ -1802,6 +1958,40 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
     setBatchResults([]);
     setError("");
     setNotice("Selected full-text files cleared.");
+  }
+
+  async function requestBatchWakeLock() {
+    const wakeLock = typeof navigator === "undefined" ? null : (navigator as WakeLockNavigator).wakeLock;
+    if (!wakeLock) return false;
+    try {
+      batchWakeLockRef.current = await wakeLock.request("screen");
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function releaseBatchWakeLock() {
+    const currentWakeLock = batchWakeLockRef.current;
+    batchWakeLockRef.current = null;
+    if (!currentWakeLock) return;
+    await currentWakeLock.release().catch(() => undefined);
+  }
+
+  function updateBatchStage(resultId: string, message: string) {
+    const retryAttempt = /retrying\s+(\d+)\/\d+/i.exec(message);
+    const attempts = retryAttempt ? Number(retryAttempt[1]) : null;
+    setBatchResults((current) =>
+      current.map((item) =>
+        item.id === resultId
+          ? {
+              ...item,
+              attempts: attempts !== null && Number.isFinite(attempts) ? Math.max(item.attempts, attempts) : item.attempts,
+              message,
+            }
+          : item,
+      ),
+    );
   }
 
   async function copyToClipboard(value: string, label: string) {
@@ -1901,35 +2091,62 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
           : "Extracting full text and requesting AI review.",
       );
       return readAnalysisPayload(
-        await fetch("/api/meta-analysis/full-text/analyze", {
-          method: "POST",
-          body: createAnalysisFormData(nextFile, duplicateTarget, unmatchedPolicy),
-        }),
+        await fetchWithTimeoutAndRetry(
+          "/api/meta-analysis/full-text/analyze",
+          {
+            method: "POST",
+            body: createAnalysisFormData(nextFile, duplicateTarget, unmatchedPolicy),
+          },
+          {
+            label: `Full-text analysis for ${nextFile.name}`,
+            timeoutMs: fullTextAnalysisRequestTimeoutMs,
+            attempts: longRequestMaxAttempts,
+            onRetry: onStage,
+          },
+        ),
       );
     }
 
     onStage("Creating a Google Drive resumable upload session for this large file.");
     const session = await readUploadSessionPayload(
-      await fetch("/api/meta-analysis/full-text/upload-session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fileName: nextFile.name,
-          mimeType: nextFile.type || "application/octet-stream",
-          fileSize: nextFile.size,
-        }),
-      }),
+      await fetchWithTimeoutAndRetry(
+        "/api/meta-analysis/full-text/upload-session",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fileName: nextFile.name,
+            mimeType: nextFile.type || "application/octet-stream",
+            fileSize: nextFile.size,
+          }),
+        },
+        {
+          label: `Large-file upload session for ${nextFile.name}`,
+          timeoutMs: fullTextUploadSessionTimeoutMs,
+          attempts: batchAnalysisMaxAttempts,
+          onRetry: onStage,
+        },
+      ),
     );
 
     const driveFile = await uploadLargeFileThroughServerChunks(nextFile, session, onStage);
 
     onStage("Analyzing the uploaded full text from Google Drive.");
     return readAnalysisPayload(
-      await fetch("/api/meta-analysis/full-text/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(createAnalysisJsonPayload(nextFile, driveFile, duplicateTarget, unmatchedPolicy)),
-      }),
+      await fetchWithTimeoutAndRetry(
+        "/api/meta-analysis/full-text/analyze",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(createAnalysisJsonPayload(nextFile, driveFile, duplicateTarget, unmatchedPolicy)),
+        },
+        {
+          label: `Full-text analysis from saved upload for ${nextFile.name}`,
+          timeoutMs: fullTextAnalysisRequestTimeoutMs,
+          attempts: batchAnalysisMaxAttempts,
+          onRetry: onStage,
+        },
+      ),
     );
   }
 
@@ -1984,6 +2201,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
         fileName: nextFile.name,
         fileSize: nextFile.size,
         status: "pending",
+        attempts: 0,
         savedRecordId: null,
         decision: null,
         confidence: null,
@@ -1992,22 +2210,31 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
       })),
     );
     try {
+      const wakeLockActive = await requestBatchWakeLock();
       let savedCount = 0;
       let analyzedNotSavedCount = 0;
       let failedCount = 0;
 
       for (const [index, nextFile] of queuedFiles.entries()) {
         const resultId = batchFileId(nextFile, index);
-        setNotice(`Analyzing ${index + 1}/${queuedFiles.length}: ${nextFile.name}`);
+        setNotice(
+          [
+            `Analyzing ${index + 1}/${queuedFiles.length}: ${nextFile.name}`,
+            wakeLockActive ? "Screen wake lock is active while the browser runs the queue." : "",
+          ]
+            .filter(Boolean)
+            .join(" "),
+        );
         setBatchResults((current) =>
           current.map((item) =>
             item.id === resultId
               ? {
                   ...item,
                   status: "analyzing",
+                  attempts: 1,
                   message: shouldUseLargeFileUpload(nextFile)
-                    ? "Preparing server chunk upload for this large file."
-                    : "Extracting full text and requesting AI review.",
+                    ? `Attempt 1/${batchAnalysisMaxAttempts}: preparing server chunk upload for this large file.`
+                    : `Attempt 1/${batchAnalysisMaxAttempts}: extracting full text and requesting AI review.`,
                 }
               : item,
           ),
@@ -2017,10 +2244,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
           const duplicateTarget = duplicateTargetByResultId.get(resultId) ?? null;
           const payload = await analyzeSingleFullTextFile(
             nextFile,
-            (message) =>
-              setBatchResults((current) =>
-                current.map((item) => (item.id === resultId ? { ...item, message } : item)),
-              ),
+            (message) => updateBatchStage(resultId, message),
             duplicateTarget,
             unmatchedPolicy,
           );
@@ -2097,6 +2321,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "full-text 분석에 실패했습니다.");
     } finally {
+      await releaseBatchWakeLock();
       analyzingRef.current = false;
       setIsAnalyzing(false);
     }
@@ -2769,6 +2994,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                   </div>
                   <span className="shrink-0 rounded-md bg-white/80 px-2 py-1 text-xs font-semibold ring-1 ring-black/5">
                     {batchStatusLabel(item.status)}
+                    {item.status === "analyzing" ? ` · attempt ${item.attempts}/${batchAnalysisMaxAttempts}` : ""}
                   </span>
                 </div>
                 <p className="mt-2 whitespace-pre-wrap break-words text-xs font-semibold leading-5">

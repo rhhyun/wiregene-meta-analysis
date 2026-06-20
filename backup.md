@@ -1,3 +1,58 @@
+# 2026-06-20 Long-running full-text batch queue hardened
+
+User issue:
+
+- The user correctly pointed out that cumulative full-text upload followed by AI analysis can take several hours.
+- A long-running batch must not depend on one very long request because browser, Vercel, model provider, Google Drive, or network timeouts can interrupt it.
+- A failed file must not stop the remaining queue.
+
+Implemented:
+
+- Updated `src/components/MetaFullTextAssistant.tsx`.
+- Added a timeout/retry wrapper for long full-text operations.
+- Batch analysis remains file-by-file rather than one long server request.
+- Retryable conditions:
+  - network fetch failure,
+  - request timeout,
+  - HTTP 408 / 409 / 425 / 429,
+  - HTTP 5xx.
+- Non-retryable API validation errors still fail the current file clearly.
+- Large-file upload is safer:
+  - upload session creation retries,
+  - each Google Drive chunk upload retries independently,
+  - final Google Drive-based analysis retries.
+- Saved-source reanalysis also uses timeout/retry.
+- Queue UI shows the current attempt count while a file is analyzing.
+- The browser requests screen wake lock during batch processing when supported, reducing interruption from sleep/idle behavior.
+- Updated `src/app/api/meta-analysis/full-text/analyze/route.ts`.
+- Server now checks `source_sha256` before creating a new history record. If a retry or reupload already saved the same PDF/Word source, the server merges into the existing record instead of creating a duplicate.
+- Updated `guide.md`.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.85`
+  - UI label: `Ver 2.20 | 2026 copyright by JK Hyun`
+
+Operational principle:
+
+- Current implementation is a robust browser-orchestrated sequential queue.
+- It avoids Vercel function timeout by keeping each file as a separate request.
+- For a future fully background queue that survives browser close/reboot, the next architecture step should be a durable server workflow/queue engine. This was not introduced in this patch to avoid destabilizing the already-working production flow.
+
+Verification pending:
+
+```text
+npx.cmd tsc --noEmit --pretty false
+git diff --check
+npm.cmd run lint
+npm.cmd run build
+GitHub push and Vercel production deployment verification
+```
+
+Regular Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 # 2026-06-20 add official Google Drive health verification
 
 User issue:
