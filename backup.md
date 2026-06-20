@@ -3911,6 +3911,62 @@ Regular Synology deploy/run command after GitHub push:
 git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
 ```
 
+## 2026-06-20 Batch full-text auto-match and AI reviewer rerun
+
+User issue:
+
+- About 60 full-text files that already had a previous single-AI-model analysis still needed to be reuploaded.
+- The workflow forced the researcher to select one article, upload one file, wait 2-3 minutes for AI analysis, then repeat.
+- This is not acceptable for current studies and would be impossible for future studies with hundreds of full-text articles.
+
+Implemented:
+
+- Added batch existing-record auto-match workflow in `src/components/MetaFullTextAssistant.tsx`.
+- Multiple PDF/Word/TXT/MD files can now be selected once.
+- The app previews how many files are locally matched to existing saved article records.
+- Matching now uses:
+  - exact normalized file name,
+  - saved file name containment,
+  - saved title containment,
+  - token overlap between uploaded file name, saved file name, and saved title,
+  - year consistency,
+  - ambiguity protection so near-ties are not automatically merged.
+- Added `기존 저장 논문 자동 매칭 모드`.
+  - Enabled by default.
+  - Matched files update the existing record and run the selected AI reviewers.
+  - Unmatched files are not saved as new records, preventing accidental duplicate article records.
+  - Researchers can disable the mode only when intentionally adding new full-text records.
+- Added per-file match details in the batch queue:
+  - matched target record,
+  - source saved / legacy-no-source state,
+  - existing AI review count,
+  - match score and reason.
+- Updated `/api/meta-analysis/full-text/analyze` to accept `unmatchedPolicy: skip_new`.
+  - If merge matching fails, the API returns analyzed-not-saved rather than creating a duplicate record.
+- Updated server-side duplicate matching in `src/lib/meta-full-text-history.ts`.
+  - After full-text extraction/AI title detection, the server tries exact title and fuzzy title matching.
+  - This improves matching for generic file names such as EBSCO/FullText downloads.
+- Updated `guide.md` with the Ver 2.18 batch workflow.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.83`
+  - UI label: `Ver 2.18 | 2026 copyright by JK Hyun`
+
+Verification pending:
+
+```text
+npx.cmd tsc --noEmit --pretty false
+git diff --check
+npm.cmd run lint
+npm.cmd run build
+GitHub push and Vercel production deployment verification
+```
+
+Regular Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 ## 2026-06-20 AI reviewer progress denominator stabilized
 
 User issue:

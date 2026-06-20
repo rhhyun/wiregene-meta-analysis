@@ -228,6 +228,9 @@ export async function findMetaFullTextDuplicateRecord(
     if (byTitle) return { record: byTitle, matchedBy: "title" as const };
   }
 
+  const fuzzyTitle = findFuzzyTitleDuplicate(input.analysis?.titleGuess || "", data.records);
+  if (fuzzyTitle) return { record: fuzzyTitle, matchedBy: "title_fuzzy" as const };
+
   return null;
 }
 
@@ -824,6 +827,72 @@ function duplicateTextKey(value: string) {
     .replace(/[^a-z0-9\uAC00-\uD7A3]+/g, "")
     .trim()
     .slice(0, 180);
+}
+
+const duplicateTitleStopWords = new Set([
+  "the",
+  "and",
+  "for",
+  "with",
+  "from",
+  "into",
+  "among",
+  "during",
+  "related",
+  "study",
+  "article",
+  "full",
+  "text",
+  "fulltext",
+  "pdf",
+]);
+
+function duplicateTitleTokens(value: string) {
+  return Array.from(
+    new Set(
+      value
+        .replace(/\.[a-z0-9]{1,8}$/i, "")
+        .toLowerCase()
+        .normalize("NFKD")
+        .split(/[^a-z0-9\uAC00-\uD7A3]+/g)
+        .map((token) => token.trim())
+        .filter((token) => token.length >= 3)
+        .filter((token) => !/^\d{1,3}$/.test(token))
+        .filter((token) => !duplicateTitleStopWords.has(token)),
+    ),
+  ).slice(0, 80);
+}
+
+function duplicateTokenScore(left: string[], right: string[]) {
+  if (left.length === 0 || right.length === 0) return 0;
+  const rightSet = new Set(right);
+  const common = left.filter((token) => rightSet.has(token)).length;
+  if (common === 0) return 0;
+  const coverage = common / Math.min(left.length, right.length);
+  const union = new Set([...left, ...right]).size;
+  const jaccard = common / Math.max(1, union);
+  return coverage * 0.75 + jaccard * 0.25;
+}
+
+function findFuzzyTitleDuplicate(title: string, records: MetaFullTextHistoryRecord[]) {
+  const titleTokens = duplicateTitleTokens(title);
+  if (titleTokens.length < 4) return null;
+  const ranked = records
+    .map((record) => {
+      const titleScore = duplicateTokenScore(titleTokens, duplicateTitleTokens(record.analysis.titleGuess || ""));
+      const fileScore = duplicateTokenScore(titleTokens, duplicateTitleTokens(record.fileName || record.analysis.fileName || ""));
+      return {
+        record,
+        score: Math.max(titleScore, fileScore),
+      };
+    })
+    .filter((candidate) => candidate.score >= 0.76)
+    .sort((left, right) => right.score - left.score);
+  const best = ranked[0];
+  if (!best) return null;
+  const runnerUp = ranked[1];
+  if (runnerUp && best.score - runnerUp.score < 0.08) return null;
+  return best.record;
 }
 
 function normalizeStoredAnalysis(analysis: Partial<MetaFullTextAnalysis>): MetaFullTextAnalysis {

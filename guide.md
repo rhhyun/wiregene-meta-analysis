@@ -60,6 +60,8 @@ Ver 2.16부터 화면 순서는 `AI model reviewers for this run` → `full-text
 
 Ver 2.17부터 저장된 논문 목록의 `AI reviews x/y` 표시는 저장 이력과 설정된 reviewer slot 수를 함께 기준으로 계산합니다. 한 모델이 일시적으로 실패하거나 잠시 실행 불가로 판단되어도 다른 논문들의 분모가 `3`에서 `2`로 내려가지 않습니다. 따라서 3개 모델을 기준으로 진행한 논문은 계속 `3/3`으로 남고, 실제로 한 모델이 실패한 논문만 `2/3`처럼 검토가 덜 끝난 상태로 표시됩니다.
 
+Ver 2.18부터 기존 1개 AI 모델만 분석된 legacy record를 대량 업데이트할 수 있습니다. `full-text 파일`에서 PDF/Word 원문 여러 개를 한 번에 선택하고 `기존 저장 논문 자동 매칭 모드`를 켠 상태로 `Auto-match and run AI queue`를 실행하면, 앱이 파일명/저장 제목/추출 제목을 이용해 기존 논문과 매칭하고 같은 record에 source file과 선택한 AI reviewer 3개 결과를 순차 저장합니다. 매칭 실패 파일은 기본적으로 새 논문으로 저장하지 않아 중복 record가 생기지 않습니다. 새 연구에서 완전히 새 full-text를 저장해야 할 때만 자동 매칭 모드를 끕니다.
+
 ### AI Model Reviewer Comparison
 
 AI reviewer 1, 2, 3이 같은 논문을 독립적으로 판정합니다.

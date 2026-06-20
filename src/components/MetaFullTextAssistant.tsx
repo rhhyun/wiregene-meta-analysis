@@ -152,6 +152,16 @@ type MetaFullTextHistoryRecord = {
 
 type BatchAnalysisStatus = "pending" | "analyzing" | "saved" | "analyzed_not_saved" | "failed";
 
+type BatchFileMatch = {
+  targetId: string;
+  targetFileName: string;
+  targetTitleGuess: string | null;
+  sourceFileSaved: boolean;
+  aiModelReviewCount: number;
+  score: number;
+  reason: string;
+};
+
 type BatchAnalysisResult = {
   id: string;
   fileName: string;
@@ -161,6 +171,7 @@ type BatchAnalysisResult = {
   decision: MetaFullTextAnalysis["eligibility"]["decision"] | null;
   confidence: number | null;
   message: string;
+  match: BatchFileMatch | null;
 };
 
 const largeFileUploadThresholdBytes = 4 * 1024 * 1024;
@@ -174,7 +185,7 @@ type AnalysisPayload = {
   savedRecord?: MetaFullTextHistorySummary | null;
   saveError?: unknown;
   duplicateAction?: {
-    status: "merged" | "saved_new" | "merge_target_not_found_saved_new";
+    status: "merged" | "saved_new" | "merge_target_not_found_saved_new" | "merge_target_not_found_skipped_new";
     targetId?: string;
     matchedBy?: string;
   };
@@ -393,10 +404,145 @@ function normalizedArticleFileKey(value: string) {
     .slice(0, 180);
 }
 
+const articleMatchStopWords = new Set([
+  "pdf",
+  "doc",
+  "docx",
+  "txt",
+  "full",
+  "text",
+  "fulltext",
+  "article",
+  "download",
+  "main",
+  "supplement",
+  "supplementary",
+  "ebsco",
+  "elsevier",
+  "sciencedirect",
+  "springer",
+  "wiley",
+  "taylor",
+  "francis",
+  "sage",
+  "mdpi",
+  "pmc",
+  "nihms",
+  "s2",
+  "the",
+  "and",
+  "for",
+  "with",
+  "from",
+  "into",
+  "among",
+  "during",
+  "related",
+]);
+
+function articleMatchTokens(value: string | null | undefined) {
+  return Array.from(
+    new Set(
+      (value ?? "")
+        .replace(/\.[a-z0-9]{1,8}$/i, "")
+        .toLowerCase()
+        .normalize("NFKD")
+        .split(/[^a-z0-9\uAC00-\uD7A3]+/g)
+        .map((token) => token.trim())
+        .filter((token) => token.length >= 3)
+        .filter((token) => !/^\d{1,3}$/.test(token))
+        .filter((token) => !articleMatchStopWords.has(token)),
+    ),
+  ).slice(0, 60);
+}
+
+function articleYears(value: string | null | undefined) {
+  return new Set((value ?? "").match(/\b(19|20)\d{2}\b/g) ?? []);
+}
+
+function tokenOverlapScore(sourceTokens: string[], targetTokens: string[]) {
+  if (sourceTokens.length === 0 || targetTokens.length === 0) return 0;
+  const targetSet = new Set(targetTokens);
+  const common = sourceTokens.filter((token) => targetSet.has(token)).length;
+  if (common === 0) return 0;
+  const coverage = common / Math.min(sourceTokens.length, targetTokens.length);
+  const union = new Set([...sourceTokens, ...targetTokens]).size;
+  const jaccard = common / Math.max(1, union);
+  return coverage * 0.7 + jaccard * 0.3;
+}
+
+function yearAdjustedScore(score: number, sourceText: string, targetText: string) {
+  const sourceYears = articleYears(sourceText);
+  const targetYears = articleYears(targetText);
+  if (sourceYears.size === 0 || targetYears.size === 0) return score;
+  const hasSharedYear = [...sourceYears].some((year) => targetYears.has(year));
+  return hasSharedYear ? Math.min(1, score + 0.05) : Math.max(0, score - 0.12);
+}
+
+function scoreHistoryItemForFile(nextFile: File, item: MetaFullTextHistorySummary) {
+  const fileName = nextFile.name;
+  const fileKey = normalizedArticleFileKey(fileName);
+  const historyFileKey = normalizedArticleFileKey(item.fileName);
+  const titleKey = normalizedArticleFileKey(item.titleGuess ?? "");
+  if (fileKey && historyFileKey && fileKey === historyFileKey) {
+    return { score: 1, reason: "file name exact match" };
+  }
+  if (fileKey && titleKey && fileKey === titleKey) {
+    return { score: 0.98, reason: "title exact match" };
+  }
+  if (fileKey && historyFileKey && fileKey.length >= 20 && historyFileKey.length >= 20) {
+    if (fileKey.includes(historyFileKey) || historyFileKey.includes(fileKey)) {
+      return { score: 0.94, reason: "file name contains saved file name" };
+    }
+  }
+  if (fileKey && titleKey && fileKey.length >= 20 && titleKey.length >= 20) {
+    if (fileKey.includes(titleKey) || titleKey.includes(fileKey)) {
+      return { score: 0.92, reason: "file name contains saved title" };
+    }
+  }
+
+  const sourceTokens = articleMatchTokens(fileName);
+  const fileTokenScore = yearAdjustedScore(tokenOverlapScore(sourceTokens, articleMatchTokens(item.fileName)), fileName, item.fileName);
+  const titleTokenScore = yearAdjustedScore(
+    tokenOverlapScore(sourceTokens, articleMatchTokens(item.titleGuess)),
+    fileName,
+    item.titleGuess ?? "",
+  );
+  const score = Math.max(fileTokenScore, titleTokenScore);
+  return {
+    score,
+    reason: titleTokenScore >= fileTokenScore ? "file/title token match" : "file name token match",
+  };
+}
+
+function findBestHistoryMatchForFile(nextFile: File, historyItems: MetaFullTextHistorySummary[]) {
+  const ranked = historyItems
+    .map((item) => ({ item, ...scoreHistoryItemForFile(nextFile, item) }))
+    .filter((candidate) => candidate.score >= 0.58)
+    .sort((left, right) => right.score - left.score);
+  const best = ranked[0];
+  if (!best) return null;
+  const runnerUp = ranked[1];
+  if (best.score < 0.9 && runnerUp && best.score - runnerUp.score < 0.08) return null;
+  return best;
+}
+
 function findDuplicateHistoryItemForFile(nextFile: File, historyItems: MetaFullTextHistorySummary[]) {
-  const fileKey = normalizedArticleFileKey(nextFile.name);
-  if (!fileKey) return null;
-  return historyItems.find((item) => normalizedArticleFileKey(item.fileName) === fileKey) ?? null;
+  return findBestHistoryMatchForFile(nextFile, historyItems)?.item ?? null;
+}
+
+function batchMatchForFile(nextFile: File, historyItems: MetaFullTextHistorySummary[]): BatchFileMatch | null {
+  const match = findBestHistoryMatchForFile(nextFile, historyItems);
+  if (!match) return null;
+  return {
+    targetId: match.item.id,
+    targetFileName: match.item.fileName,
+    targetTitleGuess: match.item.titleGuess,
+    sourceFileSaved: match.item.sourceFileSaved,
+    aiModelReviewCount: match.item.aiModelReviewCount,
+    score: match.score,
+    reason: match.reason,
+  };
 }
 
 function duplicateMergePrompt(duplicates: { file: File; target: MetaFullTextHistorySummary }[]) {
@@ -678,6 +824,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
   const [selectedHistoryIdsForDelete, setSelectedHistoryIdsForDelete] = useState<string[]>([]);
   const [isBatchDeletingHistory, setIsBatchDeletingHistory] = useState(false);
   const [selectedAiReviewerIds, setSelectedAiReviewerIds] = useState<string[]>([]);
+  const [batchExistingOnlyMode, setBatchExistingOnlyMode] = useState(true);
   const [aiSettingsLoading, setAiSettingsLoading] = useState(true);
   const [aiSettingsError, setAiSettingsError] = useState("");
   const [reviewerNamesSaved, setReviewerNamesSaved] = useState(false);
@@ -844,14 +991,25 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
   );
   const allVisibleHistorySelectedForDelete =
     visibleHistoryIds.length > 0 && selectedVisibleHistoryDeleteCount === visibleHistoryIds.length;
+  const batchFileMatches = useMemo(
+    () => files.map((file) => batchMatchForFile(file, historyItems)),
+    [files, historyItems],
+  );
+  const batchAutoMatchCount = batchFileMatches.filter(Boolean).length;
+  const batchUnmatchedCount = Math.max(0, files.length - batchAutoMatchCount);
+  const preventUnmatchedNewRecords = batchExistingOnlyMode && historyItems.length > 0;
   const analyzeButtonLabel = isAnalyzing
     ? "Analyzing"
     : currentHistoryItem && !currentHistoryItem.sourceFileSaved && files.length === 1
       ? "Use saved-record update button above"
     : files.length > 1
-      ? `Analyze queue as NEW records (${files.length})`
+      ? preventUnmatchedNewRecords
+        ? `Auto-match and run AI queue (${files.length})`
+        : `Analyze queue; save new if unmatched (${files.length})`
       : files.length === 1
-        ? "Analyze as NEW saved record"
+        ? preventUnmatchedNewRecords
+          ? "Auto-match and run AI"
+          : "Analyze full text"
         : "Analyze full text";
 
   const extractionCsv = useMemo(() => {
@@ -1604,6 +1762,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
         savedRecordId: null,
         decision: null,
         confidence: null,
+        match: batchMatchForFile(nextFile, historyItems),
         message: "Waiting for sequential analysis.",
       })),
     );
@@ -1627,7 +1786,11 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
     }
   }
 
-  function createAnalysisFormData(nextFile: File, duplicateTarget: MetaFullTextHistorySummary | null) {
+  function createAnalysisFormData(
+    nextFile: File,
+    duplicateTarget: MetaFullTextHistorySummary | null,
+    unmatchedPolicy: "save_new" | "skip_new",
+  ) {
     const formData = new FormData();
     const cleanedReferenceRecord = stripGeneratedReferenceContext(referenceRecord);
     formData.set("file", nextFile);
@@ -1650,8 +1813,9 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
     formData.set("reviewerOneName", reviewerOneName);
     formData.set("reviewerTwoName", reviewerTwoName);
     formData.set("reviewerIds", selectedRunnableAiReviewerIds.join(","));
-    formData.set("duplicatePolicy", duplicateTarget ? "merge" : "new");
+    formData.set("duplicatePolicy", duplicateTarget || unmatchedPolicy === "skip_new" ? "merge" : "new");
     if (duplicateTarget) formData.set("duplicateTargetId", duplicateTarget.id);
+    formData.set("unmatchedPolicy", unmatchedPolicy);
     return formData;
   }
 
@@ -1659,6 +1823,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
     nextFile: File,
     driveFile: GoogleDriveUploadPayload,
     duplicateTarget: MetaFullTextHistorySummary | null,
+    unmatchedPolicy: "save_new" | "skip_new",
   ) {
     const cleanedReferenceRecord = stripGeneratedReferenceContext(referenceRecord);
     const driveSize = Number(driveFile.size);
@@ -1683,8 +1848,9 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
       reviewerOneName,
       reviewerTwoName,
       reviewerIds: selectedRunnableAiReviewerIds,
-      duplicatePolicy: duplicateTarget ? "merge" : "new",
+      duplicatePolicy: duplicateTarget || unmatchedPolicy === "skip_new" ? "merge" : "new",
       duplicateTargetId: duplicateTarget?.id ?? null,
+      unmatchedPolicy,
     };
   }
 
@@ -1696,6 +1862,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
     nextFile: File,
     onStage: (message: string) => void,
     duplicateTarget: MetaFullTextHistorySummary | null,
+    unmatchedPolicy: "save_new" | "skip_new",
   ) {
     if (!shouldUseLargeFileUpload(nextFile)) {
       onStage(
@@ -1706,7 +1873,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
       return readAnalysisPayload(
         await fetch("/api/meta-analysis/full-text/analyze", {
           method: "POST",
-          body: createAnalysisFormData(nextFile, duplicateTarget),
+          body: createAnalysisFormData(nextFile, duplicateTarget, unmatchedPolicy),
         }),
       );
     }
@@ -1731,7 +1898,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
       await fetch("/api/meta-analysis/full-text/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(createAnalysisJsonPayload(nextFile, driveFile, duplicateTarget)),
+        body: JSON.stringify(createAnalysisJsonPayload(nextFile, driveFile, duplicateTarget, unmatchedPolicy)),
       }),
     );
   }
@@ -1751,6 +1918,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
       }))
       .filter((item): item is { file: File; resultId: string; target: MetaFullTextHistorySummary } => Boolean(item.target));
     const duplicateTargetByResultId = new Map<string, MetaFullTextHistorySummary>();
+    const unmatchedPolicy: "save_new" | "skip_new" = preventUnmatchedNewRecords ? "skip_new" : "save_new";
     if (duplicateMatches.length > 0) {
       const confirmed = window.confirm(duplicateMergePrompt(duplicateMatches));
       if (!confirmed) {
@@ -1762,12 +1930,14 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
 
     if (currentHistoryItem && duplicateMatches.length === 0) {
       const confirmed = window.confirm(
-        "A saved record is selected, but this upload button creates NEW saved article record(s). To update the selected record without duplication, cancel this and use the saved-record update button.",
+        preventUnmatchedNewRecords
+          ? "A saved record is selected, but the batch upload path will auto-match each uploaded file to its own existing record. Files that cannot be matched will not be saved as new records while existing-only mode is checked."
+          : "A saved record is selected, but unmatched files can still be saved as NEW saved article record(s). To update only the selected record without duplication, cancel this and use the saved-record update button.",
       );
       if (!confirmed) return;
     } else if (!currentHistoryItem && duplicateMatches.length === 0 && historyDecisionCounts.legacy_source > 0) {
       const confirmed = window.confirm(
-        "No saved record is selected. This upload path creates NEW saved article record(s) and can increase the saved count (for example, 72 -> 73). To update an old GPT-5-nano legacy record without duplication, cancel this, select the matching legacy/no source record, choose the PDF, then use the saved-record update button.",
+        "No saved record is selected. This batch path will auto-match uploaded files to existing saved article records. Unmatched files will NOT be saved as new records while existing-only mode is checked.",
       );
       if (!confirmed) return;
     }
@@ -1787,6 +1957,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
         savedRecordId: null,
         decision: null,
         confidence: null,
+        match: batchMatchForFile(nextFile, historyItems),
         message: "Waiting for sequential analysis.",
       })),
     );
@@ -1821,6 +1992,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                 current.map((item) => (item.id === resultId ? { ...item, message } : item)),
               ),
             duplicateTarget,
+            unmatchedPolicy,
           );
           setAnalysis(payload.analysis);
           if (payload.savedRecord && !payload.saveError) {
@@ -1838,7 +2010,9 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                       decision: payload.analysis.eligibility.decision,
                       confidence: payload.analysis.eligibility.confidence,
                       message: merged
-                        ? "Merged into existing full-text history record; no duplicate article was created."
+                        ? `Merged into existing full-text history record; no duplicate article was created${
+                            payload.duplicateAction?.matchedBy ? ` (matched by ${payload.duplicateAction.matchedBy})` : ""
+                          }.`
                         : "Saved automatically to full-text history.",
                     }
                   : item,
@@ -2075,9 +2249,9 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
             원문 full-text 파일 저장 상태: legacy/no source {historyDecisionCounts.legacy_source.toLocaleString("ko-KR")}개는 PDF/Word 원문이 저장되어 있지 않습니다.
           </span>
           <span className="mt-1 block text-amber-900">
-            새 AI model로 다시 분석하려면 기존 저장 논문을 하나 선택한 뒤, 해당 full-text article을 한 번 업로드해서 그 기록에 연결해야 합니다.
+            여러 PDF/Word 원문을 한꺼번에 선택하면 앱이 기존 저장 논문과 자동 매칭하고, 매칭된 record에 source를 저장한 뒤 선택한 AI reviewer들을 순차 실행합니다.
           </span>
-          Existing GPT-5-nano legacy rerun: select a `legacy/no source` saved record, choose the matching full-text file once, then the saved-record update button saves the source and immediately runs the selected AI reviewers.
+          Existing GPT-5-nano legacy rerun: select many full-text files once, keep existing-only mode checked, and run the batch queue. Use one-record manual update only for files that cannot be confidently matched.
           <span className="mt-1 block text-amber-900">Current button action: {savedSourceActionLabel}.</span>
           <span className="mt-1 block text-amber-900">{savedSourceActionHelp}</span>
         </div>
@@ -2115,6 +2289,26 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
               disabled={isAnalyzing}
               className="mt-3 w-full text-sm text-zinc-700 disabled:cursor-not-allowed disabled:opacity-60 file:mr-3 file:rounded-md file:border-0 file:bg-zinc-900 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-zinc-700"
             />
+            <label className="mt-3 flex items-start gap-2 rounded-md border border-emerald-200 bg-emerald-50 p-2 text-xs font-semibold leading-5 text-emerald-950">
+              <input
+                type="checkbox"
+                checked={batchExistingOnlyMode}
+                onChange={(event) => setBatchExistingOnlyMode(event.target.checked)}
+                disabled={isAnalyzing}
+                className="mt-1 h-4 w-4 shrink-0 accent-emerald-700 disabled:opacity-40"
+              />
+              <span>
+                기존 저장 논문 자동 매칭 모드: 매칭된 파일은 기존 record에 source를 저장하고 선택한 AI reviewer를 실행합니다.
+                매칭 실패 파일은 새 논문으로 저장하지 않습니다.
+              </span>
+            </label>
+            {files.length > 0 ? (
+              <div className="mt-2 rounded-md border border-zinc-200 bg-zinc-50 p-2 text-xs font-semibold leading-5 text-zinc-700">
+                Batch match preview: {batchAutoMatchCount.toLocaleString("ko-KR")}/{files.length.toLocaleString("ko-KR")} file(s)
+                matched to saved records; unmatched {batchUnmatchedCount.toLocaleString("ko-KR")}. AI reviewer run:{" "}
+                {selectedAiReviewerLabel}.
+              </div>
+            ) : null}
             {currentHistoryItem && !currentHistoryItem.sourceFileSaved ? (
               <button
                 type="button"
@@ -2141,14 +2335,14 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
               {analyzeButtonLabel}
             </button>
             <p className="mt-2 text-xs font-semibold leading-5 text-zinc-600">
-              Select multiple PDF, Word, TXT, or MD files once. The app analyzes them one by one and saves each result as a separate history record.
+              Select multiple PDF, Word, TXT, or MD files once. Matched files update existing saved records; unmatched files are only saved as new records when existing-only mode is unchecked.
             </p>
             <p className="mt-2 text-xs font-semibold leading-5 text-zinc-600">
               AI reviewer run: {selectedAiReviewerLabel}
             </p>
             {!currentHistoryItem && files.length > 0 ? (
               <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs font-semibold leading-5 text-amber-950">
-                No saved record is selected. This upload path creates a NEW saved article record and can increase the saved count, for example 72 -&gt; 73. To update an old GPT-5-nano legacy record without duplication, select that `legacy/no source` record above first, choose the matching file, then use the saved-record update button.
+                No saved record is selected. In existing-only mode, the batch path still updates matched existing records and does not create new records for unmatched files. Uncheck existing-only mode only when you intentionally want unmatched full texts saved as new article records.
               </p>
             ) : null}
             {currentHistoryItem && !currentHistoryItem.sourceFileSaved ? (
@@ -2532,6 +2726,21 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                 <p className="mt-2 whitespace-pre-wrap break-words text-xs font-semibold leading-5">
                   {item.decision ? `${decisionLabel(item.decision)} - confidence ${item.confidence ?? "n/a"}` : item.message}
                 </p>
+                {item.match ? (
+                  <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-5 opacity-90">
+                    Auto-match: {item.match.targetFileName} ·{" "}
+                    {item.match.sourceFileSaved ? "source already saved" : "legacy/no source"} · AI reviews{" "}
+                    {item.match.aiModelReviewCount}/{aiComparisonProgress.target} · score{" "}
+                    {Math.round(item.match.score * 100)}% · {item.match.reason}
+                  </p>
+                ) : (
+                  <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-5 opacity-90">
+                    No confident local match. The server will try checksum/file/title matching after text extraction
+                    {preventUnmatchedNewRecords
+                      ? "; if it still cannot match, this file will not be saved as a duplicate record."
+                      : "; if it still cannot match, it can be saved as a new record."}
+                  </p>
+                )}
                 {item.decision && item.message ? (
                   <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-5 opacity-90">{item.message}</p>
                 ) : null}

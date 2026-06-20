@@ -69,6 +69,7 @@ type AnalyzeRequestInput = {
   projectId: string | null;
   duplicatePolicy: "new" | "merge";
   duplicateTargetId: string | null;
+  unmatchedPolicy: "save_new" | "skip_new";
 };
 
 function formString(formData: FormData, key: string) {
@@ -107,6 +108,10 @@ function payloadReviewerIds(payload: unknown) {
 
 function normalizeDuplicatePolicy(value: string) {
   return value.trim().toLowerCase() === "merge" ? "merge" : "new";
+}
+
+function normalizeUnmatchedPolicy(value: string) {
+  return value.trim().toLowerCase() === "skip_new" ? "skip_new" : "save_new";
 }
 
 function normalizeRecordId(value: string) {
@@ -208,6 +213,7 @@ async function parseMultipartAnalyzeRequest(
     projectId: context.projectId,
     duplicatePolicy: normalizeDuplicatePolicy(formString(formData, "duplicatePolicy")),
     duplicateTargetId: normalizeRecordId(formString(formData, "duplicateTargetId")),
+    unmatchedPolicy: normalizeUnmatchedPolicy(formString(formData, "unmatchedPolicy")),
   };
 }
 
@@ -256,6 +262,7 @@ async function parseGoogleDriveAnalyzeRequest(
     projectId: context.projectId,
     duplicatePolicy: normalizeDuplicatePolicy(payloadString(payload, "duplicatePolicy")),
     duplicateTargetId: normalizeRecordId(payloadString(payload, "duplicateTargetId")),
+    unmatchedPolicy: normalizeUnmatchedPolicy(payloadString(payload, "unmatchedPolicy")),
   };
 }
 
@@ -332,6 +339,33 @@ async function analyzeAndSave(input: AnalyzeRequestInput, context: AnalyzeReques
           });
         }
       }
+    }
+
+    if (input.duplicatePolicy === "merge" && input.unmatchedPolicy === "skip_new") {
+      console.info("[meta-full-text/analyze] merge target not found; skipped saving new history record", {
+        ...diagnostics(context),
+      });
+
+      return NextResponse.json({
+        analysis,
+        savedRecord: null,
+        saveError: {
+          code: "MERGE_TARGET_NOT_FOUND",
+          message:
+            "No matching saved article record was found by target id, source checksum, file name, or extracted title. The analysis was not saved as a new duplicate record.",
+          help:
+            "Select the matching saved record manually, verify the uploaded file name/title, or temporarily disable existing-only mode if this should be a new article.",
+        },
+        duplicateAction: {
+          status: "merge_target_not_found_skipped_new",
+        },
+        diagnostics: {
+          ...diagnostics(context),
+          status: "merge_target_not_found_skipped_new",
+          extractedTextLength: analysis.extractedTextLength,
+          aiUsed: analysis.aiUsed,
+        },
+      });
     }
 
     const savedRecord = await saveMetaFullTextHistory({
