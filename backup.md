@@ -1,3 +1,43 @@
+# 2026-06-21 Selected article AI review runner
+
+User issue:
+
+- `AI model reviewers for this run` was too far from the full-text upload, saved article list, and AI review result area.
+- Researchers had to scroll up and down repeatedly to choose AI reviewers and then run saved full-text reviews.
+- The user asked that articles selected in `Article list (63/63 shown)` should all be usable as AI review targets.
+
+Implemented:
+
+- `src/components/MetaFullTextAssistant.tsx`
+  - Added a compact `AI model reviewers for selected articles` panel directly above `Saved AI review article list`.
+  - The compact panel lets the researcher refresh AI slots, select AI reviewer 1/2/3, select all ready reviewers, and run selected article AI review without scrolling back to the upper settings panel.
+  - Article list checkboxes now act as selected article actions, not deletion-only selection.
+  - `Select shown` was renamed to `Select shown for AI review`.
+  - Added `Run AI review on selected` beside the article selection controls.
+  - Selected records with saved full-text source are sequentially reanalyzed through the existing saved-source reanalysis endpoint.
+  - Results are written back into the same saved article record; no duplicate paper record is created.
+  - Selected `legacy/no source` records are counted and skipped with a clear warning because the original full-text binary is not stored yet.
+  - The existing batch queue now also displays selected saved-source AI reruns, including per-record progress and failures.
+- `guide.md`
+  - Added Ver 2.26 instructions for running AI review directly from selected Article list records.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.91`
+  - UI label: `Ver 2.26 | 2026 copyright by JK Hyun`
+
+Verification completed:
+
+- `npx.cmd tsc --noEmit --pretty false`: passed
+- `git diff --check`: passed
+- `npm.cmd run lint`: passed
+- `npm.cmd run build`: passed
+- GitHub push and Vercel production verification: pending at commit time
+
+Regular Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 # 2026-06-21 Saved full-text article list sorting
 
 User issue:

@@ -186,6 +186,7 @@ type BatchAnalysisResult = {
   confidence: number | null;
   message: string;
   match: BatchFileMatch | null;
+  savedSourceRerun?: boolean;
 };
 
 const largeFileUploadThresholdBytes = 4 * 1024 * 1024;
@@ -1207,8 +1208,26 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
     () => visibleHistoryIds.filter((id) => selectedHistoryDeleteSet.has(id)).length,
     [selectedHistoryDeleteSet, visibleHistoryIds],
   );
+  const selectedHistoryItemsForAction = useMemo(
+    () => sortedHistoryItems.filter((item) => selectedHistoryDeleteSet.has(item.id)),
+    [selectedHistoryDeleteSet, sortedHistoryItems],
+  );
+  const selectedSourceSavedHistoryItemsForAction = useMemo(
+    () => selectedHistoryItemsForAction.filter((item) => item.sourceFileSaved),
+    [selectedHistoryItemsForAction],
+  );
+  const selectedLegacyHistoryItemsForAction = useMemo(
+    () => selectedHistoryItemsForAction.filter((item) => !item.sourceFileSaved),
+    [selectedHistoryItemsForAction],
+  );
   const allVisibleHistorySelectedForDelete =
     visibleHistoryIds.length > 0 && selectedVisibleHistoryDeleteCount === visibleHistoryIds.length;
+  const selectedHistoryAiReviewDisabled =
+    selectedSourceSavedHistoryItemsForAction.length === 0 ||
+    selectedRunnableAiReviewerIds.length === 0 ||
+    isAnalyzing ||
+    isReanalyzingSavedSource ||
+    isSavingSourceToHistory;
   const batchFileMatches = useMemo(
     () => files.map((file) => batchMatchForFile(file, historyItems)),
     [files, historyItems],
@@ -1818,8 +1837,28 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
     }
   }
 
+  async function reanalyzeSavedHistoryItem(item: MetaFullTextHistorySummary, onStage: (message: string) => void) {
+    const payload = await readHistoryRecordPayload(
+      await fetchWithTimeoutAndRetry(
+        fullTextHistoryRecordUrl(item.id, projectId, "reanalyze"),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ projectId, reviewerIds: selectedRunnableAiReviewerIds }),
+        },
+        {
+          label: `Saved-source AI reanalysis for ${item.fileName}`,
+          timeoutMs: fullTextReanalysisRequestTimeoutMs,
+          attempts: batchAnalysisMaxAttempts,
+          onRetry: onStage,
+        },
+      ),
+    );
+    return payload.record;
+  }
+
   async function reanalyzeSavedSource() {
-    if (!currentHistoryId) {
+    if (!currentHistoryId || !currentHistoryItem) {
       setError("Open a saved full-text record before reanalyzing.");
       return;
     }
@@ -1831,23 +1870,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
     setError("");
     setNotice("");
     try {
-      const payload = await readHistoryRecordPayload(
-        await fetchWithTimeoutAndRetry(
-          fullTextHistoryRecordUrl(currentHistoryId, projectId, "reanalyze"),
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ projectId, reviewerIds: selectedRunnableAiReviewerIds }),
-          },
-          {
-            label: `Saved-source AI reanalysis for ${currentHistoryItem?.fileName ?? currentHistoryId}`,
-            timeoutMs: fullTextReanalysisRequestTimeoutMs,
-            attempts: batchAnalysisMaxAttempts,
-            onRetry: setNotice,
-          },
-        ),
-      );
-      const record = payload.record;
+      const record = await reanalyzeSavedHistoryItem(currentHistoryItem, setNotice);
       setAnalysis(record.analysis);
       setCurrentHistoryId(record.id);
       setReferenceRecord(stripGeneratedReferenceContext(record.referenceRecord));
@@ -1872,6 +1895,145 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Saved full-text source could not be reanalyzed.");
     } finally {
+      setIsReanalyzingSavedSource(false);
+    }
+  }
+
+  async function reanalyzeSelectedSavedSources() {
+    if (analyzingRef.current) return;
+    if (selectedHistoryItemsForAction.length === 0) {
+      setError("Select saved article records in the article list before running AI review.");
+      return;
+    }
+    if (selectedRunnableAiReviewerIds.length === 0) {
+      setError("Select at least one ready AI reviewer model before running selected article AI review.");
+      return;
+    }
+    const queuedItems = selectedSourceSavedHistoryItemsForAction;
+    const legacyCount = selectedLegacyHistoryItemsForAction.length;
+    if (queuedItems.length === 0) {
+      setError(
+        `Selected ${selectedHistoryItemsForAction.length.toLocaleString("ko-KR")} record(s), but none have a saved full-text source. Upload and match the legacy/no-source full text first.`,
+      );
+      return;
+    }
+    if (legacyCount > 0) {
+      const confirmed = window.confirm(
+        [
+          `Run AI review on ${queuedItems.length.toLocaleString("ko-KR")} selected saved-source record(s)?`,
+          `${legacyCount.toLocaleString("ko-KR")} selected legacy/no-source record(s) will be skipped because the original PDF/Word source is not stored yet.`,
+          "",
+          "Use batch full-text upload for those legacy records first, then rerun selected AI review.",
+        ].join("\n"),
+      );
+      if (!confirmed) return;
+    }
+
+    analyzingRef.current = true;
+    setIsAnalyzing(true);
+    setIsReanalyzingSavedSource(true);
+    setError("");
+    setNotice("");
+    setAnalysis(null);
+    setCurrentHistoryId(null);
+    resetVerificationState();
+    setBatchResults(
+      queuedItems.map((item) => ({
+        id: `saved-${item.id}`,
+        fileName: item.fileName,
+        fileSize: 0,
+        status: "pending",
+        attempts: 0,
+        savedRecordId: item.id,
+        decision: item.decision,
+        confidence: item.confidence,
+        match: null,
+        savedSourceRerun: true,
+        message: "Waiting for selected saved-source AI review.",
+      })),
+    );
+
+    try {
+      const wakeLockActive = await requestBatchWakeLock();
+      let reanalyzedCount = 0;
+      let failedCount = 0;
+
+      for (const [index, item] of queuedItems.entries()) {
+        const resultId = `saved-${item.id}`;
+        setNotice(
+          [
+            `Running selected AI reviewer(s) ${index + 1}/${queuedItems.length}: ${item.fileName}`,
+            wakeLockActive ? "Screen wake lock is active while the browser runs the queue." : "",
+          ]
+            .filter(Boolean)
+            .join(" "),
+        );
+        setBatchResults((current) =>
+          current.map((result) =>
+            result.id === resultId
+              ? {
+                  ...result,
+                  status: "analyzing",
+                  attempts: 1,
+                  message: `Attempt 1/${batchAnalysisMaxAttempts}: running selected AI reviewers on saved full-text source.`,
+                }
+              : result,
+          ),
+        );
+
+        try {
+          const record = await reanalyzeSavedHistoryItem(item, (message) => updateBatchStage(resultId, message));
+          reanalyzedCount += 1;
+          setAnalysis(record.analysis);
+          setCurrentHistoryId(record.id);
+          setReferenceRecord(stripGeneratedReferenceContext(record.referenceRecord));
+          if (record.sourceSheet) setWorksheetName(record.sourceSheet);
+          applyVerification(record.verification);
+          setBatchResults((current) =>
+            current.map((result) =>
+              result.id === resultId
+                ? {
+                    ...result,
+                    status: "saved",
+                    savedRecordId: record.id,
+                    decision: record.analysis.eligibility.decision,
+                    confidence: record.analysis.eligibility.confidence,
+                    message: `Selected AI reviewer(s) completed and saved to the same article record. Model reviews: ${record.analysis.modelReviews.length}.`,
+                  }
+                : result,
+            ),
+          );
+        } catch (caught) {
+          failedCount += 1;
+          setBatchResults((current) =>
+            current.map((result) =>
+              result.id === resultId
+                ? {
+                    ...result,
+                    status: "failed",
+                    message: caught instanceof Error ? caught.message : "Selected saved-source AI review failed.",
+                  }
+                : result,
+            ),
+          );
+        }
+      }
+
+      await loadHistory();
+      setNotice(
+        `Selected article AI review finished. Reanalyzed ${reanalyzedCount}/${queuedItems.length} saved-source record(s); failed ${failedCount}; skipped legacy/no-source ${legacyCount}.`,
+      );
+      if (failedCount > 0 || legacyCount > 0) {
+        setError(
+          `Selected article AI review completed with ${failedCount} failed record(s) and ${legacyCount} legacy/no-source skipped record(s). Check the queue details below.`,
+        );
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Selected saved article AI review could not be completed.");
+    } finally {
+      await releaseBatchWakeLock();
+      analyzingRef.current = false;
+      setIsAnalyzing(false);
       setIsReanalyzingSavedSource(false);
     }
   }
@@ -2784,6 +2946,87 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
             {historyError}
           </div>
         ) : null}
+        <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 p-3">
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-zinc-950">AI model reviewers for selected articles</p>
+              <p className="mt-1 text-xs font-semibold leading-5 text-zinc-600">
+                아래 Article list에서 체크한 논문 중 full-text source가 저장된 record는 선택한 AI reviewer로 바로 다시 분석합니다.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void loadAiReviewerSettings()}
+              disabled={aiSettingsLoading}
+              className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-emerald-300 bg-white px-3 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${aiSettingsLoading ? "animate-spin" : ""}`} aria-hidden />
+              Refresh AI slots
+            </button>
+          </div>
+          {aiSettingsError ? (
+            <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs font-semibold leading-5 text-amber-950">
+              {aiSettingsError}
+            </div>
+          ) : null}
+          <div className="mt-3 flex flex-wrap gap-2">
+            {aiReviewerSlots.length ? (
+              aiReviewerSlots.map((slot) => {
+                const runnable = aiReviewerRunnable(slot);
+                const selected = selectedAiReviewerIds.includes(slot.id);
+                return (
+                  <label
+                    key={slot.id}
+                    className={`inline-flex min-h-10 max-w-full items-center gap-2 rounded-md border px-3 py-2 text-xs font-semibold ${
+                      runnable ? "border-emerald-300 bg-white text-zinc-800" : "border-zinc-200 bg-zinc-50 text-zinc-400"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selected && runnable}
+                      disabled={!runnable || isAnalyzing}
+                      onChange={(event) => toggleAiReviewerSelection(slot.id, event.target.checked)}
+                      className="h-4 w-4 shrink-0 accent-emerald-700 disabled:opacity-40"
+                    />
+                    <span className="min-w-0 truncate">
+                      {slot.label}: {aiReviewerModelDisplay(slot)}
+                    </span>
+                  </label>
+                );
+              })
+            ) : (
+              <div className="rounded-md border border-zinc-200 bg-white p-2 text-xs font-semibold text-zinc-600">
+                AI reviewer slots are not loaded. Refresh AI slots or open AI settings.
+              </div>
+            )}
+          </div>
+          <div className="mt-3 flex flex-col gap-2 rounded-md border border-emerald-200 bg-white p-3 xl:flex-row xl:items-center xl:justify-between">
+            <p className="text-xs font-semibold leading-5 text-zinc-700">
+              Selected articles: {selectedHistoryItemsForAction.length.toLocaleString("ko-KR")} · AI-ready saved source{" "}
+              {selectedSourceSavedHistoryItemsForAction.length.toLocaleString("ko-KR")} · legacy/no source{" "}
+              {selectedLegacyHistoryItemsForAction.length.toLocaleString("ko-KR")} · reviewers: {selectedAiReviewerLabel}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setSelectedAiReviewerIds(runnableAiReviewerSlots.map((slot) => slot.id))}
+                disabled={runnableAiReviewerSlots.length === 0 || isAnalyzing}
+                className="inline-flex h-8 items-center justify-center rounded-md border border-zinc-300 bg-white px-3 text-xs font-semibold text-zinc-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Select all ready
+              </button>
+              <button
+                type="button"
+                onClick={() => void reanalyzeSelectedSavedSources()}
+                disabled={selectedHistoryAiReviewDisabled}
+                className="inline-flex h-8 items-center justify-center gap-2 rounded-md bg-emerald-700 px-3 text-xs font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
+              >
+                {isReanalyzingSavedSource || isAnalyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden />}
+                Run AI review on selected ({selectedSourceSavedHistoryItemsForAction.length.toLocaleString("ko-KR")})
+              </button>
+            </div>
+          </div>
+        </div>
         {historyDecisionCounts.legacy_source > 0 ? (
           <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm font-semibold leading-6 text-amber-950">
             현재 저장된 분석 결과 중 {historyDecisionCounts.legacy_source.toLocaleString("ko-KR")}개는 `legacy/no source`입니다. 이 기록들은 GPT-5-nano 분석 결과만 저장되어 있고 원문 PDF/Word full-text 파일은 저장되어 있지 않습니다. 새 AI model을 적용하려면 각 논문 기록을 선택하고 matching full-text article을 한 번 업로드해 source를 연결해야 합니다.
@@ -2895,20 +3138,33 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                     <input
                       type="checkbox"
                       checked={allVisibleHistorySelectedForDelete}
-                      disabled={visibleHistoryIds.length === 0 || isBatchDeletingHistory}
+                      disabled={visibleHistoryIds.length === 0 || isBatchDeletingHistory || isAnalyzing}
                       onChange={(event) => toggleVisibleHistoryDeleteSelection(event.target.checked)}
                       className="h-4 w-4 rounded border-zinc-300 text-emerald-700 focus:ring-emerald-600"
                     />
-                    Select shown ({selectedVisibleHistoryDeleteCount.toLocaleString("ko-KR")}/{visibleHistoryIds.length.toLocaleString("ko-KR")})
+                    Select shown for AI review ({selectedVisibleHistoryDeleteCount.toLocaleString("ko-KR")}/{visibleHistoryIds.length.toLocaleString("ko-KR")})
                   </label>
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
                       onClick={clearHistoryDeleteSelection}
-                      disabled={selectedHistoryIdsForDelete.length === 0 || isBatchDeletingHistory}
+                      disabled={selectedHistoryIdsForDelete.length === 0 || isBatchDeletingHistory || isAnalyzing}
                       className="inline-flex h-8 items-center justify-center rounded-md border border-zinc-200 bg-white px-3 text-xs font-semibold text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:text-zinc-400"
                     >
                       Clear selection
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void reanalyzeSelectedSavedSources()}
+                      disabled={selectedHistoryAiReviewDisabled}
+                      className="inline-flex h-8 items-center justify-center gap-2 rounded-md bg-emerald-700 px-3 text-xs font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
+                    >
+                      {isReanalyzingSavedSource || isAnalyzing ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                      ) : (
+                        <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+                      )}
+                      Run selected AI review ({selectedSourceSavedHistoryItemsForAction.length.toLocaleString("ko-KR")})
                     </button>
                     <button
                       type="button"
@@ -2944,10 +3200,10 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                             <input
                               type="checkbox"
                               checked={selectedHistoryDeleteSet.has(item.id)}
-                              disabled={isBatchDeletingHistory}
-                              aria-label={`Select article ${articleNumber} for deletion`}
+                              disabled={isBatchDeletingHistory || isAnalyzing}
+                              aria-label={`Select article ${articleNumber} for AI review or batch action`}
                               onChange={(event) => toggleHistoryDeleteSelection(item.id, event.target.checked)}
-                              className="mt-1 h-4 w-4 shrink-0 rounded border-zinc-300 text-rose-700 focus:ring-rose-600"
+                              className="mt-1 h-4 w-4 shrink-0 rounded border-zinc-300 text-emerald-700 focus:ring-emerald-600"
                             />
                             <button
                               type="button"
@@ -3143,7 +3399,9 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                     <p className="truncate text-sm font-semibold">
                       {index + 1}. {item.fileName}
                     </p>
-                    <p className="mt-1 text-xs font-semibold opacity-80">{formatFileSize(item.fileSize)}</p>
+                    <p className="mt-1 text-xs font-semibold opacity-80">
+                      {item.savedSourceRerun ? "stored full-text source" : formatFileSize(item.fileSize)}
+                    </p>
                   </div>
                   <span className="shrink-0 rounded-md bg-white/80 px-2 py-1 text-xs font-semibold ring-1 ring-black/5">
                     {batchStatusLabel(item.status)}
@@ -3153,7 +3411,11 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                 <p className="mt-2 whitespace-pre-wrap break-words text-xs font-semibold leading-5">
                   {item.decision ? `${decisionLabel(item.decision)} - confidence ${item.confidence ?? "n/a"}` : item.message}
                 </p>
-                {item.match ? (
+                {item.savedSourceRerun ? (
+                  <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-5 opacity-90">
+                    Saved-source rerun: this queue item reuses the already stored full-text file and writes AI model review results back to the same article record.
+                  </p>
+                ) : item.match ? (
                   <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-5 opacity-90">
                     Auto-match: {item.match.targetFileName} ·{" "}
                     {item.match.sourceFileSaved ? "source already saved" : "legacy/no source"} · AI reviews{" "}
