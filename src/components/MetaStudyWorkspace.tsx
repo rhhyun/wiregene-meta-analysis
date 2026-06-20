@@ -3025,6 +3025,7 @@ function ProjectStoragePanel({ project }: { project: MetaStudyProject }) {
   const [notice, setNotice] = useState("");
   const [dbExportSaving, setDbExportSaving] = useState(false);
   const [dbExportDownloading, setDbExportDownloading] = useState(false);
+  const [showStoredFiles, setShowStoredFiles] = useState(false);
 
   const refreshStorage = useCallback(async () => {
     setLoading(true);
@@ -3129,6 +3130,7 @@ function ProjectStoragePanel({ project }: { project: MetaStudyProject }) {
   }
 
   const files = storage?.files ?? [];
+  const fullTextSourceFileCount = files.filter((file) => file.fileName.includes("full-text-files__")).length;
 
   return (
     <section className="rounded-md border border-sky-200 bg-sky-50 p-4">
@@ -3139,6 +3141,8 @@ function ProjectStoragePanel({ project }: { project: MetaStudyProject }) {
           <p className="mt-2 max-w-4xl text-sm leading-6 text-zinc-700">
             Clipboard exports are not files until they are saved here. Synology/local Docker keeps each project under its
             own persistent folder; Google Drive is an online shared-storage option and must be connected before use.
+            Full-text source files are usually opened through the saved AI review article list below, so this storage file
+            table is kept collapsed unless an audit/download is needed.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -3216,6 +3220,25 @@ function ProjectStoragePanel({ project }: { project: MetaStudyProject }) {
         </p>
       </div>
 
+      <div className="mt-3 flex flex-col gap-2 rounded-md border border-sky-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-zinc-950">Stored source/audit files</p>
+          <p className="mt-1 text-xs font-medium leading-5 text-zinc-600">
+            {loading
+              ? "Loading stored file count..."
+              : `${files.length.toLocaleString("ko-KR")} stored file(s), including ${fullTextSourceFileCount.toLocaleString("ko-KR")} full-text source file(s). Open this only when you need a storage audit or direct download.`}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowStoredFiles((current) => !current)}
+          disabled={loading}
+          className="inline-flex h-9 items-center justify-center rounded-md border border-sky-300 bg-white px-3 text-xs font-semibold text-sky-800 transition hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {showStoredFiles ? "Hide stored file list" : `Show stored file list (${files.length.toLocaleString("ko-KR")})`}
+        </button>
+      </div>
+
       {error ? (
         <p className="mt-3 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-900">
           {error}
@@ -3234,7 +3257,7 @@ function ProjectStoragePanel({ project }: { project: MetaStudyProject }) {
         </p>
       ) : null}
 
-      {files.length ? (
+      {showStoredFiles && files.length ? (
         <div className="mt-4 overflow-x-auto rounded-md border border-sky-200 bg-white">
           <table className="w-full min-w-[720px] border-collapse text-left text-sm">
             <thead className="bg-sky-50 text-xs uppercase text-sky-900">
@@ -3286,7 +3309,7 @@ function ProjectStoragePanel({ project }: { project: MetaStudyProject }) {
             </tbody>
           </table>
         </div>
-      ) : (
+      ) : showStoredFiles ? (
         <p
           className={`mt-3 rounded-md border p-3 text-sm font-semibold leading-6 ${
             storage?.unavailable ? "border-amber-200 bg-amber-50 text-amber-950" : "border-sky-200 bg-white text-zinc-600"
@@ -3295,6 +3318,10 @@ function ProjectStoragePanel({ project }: { project: MetaStudyProject }) {
           {storage?.unavailable
             ? "Project files are not visible because the configured shared storage could not be loaded. They have not been deleted; reconnect storage and refresh."
             : "No project files have been saved yet."}
+        </p>
+      ) : (
+        <p className="mt-3 rounded-md border border-sky-200 bg-white p-3 text-sm font-semibold leading-6 text-zinc-600">
+          Stored file details are hidden. Use the saved AI review article list for normal full-text work; open this panel only for audit/download.
         </p>
       )}
     </section>

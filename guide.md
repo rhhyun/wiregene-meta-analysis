@@ -1,7 +1,7 @@
 # Wiregene Meta 사용 가이드
 
-문서 버전: Ver 2.21
-최종 업데이트: 2026-06-20  
+문서 버전: Ver 2.22
+최종 업데이트: 2026-06-21
 적용 사이트: `https://meta.wiregene.com`  
 소스 저장소: `rhhyun/wiregene-meta-analysis`
 
@@ -67,6 +67,8 @@ Ver 2.19부터 `full-text 파일`의 파일 선택은 누적 방식입니다. �
 Ver 2.20부터 대량 full-text AI 분석 큐는 장시간 작업을 전제로 더 단단하게 동작합니다. 전체 batch를 하나의 긴 서버 요청으로 보내지 않고 파일별 짧은 요청으로 나누어 처리하며, 각 파일의 upload session, chunk upload, AI 분석, saved-source reanalysis 요청에는 timeout과 자동 재시도가 적용됩니다. 네트워크 일시 장애, 429 rate limit, 5xx 서버 오류가 발생하면 해당 단계만 재시도하고, 그래도 실패하면 그 파일만 `failed`로 남긴 뒤 다음 파일로 진행합니다. 같은 PDF가 재시도 중 이미 저장된 경우에는 서버가 source-file checksum을 확인해 기존 record로 병합하므로 중복 record 생성을 줄입니다. 브라우저가 지원하면 분석 중 screen wake lock을 요청해 절전으로 인한 중단 가능성도 낮춥니다.
 
 Ver 2.21부터 Project file storage 목록은 내부 저장용 파일명 대신 사람이 알아볼 수 있는 표시명을 먼저 보여줍니다. `full-text-files__해시-논문제목.pdf` 같은 Google Drive/Synology 저장 키는 제목 중심의 이름으로 정리되어 보이고, 원래 저장 키는 보조 정보로만 남습니다. Path 컬럼도 Storage 컬럼으로 바뀌어 `Google Drive` 또는 `Synology/local` 위치를 먼저 표시합니다. Download 링크는 내부 저장 키를 그대로 사용하므로 기존 파일 다운로드 동작은 유지됩니다.
+
+Ver 2.22부터 Screening 화면의 저장소 파일 목록은 기본적으로 접혀 있습니다. full-text source PDF/Word는 일반적으로 아래 `Saved AI review article list`에서 다시 선택해 확인하므로, `Project file storage`에는 저장 위치와 DB bundle/snapshot 기능만 먼저 보이고, 실제 source/audit 파일표와 다운로드 링크는 `Show stored file list`를 눌렀을 때만 열립니다. 저장된 AI review 논문 목록은 파일명을 제목처럼 크게 보여주지 않고, 원문 파일 앞 번호와 확인된 논문 제목만 먼저 표시합니다. 파일명, source 저장소, sheet, confidence, reviewer 상태, AI review 수는 해당 논문 행을 클릭했을 때 행 안과 아래 상세 패널에만 표시됩니다.
 
 ### AI Model Reviewer Comparison
 

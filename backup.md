@@ -1,3 +1,45 @@
+# 2026-06-21 Screening full-text page declutter
+
+User issue:
+
+- The Screening page had become too dense.
+- Full-text source files were shown in `Project file storage` and then effectively appeared again in the saved AI review list.
+- The saved article list exposed file names, storage labels, AI review counts, dates, and title text all at once.
+- The user specifically asked that papers be shown by their existing front number and title, with details hidden until selection.
+
+Implemented:
+
+- Updated `src/components/MetaStudyWorkspace.tsx`.
+- `Project file storage` now keeps the stored source/audit file table collapsed by default.
+- The panel still shows storage mode, folder, DB bundle download, and DB snapshot controls.
+- A new `Show stored file list` button opens the full source/audit table only when audit or direct download is needed.
+- The panel now explains that normal full-text work should continue through the saved AI review article list.
+- Updated `src/components/MetaFullTextAssistant.tsx`.
+- Renamed the saved history section to `Saved AI review article list`.
+- Saved article rows now show the extracted front article number plus the confirmed title first.
+- Raw source filenames are no longer the primary row title.
+- Source filename, source storage, sheet, confidence, AI review count, reviewer mode, and saved date are hidden until the row is selected.
+- The selected-record detail panel now starts with `Article {number} · {title}` and moves the raw source filename to a smaller detail line.
+- Updated `guide.md` with the Ver 2.22 behavior.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.87`
+  - UI label: `Ver 2.22 | 2026 copyright by JK Hyun`
+
+Verification status:
+
+- `npx.cmd tsc --noEmit --pretty false`: passed.
+- Remaining checks to run before final handoff:
+  - `git diff --check`
+  - `npm.cmd run lint`
+  - `npm.cmd run build`
+  - GitHub push and Vercel production readiness/log scan
+
+Regular Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 # 2026-06-20 Long-running full-text batch queue hardened
 
 User issue:

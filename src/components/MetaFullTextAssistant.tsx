@@ -860,6 +860,16 @@ function stripGeneratedReferenceContext(value: string | null | undefined) {
     .trim();
 }
 
+function historyArticleNumber(item: Pick<MetaFullTextHistorySummary, "fileName">, fallbackIndex: number) {
+  const match = item.fileName.trim().match(/^(\d{1,6})(?:[\s._-]+|$)/);
+  return match?.[1] ?? String(fallbackIndex + 1);
+}
+
+function historyArticleTitle(item: Pick<MetaFullTextHistorySummary, "titleGuess">) {
+  const title = item.titleGuess?.replace(/\s+/g, " ").trim();
+  return title || "제목 확인 전 - 선택 후 원문/엑셀 정보를 확인";
+}
+
 const reviewerDecisionOptions: { value: ReviewerDecision; label: string }[] = [
   { value: "pending", label: "검증 전" },
   { value: "include_quantitative", label: "정량 포함" },
@@ -998,6 +1008,10 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
   const currentHistoryItem = useMemo(
     () => historyItems.find((item) => item.id === currentHistoryId) ?? null,
     [currentHistoryId, historyItems],
+  );
+  const currentHistoryIndex = useMemo(
+    () => (currentHistoryItem ? historyItems.findIndex((item) => item.id === currentHistoryItem.id) : -1),
+    [currentHistoryItem, historyItems],
   );
   const canSaveSourceToLegacyRecord = Boolean(
     currentHistoryItem &&
@@ -2670,7 +2684,12 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
             <History className="h-4 w-4 text-emerald-700" aria-hidden />
-            <p className="text-sm font-semibold text-zinc-950">Saved full-text analyses</p>
+            <div>
+              <p className="text-sm font-semibold text-zinc-950">Saved AI review article list</p>
+              <p className="mt-0.5 text-xs font-medium leading-5 text-zinc-500">
+                목록은 논문 번호와 제목만 먼저 보여줍니다. 행을 선택하면 파일명, 저장소, AI review, reviewer 상태가 아래에 열립니다.
+              </p>
+            </div>
           </div>
           <button
             type="button"
@@ -2769,7 +2788,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
               <div>
                 <div className="flex items-center justify-between gap-3 text-xs font-semibold uppercase text-zinc-500">
                   <span>
-                    Saved article list ({filteredHistoryItems.length.toLocaleString("ko-KR")}/{historyItems.length.toLocaleString("ko-KR")} shown)
+                    Article list ({filteredHistoryItems.length.toLocaleString("ko-KR")}/{historyItems.length.toLocaleString("ko-KR")} shown)
                   </span>
                   <span>{historyItems.filter((item) => item.verificationComplete).length.toLocaleString("ko-KR")} verified</span>
                 </div>
@@ -2812,10 +2831,12 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                   <div className="divide-y divide-zinc-200">
                     {filteredHistoryItems.map((item, index) => {
                       const selected = item.id === currentHistoryId;
+                      const articleNumber = historyArticleNumber(item, index);
+                      const articleTitle = historyArticleTitle(item);
                       return (
                         <div
                           key={item.id}
-                          className={`grid w-full gap-2 px-3 py-3 text-left transition hover:bg-emerald-50 ${
+                          className={`grid w-full gap-2 px-3 py-2 text-left transition hover:bg-emerald-50 ${
                             selected ? "bg-emerald-50 ring-1 ring-inset ring-emerald-200" : "bg-white"
                           }`}
                         >
@@ -2824,7 +2845,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                               type="checkbox"
                               checked={selectedHistoryDeleteSet.has(item.id)}
                               disabled={isBatchDeletingHistory}
-                              aria-label={`Select ${item.fileName} for deletion`}
+                              aria-label={`Select article ${articleNumber} for deletion`}
                               onChange={(event) => toggleHistoryDeleteSelection(item.id, event.target.checked)}
                               className="mt-1 h-4 w-4 shrink-0 rounded border-zinc-300 text-rose-700 focus:ring-rose-600"
                             />
@@ -2835,39 +2856,55 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                               className="min-w-0 flex-1 text-left"
                             >
                               <div className="flex items-start justify-between gap-3">
-                                <p className="min-w-0 truncate text-sm font-semibold text-zinc-950">
-                                  {index + 1}. {item.fileName}
-                                </p>
-                                <span
-                                  className={`shrink-0 rounded-md px-2 py-1 text-xs font-semibold ${
-                                    item.verificationComplete ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-900"
-                                  }`}
-                                >
-                                  {item.verificationComplete ? "verified" : "pending"}
-                                </span>
+                                <div className="min-w-0">
+                                  <p className="min-w-0 truncate text-sm font-semibold text-zinc-950">
+                                    <span className="mr-2 inline-flex min-w-8 justify-center rounded-md bg-zinc-100 px-2 py-0.5 text-xs text-zinc-700">
+                                      {articleNumber}
+                                    </span>
+                                    {articleTitle}
+                                  </p>
+                                </div>
+                                <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                                  <span
+                                    className={`rounded-md px-2 py-1 text-xs font-semibold ${
+                                      item.verificationComplete ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-900"
+                                    }`}
+                                  >
+                                    {item.verificationComplete ? "verified" : "pending"}
+                                  </span>
+                                  <span
+                                    className={`rounded-md px-2 py-1 text-xs font-semibold ${
+                                      item.aiModelReviewCount >= aiComparisonProgress.target
+                                        ? "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-100"
+                                        : "bg-amber-50 text-amber-900 ring-1 ring-amber-100"
+                                    }`}
+                                  >
+                                    AI {item.aiModelReviewCount}/{aiComparisonProgress.target}
+                                  </span>
+                                  <span className="rounded-md bg-zinc-100 px-2 py-1 text-xs font-semibold text-zinc-600">
+                                    {selected ? "details open" : "open"}
+                                  </span>
+                                </div>
                               </div>
-                              <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold text-zinc-600">
-                                <span className="rounded-md bg-zinc-100 px-2 py-1">{item.sourceSheet ?? "no sheet"}</span>
-                                <span className="rounded-md bg-zinc-100 px-2 py-1">{decisionLabel(item.decision)}</span>
-                                <span className="rounded-md bg-zinc-100 px-2 py-1">confidence {item.confidence}</span>
-                                <span className="rounded-md bg-zinc-100 px-2 py-1">
-                                  {item.verificationMode === "ai_only" ? "AI-only verification" : "2-reviewer verification"}
-                                </span>
-                                <span className="rounded-md bg-zinc-100 px-2 py-1">
-                                  {item.sourceFileSaved ? `source saved: ${item.sourceStorage}` : "legacy/no source"}
-                                </span>
-                                <span
-                                  className={`rounded-md px-2 py-1 ${
-                                    item.aiModelReviewCount >= aiComparisonProgress.target
-                                      ? "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-100"
-                                      : "bg-amber-50 text-amber-900 ring-1 ring-amber-100"
-                                  }`}
-                                >
-                                  AI reviews {item.aiModelReviewCount}/{aiComparisonProgress.target}
-                                </span>
-                                <span className="rounded-md bg-zinc-100 px-2 py-1">{new Date(item.savedAt).toLocaleString("ko-KR")}</span>
-                              </div>
-                              {item.titleGuess ? <p className="mt-2 line-clamp-2 text-xs leading-5 text-zinc-500">{item.titleGuess}</p> : null}
+                              {selected ? (
+                                <div className="mt-3 grid gap-2 rounded-md border border-emerald-100 bg-white p-3 text-xs font-semibold text-zinc-600 sm:grid-cols-2 xl:grid-cols-4">
+                                  <span className="rounded-md bg-zinc-50 px-2 py-1">{item.sourceSheet ?? "no sheet"}</span>
+                                  <span className="rounded-md bg-zinc-50 px-2 py-1">{decisionLabel(item.decision)}</span>
+                                  <span className="rounded-md bg-zinc-50 px-2 py-1">confidence {item.confidence}</span>
+                                  <span className="rounded-md bg-zinc-50 px-2 py-1">
+                                    {item.verificationMode === "ai_only" ? "AI-only verification" : "2-reviewer verification"}
+                                  </span>
+                                  <span className="rounded-md bg-zinc-50 px-2 py-1">
+                                    {item.sourceFileSaved ? `source saved: ${item.sourceStorage}` : "legacy/no source"}
+                                  </span>
+                                  <span className="rounded-md bg-zinc-50 px-2 py-1">
+                                    saved {new Date(item.savedAt).toLocaleString("ko-KR")}
+                                  </span>
+                                  <span className="rounded-md bg-zinc-50 px-2 py-1 sm:col-span-2">
+                                    source file: {item.fileName}
+                                  </span>
+                                </div>
+                              ) : null}
                             </button>
                           </div>
                         </div>
@@ -2884,9 +2921,15 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
               {currentHistoryItem ? (
                 <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3">
                   <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                    <p className="truncate text-sm font-semibold text-zinc-950">{currentHistoryItem.fileName}</p>
+                    <p className="truncate text-sm font-semibold text-zinc-950">
+                      Article {historyArticleNumber(currentHistoryItem, currentHistoryIndex >= 0 ? currentHistoryIndex : 0)} ·{" "}
+                      {historyArticleTitle(currentHistoryItem)}
+                    </p>
                     <p className="text-xs font-semibold text-zinc-500">{new Date(currentHistoryItem.savedAt).toLocaleString("ko-KR")}</p>
                   </div>
+                  <p className="mt-1 break-words text-xs font-medium leading-5 text-zinc-600">
+                    Source file: {currentHistoryItem.fileName}
+                  </p>
                   <p className="mt-1 text-xs font-semibold leading-5 text-zinc-700">
                     {currentHistoryItem.verificationComplete ? "verification complete" : "verification pending"} ·{" "}
                     {currentHistoryItem.verificationMode === "ai_only" ? "AI-only verification" : "2-reviewer verification"} · reviewer 1:{" "}
