@@ -29,7 +29,11 @@ Verification completed:
 - `git diff --check`: passed
 - `npm.cmd run lint`: passed
 - `npm.cmd run build`: passed
-- GitHub push and Vercel production verification: pending at commit time
+- GitHub push: `main -> origin/main`
+- Vercel production deployment for sorting code: Ready
+- Deployment URL: `https://wiregene-meta-analysis-bkz8hsld9-rhhyuns-projects.vercel.app`
+- Production alias check: `https://meta.wiregene.com/` returned `401 Basic realm="Wiregene Meta"` as expected
+- Vercel log scan after deployment: only the expected `HEAD / 401` auth check log, no runtime error logs
 
 Regular Synology deploy/run command after GitHub push:
 
