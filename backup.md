@@ -37,14 +37,18 @@ Operational principle:
 - It avoids Vercel function timeout by keeping each file as a separate request.
 - For a future fully background queue that survives browser close/reboot, the next architecture step should be a durable server workflow/queue engine. This was not introduced in this patch to avoid destabilizing the already-working production flow.
 
-Verification pending:
+Verification completed:
 
 ```text
-npx.cmd tsc --noEmit --pretty false
-git diff --check
-npm.cmd run lint
-npm.cmd run build
-GitHub push and Vercel production deployment verification
+npx.cmd tsc --noEmit --pretty false: passed
+git diff --check: passed
+npm.cmd run lint: passed
+npm.cmd run build: passed
+GitHub push: dd8402c Harden long-running full-text batch queue
+Vercel production deployment: Ready
+Deployment URL: https://wiregene-meta-analysis-l3borv92i-rhhyuns-projects.vercel.app
+Production alias: https://meta.wiregene.com
+Vercel error log scan: no error logs found in the post-deploy scan window
 ```
 
 Regular Synology deploy/run command after GitHub push:
