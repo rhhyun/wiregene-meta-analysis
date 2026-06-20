@@ -3951,14 +3951,18 @@ Implemented:
   - `package.json` / `package-lock.json`: `0.1.83`
   - UI label: `Ver 2.18 | 2026 copyright by JK Hyun`
 
-Verification pending:
+Verification:
 
 ```text
-npx.cmd tsc --noEmit --pretty false
-git diff --check
-npm.cmd run lint
-npm.cmd run build
-GitHub push and Vercel production deployment verification
+npx.cmd tsc --noEmit --pretty false: passed.
+git diff --check: passed.
+npm.cmd run lint: passed.
+npm.cmd run build: passed.
+GitHub push: main 21a2794 Add batch full-text auto-match rerun.
+Vercel production auto-deploy: Ready.
+Deployment: https://wiregene-meta-analysis-lcrjhamyo-rhhyuns-projects.vercel.app
+Alias: https://meta.wiregene.com
+Vercel error logs after deploy: no recent errors found.
 ```
 
 Regular Synology deploy/run command after GitHub push:
