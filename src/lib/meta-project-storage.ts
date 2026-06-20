@@ -627,9 +627,19 @@ async function writeTextFileAtomically(targetPath: string, contents: string) {
 }
 
 function synologyProjectPathHint(folderName: string) {
-  const configured = process.env.META_PROJECT_STORAGE_ROOT?.trim();
-  if (configured && configured !== defaultProjectStorageRoot) return null;
-  return `/volume1/docker/meta/data/projects/${folderName}`;
+  const configured = process.env.META_PROJECT_STORAGE_ROOT?.trim() || defaultProjectStorageRoot;
+  const normalized = (configured || defaultProjectStorageRoot)
+    .replace(/\\/g, "/")
+    .replace(/^\.\//, "")
+    .replace(/\/+$/g, "");
+
+  if (normalized === "download" || normalized === "/app/download") {
+    return `/volume1/docker/meta/download/${folderName}`;
+  }
+  if (normalized === defaultProjectStorageRoot) {
+    return `/volume1/docker/meta/data/projects/${folderName}`;
+  }
+  return null;
 }
 
 export async function parseRequestJson(request: Request): Promise<unknown> {

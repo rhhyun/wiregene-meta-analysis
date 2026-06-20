@@ -1,6 +1,6 @@
 # Wiregene Meta 사용 가이드
 
-문서 버전: Ver 2.09
+문서 버전: Ver 2.10
 최종 업데이트: 2026-06-20  
 적용 사이트: `https://meta.wiregene.com`  
 소스 저장소: `rhhyun/wiregene-meta-analysis`
@@ -96,12 +96,12 @@ Wiregene Meta의 저장소는 한 곳이 아니라 역할별로 나뉩니다. �
 |---|---|---|---|---|
 | 소스 코드 | Next.js 앱, API, 문서 | Git checkout | GitHub | 아니오 |
 | 작업 이력 | 개발/수정 인수인계 | `backup.md` | GitHub commit | 아니오 |
-| 사용자 연구 목록 | 왼쪽 연구 카드 목록 | `.data/meta/user-study-projects.json` | `meta-user-study-projects.json` | 예 |
-| 프로젝트 작업 상태 | protocol, search import rows, query overrides, workbook board | `.data/meta/projects/{project}/project-workspace-state.json` | `meta-projects__{project}__project-workspace-state.json` | 예 |
-| 프로젝트 저장 파일 | CSV/TSV/JSON/MD/TXT export | `.data/meta/projects/{project}/{file}` | `meta-projects__{project}__{file}` | 예, 크기 제한 내 |
-| AI 설정 | AI reviewer slot, model, encrypted saved API keys | `.data/meta/meta-ai-settings.json` | `meta-ai-settings.json` | redacted summary만 |
-| full-text 분석 history | AI 판정, model 비교, reviewer 검증, PI 판정, extraction review | `.data/meta/projects/{project}/full-text-history.json` | `meta-projects__{project}__full-text-history.json` | 예 |
-| full-text 원문 파일 | PDF/Word/TXT/MD binary 원문 | `.data/meta/projects/{project}/full-text-files/{sha}-{filename}` | Google Drive file id로 저장 | 원문 자체는 제외 |
+| 사용자 연구 목록 | 왼쪽 연구 카드 목록 | `download/_system/user-study-projects.json` | `meta-user-study-projects.json` | 예 |
+| 프로젝트 작업 상태 | protocol, search import rows, query overrides, workbook board | `download/{project}/project-workspace-state.json` | `meta-projects__{project}__project-workspace-state.json` | 예 |
+| 프로젝트 저장 파일 | CSV/TSV/JSON/MD/TXT export | `download/{project}/{file}` | `meta-projects__{project}__{file}` | 예, 크기 제한 내 |
+| AI 설정 | AI reviewer slot, model, encrypted saved API keys | `download/_system/meta-ai-settings.json` | `meta-ai-settings.json` | redacted summary만 |
+| full-text 분석 history | AI 판정, model 비교, reviewer 검증, PI 판정, extraction review | `download/{project}/full-text-history.json` | `meta-projects__{project}__full-text-history.json` | 예 |
+| full-text 원문 파일 | PDF/Word/TXT/MD binary 원문 | `download/{project}/full-text-files/{sha}-{filename}` | Google Drive file id로 저장 | 원문 자체는 제외 |
 | extraction dataset | included 논문 엑셀 데이터셋 | full-text history에서 생성/검증 내용 저장 | full-text history에서 생성/검증 내용 저장 | JSON/CSV 포함 |
 | Google OAuth token | Drive online 저장용 refresh token | Synology `.env` 또는 Vercel env | Google Drive 파일이 아님 | 절대 포함 안 함 |
 | OpenAI/Gemini/DeepSeek API key | AI reviewer 실행용 key | encrypted settings 또는 env | encrypted settings 또는 env | 절대 원문 포함 안 함 |
@@ -138,23 +138,45 @@ Synology/local Docker는 기본적으로 local storage를 사용합니다.
 
 ```text
 META_PROJECT_STORAGE_BACKEND=local-json
-META_PROJECT_STORAGE_ROOT=.data/meta/projects
+META_PROJECT_STORAGE_ROOT=download
 META_USER_PROJECTS_STORAGE_BACKEND=local-json
-META_USER_PROJECTS_FILE=.data/meta/user-study-projects.json
+META_USER_PROJECTS_FILE=download/_system/user-study-projects.json
 META_AI_SETTINGS_STORAGE_BACKEND=local-json
-META_AI_SETTINGS_STORAGE_PATH=.data/meta/meta-ai-settings.json
+META_AI_SETTINGS_STORAGE_PATH=download/_system/meta-ai-settings.json
 META_FULL_TEXT_HISTORY_STORAGE_BACKEND=local-json
+META_FULL_TEXT_HISTORY_STORAGE_PATH=download/_system/meta-full-text-history.json
 META_FULL_TEXT_SOURCE_STORAGE_BACKEND=local-file
-META_FULL_TEXT_SOURCE_STORAGE_PATH=.data/meta/full-text-files
+META_FULL_TEXT_SOURCE_STORAGE_PATH=download/_system/full-text-files
 ```
 
 Synology 안내 경로는 보통 다음과 같습니다.
 
 ```text
-/volume1/docker/meta/data/projects/{project}
+/volume1/docker/meta/download/{project}
 ```
 
-Synology에서도 Google Drive 저장을 쓰려면 `META_ALLOW_GOOGLE_DRIVE_STORAGE=true`를 명시적으로 켜야 합니다.
+Ver 2.10부터 Synology의 표준 영구 저장 폴더는 `/volume1/docker/meta/download`입니다. Docker container 안에서는 이 폴더가 `/app/download`로 연결됩니다. 기본 구조는 다음과 같습니다.
+
+```text
+/volume1/docker/meta/download/
+  _system/
+    user-study-projects.json
+    meta-ai-settings.json
+    research-briefing-storage.json
+    meta-full-text-history.json
+    full-text-files/
+  {project}/
+    project-workspace-state.json
+    full-text-history.json
+    full-text-files/
+    *.csv, *.json, *.md, *.txt, *.tsv
+```
+
+`_system`은 연구 전체에 공통인 설정과 목록을 저장합니다. `{project}` 폴더는 각 연구별 작업 상태, full-text 원문, AI 분석 history, 검증 결과, CSV/JSON 산출물을 저장합니다.
+
+기존 `/volume1/docker/meta/data`에 저장된 자료가 있으면 Synology 시작 스크립트가 새 위치에 파일이 없을 때만 `/volume1/docker/meta/download`로 복사합니다. 기존 파일은 삭제하지 않습니다.
+
+Synology에서도 Google Drive 저장을 쓰려면 `META_ALLOW_GOOGLE_DRIVE_STORAGE=true`를 명시적으로 켜야 합니다. 다만 Google Drive OAuth가 실패해도 Synology 작업은 `/volume1/docker/meta/download` local storage로 계속 진행하는 것이 기본 정책입니다.
 
 ### Browser fallback
 

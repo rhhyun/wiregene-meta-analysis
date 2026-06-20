@@ -671,7 +671,7 @@ function storageError(
     backend === "google-drive"
       ? "Google Drive settings storage is unavailable. Use Google Drive 연결 시작 to issue a new refresh token, then update Vercel Production env and redeploy. OPENAI_API_KEY in Vercel can be used as a direct fallback."
       : operation === "write"
-        ? "Check that the runtime user can write to this path. On Synology, the expected writable host folder is /volume1/docker/meta/data via the /app/.data/meta Docker volume."
+        ? "Check that the runtime user can write to this path. On Synology, the expected writable host folder is /volume1/docker/meta/download/_system via the /app/download Docker volume."
         : "Check the Meta AI settings JSON file path and permissions.";
 
   return new MetaAiSettingsStorageError(`meta AI settings storage ${operation} failed.`, {

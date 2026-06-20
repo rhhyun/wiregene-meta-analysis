@@ -1,3 +1,39 @@
+# 2026-06-20 make Synology download the primary durable Meta store
+
+User issue:
+
+- Google Drive OAuth continued to create repeated `redirect_uri_mismatch` / invalid token loops.
+- User proposed using Synology `/volume1/docker/meta/download` with per-project subfolders for full-text files, AI analysis content, and saved results instead of blocking work on Google Drive.
+- Requirement remains that Google Drive can be optional online backup, but the Synology deployment must not depend on it for normal Meta work.
+
+Implemented:
+
+- Synology Docker now mounts `./download` to `/app/download` while keeping the old `./data` mount for backward compatibility.
+- Synology `.env.example` and `scripts/synology-start-meta.sh` now enforce local storage defaults:
+  - `META_PROJECT_STORAGE_ROOT=download`
+  - `META_USER_PROJECTS_FILE=download/_system/user-study-projects.json`
+  - `META_AI_SETTINGS_STORAGE_PATH=download/_system/meta-ai-settings.json`
+  - `META_FULL_TEXT_HISTORY_STORAGE_PATH=download/_system/meta-full-text-history.json`
+  - `META_FULL_TEXT_SOURCE_STORAGE_PATH=download/_system/full-text-files`
+  - `REPORT_STORAGE_LOCAL_PATH=download/_system/research-briefing-storage.json`
+- Start script creates `/volume1/docker/meta/download/_system` and copies legacy `/volume1/docker/meta/data` files/folders into the new download structure only when the new target is missing.
+- Project storage hints now point Synology users to `/volume1/docker/meta/download/{project}` when `META_PROJECT_STORAGE_ROOT=download`.
+- AI settings local-write help now points to `/volume1/docker/meta/download/_system`.
+- `guide.md` and Synology README document the new storage policy and folder layout.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.75`
+  - UI label: `Ver 2.10 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed
+npm.cmd run lint: passed
+git diff --check: passed
+npm.cmd run build: passed
+bash syntax check for scripts/synology-start-meta.sh: not run on this Windows host because bash is not installed
+```
+
 # 2026-06-20 block unsafe Google OAuth client loop and add repair flow
 
 User issue:

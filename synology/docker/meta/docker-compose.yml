@@ -21,6 +21,7 @@ services:
     volumes:
       - ${APP_SOURCE_DIR:-/volume1/docker/wiregene-meta-analysis}:/app
       - ./data:/app/.data/meta
+      - ./download:/app/download
       - ./logs:/app/.logs/meta
     command:
       - sh

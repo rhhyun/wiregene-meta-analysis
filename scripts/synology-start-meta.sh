@@ -56,7 +56,7 @@ process_env_value() {
 }
 
 seed_runtime_env_from_process() {
-  for key in APP_BASIC_AUTH_USER APP_BASIC_AUTH_PASSWORD APP_BASIC_AUTH_USERS WIREGENE_ADMIN_EMAILS APP_ADMIN_USERS APP_ADMIN_USER PORTAL_AUTH_CHECK_SECRET PORTAL_AUTH_CHECK_URL WIREGENE_AUTH_CHECK_SECRET OPENAI_API_KEY OPENAI_MODEL META_ALLOW_GOOGLE_DRIVE_STORAGE META_PROJECT_STORAGE_BACKEND META_PROJECT_STORAGE_ROOT META_PROJECT_DRIVE_PREFIX META_USER_PROJECTS_STORAGE_BACKEND META_USER_PROJECTS_FILE META_USER_PROJECTS_DRIVE_FILENAME META_USER_PROJECTS_DRIVE_FILE_ID META_AI_SETTINGS_STORAGE_BACKEND META_AI_SETTINGS_STORAGE_PATH META_AI_SETTINGS_DRIVE_FILENAME META_AI_SETTINGS_DRIVE_FILE_ID META_AI_SETTINGS_SECRET META_FULL_TEXT_HISTORY_STORAGE_BACKEND META_FULL_TEXT_HISTORY_STORAGE_PATH META_FULL_TEXT_HISTORY_DRIVE_FILENAME META_FULL_TEXT_HISTORY_DRIVE_FILE_ID META_FULL_TEXT_SOURCE_STORAGE_BACKEND META_FULL_TEXT_SOURCE_STORAGE_PATH GOOGLE_DRIVE_CLIENT_ID GOOGLE_DRIVE_CLIENT_SECRET GOOGLE_DRIVE_REFRESH_TOKEN GOOGLE_DRIVE_FOLDER_ID GOOGLE_DRIVE_FOLDER_URL GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON; do
+  for key in APP_BASIC_AUTH_USER APP_BASIC_AUTH_PASSWORD APP_BASIC_AUTH_USERS WIREGENE_ADMIN_EMAILS APP_ADMIN_USERS APP_ADMIN_USER PORTAL_AUTH_CHECK_SECRET PORTAL_AUTH_CHECK_URL WIREGENE_AUTH_CHECK_SECRET OPENAI_API_KEY OPENAI_MODEL META_ALLOW_GOOGLE_DRIVE_STORAGE META_PROJECT_STORAGE_BACKEND META_PROJECT_STORAGE_ROOT META_PROJECT_DRIVE_PREFIX META_USER_PROJECTS_STORAGE_BACKEND META_USER_PROJECTS_FILE META_USER_PROJECTS_DRIVE_FILENAME META_USER_PROJECTS_DRIVE_FILE_ID META_AI_SETTINGS_STORAGE_BACKEND META_AI_SETTINGS_STORAGE_PATH META_AI_SETTINGS_DRIVE_FILENAME META_AI_SETTINGS_DRIVE_FILE_ID META_AI_SETTINGS_SECRET META_FULL_TEXT_HISTORY_STORAGE_BACKEND META_FULL_TEXT_HISTORY_STORAGE_PATH META_FULL_TEXT_HISTORY_DRIVE_FILENAME META_FULL_TEXT_HISTORY_DRIVE_FILE_ID META_FULL_TEXT_SOURCE_STORAGE_BACKEND META_FULL_TEXT_SOURCE_STORAGE_PATH REPORT_STORAGE_BACKEND REPORT_STORAGE_LOCAL_PATH GOOGLE_DRIVE_CLIENT_ID GOOGLE_DRIVE_CLIENT_SECRET GOOGLE_DRIVE_REFRESH_TOKEN GOOGLE_DRIVE_FOLDER_ID GOOGLE_DRIVE_FOLDER_URL GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON; do
     value=$(process_env_value "$key")
     [ -n "$value" ] || continue
     current=$(env_value "$key")
@@ -135,7 +135,7 @@ prepare_runtime() {
   [ -f "$APP_DIR/package.json" ] || fail "Shared app checkout was not found at APP_DIR=$APP_DIR"
   [ -d "$PACKAGE_DIR" ] || fail "Synology package directory was not found: $PACKAGE_DIR"
 
-  mkdir -p "$RUNTIME_DIR" "$LOG_DIR" "$RUNTIME_DIR/data"
+  mkdir -p "$RUNTIME_DIR" "$LOG_DIR" "$RUNTIME_DIR/data" "$RUNTIME_DIR/download" "$RUNTIME_DIR/download/_system"
   cp "$PACKAGE_DIR/docker-compose.yml" "$RUNTIME_DIR/docker-compose.yml"
   cp "$PACKAGE_DIR/.env.example" "$RUNTIME_DIR/.env.example"
   cp "$PACKAGE_DIR/README.md" "$RUNTIME_DIR/README.md"
@@ -153,16 +153,59 @@ prepare_runtime() {
   ensure_runtime_env_value WIREGENE_APP_MODE "meta"
   ensure_runtime_env_value META_ALLOW_GOOGLE_DRIVE_STORAGE "false"
   ensure_runtime_env_value REPORT_STORAGE_BACKEND "local-json"
+  ensure_runtime_env_value REPORT_STORAGE_LOCAL_PATH "download/_system/research-briefing-storage.json"
   ensure_runtime_env_value META_PROJECT_STORAGE_BACKEND "local-json"
-  ensure_runtime_env_value META_PROJECT_STORAGE_ROOT ".data/meta/projects"
+  ensure_runtime_env_value META_PROJECT_STORAGE_ROOT "download"
   ensure_runtime_env_value META_USER_PROJECTS_STORAGE_BACKEND "local-json"
-  ensure_runtime_env_value META_USER_PROJECTS_FILE ".data/meta/user-study-projects.json"
+  ensure_runtime_env_value META_USER_PROJECTS_FILE "download/_system/user-study-projects.json"
   ensure_runtime_env_value META_AI_SETTINGS_STORAGE_BACKEND "local-json"
-  ensure_runtime_env_value META_AI_SETTINGS_STORAGE_PATH ".data/meta/meta-ai-settings.json"
+  ensure_runtime_env_value META_AI_SETTINGS_STORAGE_PATH "download/_system/meta-ai-settings.json"
   ensure_runtime_env_value META_FULL_TEXT_HISTORY_STORAGE_BACKEND "local-json"
-  ensure_runtime_env_value META_FULL_TEXT_HISTORY_STORAGE_PATH ".data/meta/meta-full-text-history.json"
+  ensure_runtime_env_value META_FULL_TEXT_HISTORY_STORAGE_PATH "download/_system/meta-full-text-history.json"
   ensure_runtime_env_value META_FULL_TEXT_SOURCE_STORAGE_BACKEND "local-file"
-  ensure_runtime_env_value META_FULL_TEXT_SOURCE_STORAGE_PATH ".data/meta/full-text-files"
+  ensure_runtime_env_value META_FULL_TEXT_SOURCE_STORAGE_PATH "download/_system/full-text-files"
+  migrate_legacy_meta_data_to_download
+}
+
+migrate_file_if_missing() {
+  source_path="$1"
+  target_path="$2"
+  label="$3"
+  [ -f "$source_path" ] || return 0
+  [ ! -e "$target_path" ] || return 0
+  mkdir -p "$(dirname "$target_path")"
+  cp "$source_path" "$target_path"
+  log "Copied legacy $label to $target_path."
+}
+
+migrate_dir_if_missing() {
+  source_path="$1"
+  target_path="$2"
+  label="$3"
+  [ -d "$source_path" ] || return 0
+  [ ! -e "$target_path" ] || return 0
+  mkdir -p "$(dirname "$target_path")"
+  cp -R "$source_path" "$target_path"
+  log "Copied legacy $label to $target_path."
+}
+
+migrate_legacy_meta_data_to_download() {
+  mkdir -p "$RUNTIME_DIR/download/_system"
+
+  migrate_file_if_missing "$RUNTIME_DIR/data/research-briefing-storage.json" "$RUNTIME_DIR/download/_system/research-briefing-storage.json" "report storage"
+  migrate_file_if_missing "$RUNTIME_DIR/data/user-study-projects.json" "$RUNTIME_DIR/download/_system/user-study-projects.json" "study project registry"
+  migrate_file_if_missing "$RUNTIME_DIR/data/meta-ai-settings.json" "$RUNTIME_DIR/download/_system/meta-ai-settings.json" "AI settings"
+  migrate_file_if_missing "$RUNTIME_DIR/data/meta-full-text-history.json" "$RUNTIME_DIR/download/_system/meta-full-text-history.json" "legacy full-text history"
+  migrate_dir_if_missing "$RUNTIME_DIR/data/full-text-files" "$RUNTIME_DIR/download/_system/full-text-files" "legacy full-text source files"
+
+  if [ -d "$RUNTIME_DIR/data/projects" ]; then
+    for project_dir in "$RUNTIME_DIR"/data/projects/*; do
+      [ -e "$project_dir" ] || continue
+      [ -d "$project_dir" ] || continue
+      project_name=$(basename "$project_dir")
+      migrate_dir_if_missing "$project_dir" "$RUNTIME_DIR/download/$project_name" "project folder $project_name"
+    done
+  fi
 }
 
 env_value() {

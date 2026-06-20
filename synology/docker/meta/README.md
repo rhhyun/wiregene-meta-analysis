@@ -22,6 +22,72 @@ is already a current Git checkout.
 On the first run, fill `/volume1/docker/meta/.env`, then run the same command
 again.
 
+## Durable Storage Policy
+
+Synology Meta uses NAS local storage as the primary durable store. Google Drive
+is optional and should not block local full-text screening work.
+
+The standard host folder is:
+
+```text
+/volume1/docker/meta/download
+```
+
+The Docker container mounts it at:
+
+```text
+/app/download
+```
+
+The default structure is:
+
+```text
+/volume1/docker/meta/download/
+  _system/
+    user-study-projects.json
+    meta-ai-settings.json
+    research-briefing-storage.json
+    meta-full-text-history.json
+    full-text-files/
+  {project}/
+    project-workspace-state.json
+    full-text-history.json
+    full-text-files/
+    *.csv, *.json, *.md, *.txt, *.tsv
+```
+
+`_system` stores app-wide settings and study lists. Each `{project}` folder
+stores that study's protocol/search state, saved CSV/JSON/Markdown files,
+full-text history, uploaded PDF/Word source files, reviewer verification, and
+AI extraction outputs.
+
+The start script creates `/volume1/docker/meta/download` automatically and
+copies legacy files from `/volume1/docker/meta/data` only when the new target
+file or folder does not already exist. It does not delete legacy data.
+
+Synology defaults enforced by the start script:
+
+```txt
+META_ALLOW_GOOGLE_DRIVE_STORAGE=false
+REPORT_STORAGE_BACKEND=local-json
+REPORT_STORAGE_LOCAL_PATH=download/_system/research-briefing-storage.json
+META_PROJECT_STORAGE_BACKEND=local-json
+META_PROJECT_STORAGE_ROOT=download
+META_USER_PROJECTS_STORAGE_BACKEND=local-json
+META_USER_PROJECTS_FILE=download/_system/user-study-projects.json
+META_AI_SETTINGS_STORAGE_BACKEND=local-json
+META_AI_SETTINGS_STORAGE_PATH=download/_system/meta-ai-settings.json
+META_FULL_TEXT_HISTORY_STORAGE_BACKEND=local-json
+META_FULL_TEXT_HISTORY_STORAGE_PATH=download/_system/meta-full-text-history.json
+META_FULL_TEXT_SOURCE_STORAGE_BACKEND=local-file
+META_FULL_TEXT_SOURCE_STORAGE_PATH=download/_system/full-text-files
+```
+
+When a request includes a project id, full-text PDF/Word source files and
+history are stored inside `/volume1/docker/meta/download/{project}`. The
+`download/_system/full-text-files` path is only a fallback for legacy or
+unscoped requests.
+
 If the first run stops with `No complete Basic Auth credential found`, use one
 of the following.
 
@@ -82,15 +148,17 @@ deployment environment variable.
 
 Full-text PDF/Word analysis results are saved automatically after each run.
 Saved records include the analysis JSON, source sheet metadata, AI warning/source,
-and reviewer verification fields. On Vercel, the history storage uses Google
-Drive automatically when Google Drive credentials are configured, or it can be
-forced with `META_FULL_TEXT_HISTORY_STORAGE_BACKEND=google-drive`. The default
-Drive file is `meta-full-text-history.json`.
+source-file checksum/path, reviewer verification fields, and extraction review
+fields. On Synology these records are stored per project under
+`/volume1/docker/meta/download/{project}`. On Vercel, the history storage uses
+Google Drive automatically when Google Drive credentials are configured, or it
+can be forced with `META_FULL_TEXT_HISTORY_STORAGE_BACKEND=google-drive`. The
+default Drive file is `meta-full-text-history.json`.
 
-For multi-PC meta-analysis project editing, keep the study registry and the
-project workspace state in shared storage. Synology local storage is acceptable
-for one NAS-backed internal deployment. For cross-PC/Vercel/cross-site sharing
-with `search.wiregene.com` or `omni.wiregene.com`, set Google Drive storage in
+For multi-PC meta-analysis project editing on the same NAS-backed service, use
+the Synology site and keep `/volume1/docker/meta/download` backed up. For
+Vercel/cross-site sharing with `search.wiregene.com` or `omni.wiregene.com`,
+Google Drive storage can still be enabled intentionally in
 `/volume1/docker/meta/.env`:
 
 ```sh
