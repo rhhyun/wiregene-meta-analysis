@@ -83,6 +83,7 @@ function successPage({
   redirectUri: string;
 }) {
   const envBlock = [
+    `GOOGLE_DRIVE_OAUTH_REDIRECT_URI=${redirectUri}`,
     `GOOGLE_DRIVE_REFRESH_TOKEN=${refreshToken}`,
     "META_ALLOW_GOOGLE_DRIVE_STORAGE=true",
     "META_PROJECT_STORAGE_BACKEND=google-drive",

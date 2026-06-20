@@ -1,3 +1,35 @@
+# 2026-06-20 fix Google Drive OAuth redirect_uri_mismatch hardening
+
+User issue:
+
+- Google login now opens but stops with `400 error: redirect_uri_mismatch`.
+- The user should not have to guess which redirect URI the app sent to Google.
+
+Implemented:
+
+- Hardened production Google Drive Web OAuth redirect URI handling:
+  - default Meta production redirect URI is fixed to `https://meta.wiregene.com/api/google-drive/oauth/callback`.
+  - `GOOGLE_DRIVE_OAUTH_REDIRECT_URI` remains an explicit override when needed.
+  - local/non-production requests can still use the request origin for local testing.
+- Added OAuth diagnostic mode:
+  - `https://meta.wiregene.com/api/google-drive/oauth/start?diagnose=1`
+  - shows the exact redirect URI and masked Google client id used by the app.
+- Added `GOOGLE_DRIVE_OAUTH_REDIRECT_URI=<callback>` to the successful OAuth callback Vercel env block so future deployments stay pinned to the same callback.
+- Updated `guide.md` with the exact `redirect_uri_mismatch` recovery rule:
+  - add the callback under Google Cloud `Authorized redirect URIs`, not only JavaScript origins.
+  - if the exact URI is already registered, check that Vercel `GOOGLE_DRIVE_CLIENT_ID` belongs to the same Web OAuth client.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.68`
+  - UI label: `Ver 2.03 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed
+npm.cmd run lint: passed
+npm.cmd run build: passed
+```
+
 # 2026-06-20 fix Google Drive OAuth permission block and AI settings read fallback
 
 User issue:

@@ -1,6 +1,6 @@
 # Wiregene Meta 사용 가이드
 
-문서 버전: Ver 2.02  
+문서 버전: Ver 2.03  
 최종 업데이트: 2026-06-20  
 적용 사이트: `https://meta.wiregene.com`  
 소스 저장소: `rhhyun/wiregene-meta-analysis`
@@ -169,6 +169,16 @@ Google Cloud Web OAuth client에는 아래 redirect URI가 정확히 등록되�
 ```text
 https://meta.wiregene.com/api/google-drive/oauth/callback
 ```
+
+Meta production 앱은 기본적으로 위 callback URI를 Google OAuth `redirect_uri`로 고정해서 보냅니다. 별도 환경변수 `GOOGLE_DRIVE_OAUTH_REDIRECT_URI`가 있으면 그 값이 우선합니다.
+
+Google 로그인 화면에서 `400 오류: redirect_uri_mismatch`가 나오면 아래 주소를 먼저 열어 앱이 실제 Google에 보내는 redirect URI와 Client ID 일부를 확인합니다.
+
+```text
+https://meta.wiregene.com/api/google-drive/oauth/start?diagnose=1
+```
+
+Google Cloud에서 반드시 `승인된 리디렉션 URI` 항목에 위 URI를 넣어야 합니다. `승인된 JavaScript 원본`에 `https://meta.wiregene.com`만 넣은 것은 충분하지 않습니다. URI를 정확히 넣었는데도 같은 오류가 계속되면, Vercel Production의 `GOOGLE_DRIVE_CLIENT_ID`가 지금 수정한 Google Cloud OAuth client가 아닌 다른 client를 가리키고 있는 것입니다.
 
 사이트에서는 다음 순서로 진행합니다.
 

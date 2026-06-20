@@ -8,6 +8,8 @@ import {
   createGoogleDriveOAuthState,
   googleDriveOAuthCookieMaxAgeSeconds,
   googleDriveOAuthCookieName,
+  googleDriveOAuthProductionRedirectUri,
+  maskGoogleDriveClientId,
   resolveGoogleDriveOAuthRedirectUri,
 } from "@/lib/google-drive-web-oauth";
 
@@ -20,6 +22,10 @@ export async function GET(request: NextRequest) {
 
   try {
     const redirectUri = resolveGoogleDriveOAuthRedirectUri(request.nextUrl);
+    if (request.nextUrl.searchParams.get("diagnose") === "1") {
+      return htmlResponse(diagnosticPage(redirectUri));
+    }
+
     const nonce = createGoogleDriveOAuthNonce();
     const state = createGoogleDriveOAuthState({ nonce, redirectUri });
     const authorizationUrl = buildGoogleDriveOAuthAuthorizationUrl({ redirectUri, state });
@@ -83,6 +89,35 @@ function errorPage(title: string, detail: string) {
 <h1>${escapeHtml(title)}</h1>
 ${detail ? `<p>${escapeHtml(detail)}</p>` : ""}
 <p><a href="/">Meta home</a></p>
+</body>
+</html>`;
+}
+
+function diagnosticPage(redirectUri: string) {
+  return `<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>Google Drive OAuth redirect URI</title>
+  <style>
+    body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:920px;margin:44px auto;padding:0 20px;line-height:1.6;color:#0f172a}
+    .box{border:1px solid #bae6fd;background:#f0f9ff;border-radius:8px;padding:16px}
+    code{background:#fff;border:1px solid #e2e8f0;border-radius:4px;padding:2px 5px}
+    textarea{box-sizing:border-box;width:100%;min-height:70px;border:1px solid #94a3b8;border-radius:8px;padding:14px;font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
+    a{color:#0369a1;font-weight:700}
+  </style>
+</head>
+<body>
+  <p style="font-weight:700;color:#0369a1">Wiregene Meta Google Drive OAuth</p>
+  <h1>Google Drive OAuth redirect URI check</h1>
+  <div class="box">
+    <p>Register this exact URI in the Google Cloud Web OAuth client.</p>
+    <textarea readonly>${escapeHtml(redirectUri)}</textarea>
+    <p>Default production URI: <code>${escapeHtml(googleDriveOAuthProductionRedirectUri)}</code></p>
+    <p>Current Client ID: <code>${escapeHtml(maskGoogleDriveClientId())}</code></p>
+  </div>
+  <p>If Google still shows <code>redirect_uri_mismatch</code>, the Vercel <code>GOOGLE_DRIVE_CLIENT_ID</code> is not the same OAuth client where this URI was registered, or the URI is in JavaScript origins instead of Authorized redirect URIs.</p>
+  <p><a href="/api/google-drive/oauth/start">Start Google login</a> · <a href="/">Return to Meta</a></p>
 </body>
 </html>`;
 }

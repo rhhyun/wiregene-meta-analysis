@@ -9,6 +9,7 @@ import { refreshGoogleDriveOauthAccessToken } from "./google-drive-oauth";
 export const googleDriveOAuthCallbackPath = "/api/google-drive/oauth/callback";
 export const googleDriveOAuthCookieName = "wiregene_gdrive_oauth_nonce";
 export const googleDriveOAuthCookieMaxAgeSeconds = 15 * 60;
+export const googleDriveOAuthProductionRedirectUri = `https://meta.wiregene.com${googleDriveOAuthCallbackPath}`;
 
 const googleAuthorizationUrl = "https://accounts.google.com/o/oauth2/v2/auth";
 const googleTokenUrl = "https://oauth2.googleapis.com/token";
@@ -34,6 +35,19 @@ export function resolveGoogleDriveOAuthRedirectUri(requestUrl: string | URL) {
   if (configured) return configured;
 
   const url = typeof requestUrl === "string" ? new URL(requestUrl) : requestUrl;
+  const host = url.hostname.toLowerCase();
+  const explicitMode = (process.env.WIREGENE_APP_MODE ?? process.env.NEXT_PUBLIC_WIREGENE_APP_MODE ?? "")
+    .trim()
+    .toLowerCase();
+
+  if (
+    host === "meta.wiregene.com" ||
+    host === "mata.wiregene.com" ||
+    (process.env.VERCEL_ENV === "production" && explicitMode === "meta")
+  ) {
+    return googleDriveOAuthProductionRedirectUri;
+  }
+
   return `${url.origin}${googleDriveOAuthCallbackPath}`;
 }
 
