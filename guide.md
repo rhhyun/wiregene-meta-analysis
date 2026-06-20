@@ -419,6 +419,16 @@ Vercel 온라인 저장이 목표라면 대부분의 backend가 `google-drive`�
 
 Synology/local Docker는 자체 writable volume이 있기 때문에 local-json/local-file이 안정적입니다. Google Drive를 쓰려면 의도적으로 `META_ALLOW_GOOGLE_DRIVE_STORAGE=true`를 켜야 합니다.
 
+### AI reviewer 3개 비교 중 한 모델만 fallback/failed로 보이는 경우
+
+먼저 Google Drive 저장 오류인지, 모델 응답 schema 오류인지 구분해야 합니다.
+
+- Google Drive 오류라면 저장소 상태, full-text source 저장, history 저장 단계에서 오류가 납니다.
+- 특정 AI reviewer만 실패하고 다른 reviewer는 성공한다면 대부분 해당 모델의 OpenAI-compatible JSON 응답 구조가 내부 schema와 다르게 온 경우입니다.
+- Ver 2.14부터는 OpenAI-compatible 모델의 응답을 바로 버리지 않고 `extraction.rows`, `fieldEvidence`, `missingCriticalFields`, `validationIssues`, 판정 사유, reviewer check, quality score를 표준 구조로 먼저 정규화한 뒤 검증합니다.
+- 그래도 실패하면 Screening의 AI model reviewer comparison 표에 실패 모델과 schema 영역이 남습니다. 이 기록은 history에 보존되며, 같은 저장 full-text에서 해당 모델만 다시 실행할 수 있습니다.
+- 연구자는 같은 논문에서 `gpt`, `gemini`, `deepseek` 등의 모델 결과를 비교하고, 최종 PI adjudication에서 include/exclude를 결정합니다.
+
 ## 15. 문서 업데이트 규칙
 
 아래 변경이 있으면 반드시 이 파일을 수정합니다.

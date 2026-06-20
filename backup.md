@@ -3844,3 +3844,59 @@ git -C C:\Users\rhhyu\Documents\GitHub\wiregene-meta-analysis log --all --decora
 - If Antigravity commits are already on GitHub, pull/merge them first and preserve them.
 - Never overwrite or revert Antigravity changes unless the user explicitly asks.
 - After reconciling, update both backup files again with the exact Antigravity commits/files that were incorporated.
+
+## 2026-06-20 Gemini OpenAI-compatible reviewer schema hardening
+
+User issue:
+
+- In Screening, three model comparison ran with two successes and one failure.
+- `gpt-5.4-mini` and `deepseek-v4-flash` returned structured reviewer drafts.
+- `gemini-3.5-flash` returned a response, but the app marked it as fallback/failed.
+- Vercel runtime evidence showed:
+
+```text
+Meta full-text OpenAI analysis schema validation failed.
+fieldErrors: { extraction: ["Invalid input"] }
+```
+
+Root cause:
+
+- Google Drive storage and the reanalysis request were working.
+- The failure was model compatibility: Gemini's OpenAI-compatible JSON shape for `extraction` did not exactly match the strict internal schema.
+- The app validated before normalizing model-specific shapes, so useful Gemini output could be discarded.
+
+Implemented:
+
+- Added an AI reviewer compatibility normalization layer before schema validation.
+- `extraction` is now normalized into standard `rows`, `fieldEvidence`, `missingCriticalFields`, and `validationIssues` before Zod validation.
+- The normalizer accepts common model variants:
+  - `extraction` as object, array-like rows, indexed row object, or text issue.
+  - `rows`, `row`, `data`, `extractedData`, or `extractionRows`.
+  - `fieldEvidence`, `cellEvidence`, `field_evidence`, or `evidenceByField`.
+  - string/object/list forms for missing fields, validation issues, reasons, next actions, evidence, reviewer checks, criteria, scores, and decisions.
+- Schema failure logging now records reviewer id, label, provider type, model name, field errors, and form errors.
+- User-facing warning now includes the schema area that still failed after compatibility normalization.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.79`
+  - UI label: `Ver 2.14 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed.
+git diff --check: passed.
+npm.cmd run lint: passed.
+npm.cmd run build: passed.
+```
+
+Remaining deployment verification:
+
+```text
+Vercel production redeploy/auto-deploy check
+```
+
+Regular Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```

@@ -231,6 +231,251 @@ const aiMetaFullTextAnalysisSchema = z
   })
   .passthrough();
 
+type UnknownRecord = Record<string, unknown>;
+
+function isUnknownRecord(value: unknown): value is UnknownRecord {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function coerceAiMetaFullTextAnalysisCandidate(value: unknown): unknown {
+  if (!isUnknownRecord(value)) return value;
+  const draft: UnknownRecord = { ...value };
+
+  if ("eligibility" in draft) draft.eligibility = coerceAiEligibility(draft.eligibility);
+  if ("study" in draft) draft.study = coerceAiStudy(draft.study);
+  draft.extraction = coerceAiExtraction(draft.extraction);
+  draft.evidence = coerceAiEvidence(draft.evidence);
+  draft.nextActions = coerceStringList(draft.nextActions);
+  draft.reviewEvaluation = coerceAiReviewEvaluation(draft.reviewEvaluation);
+
+  return draft;
+}
+
+function coerceAiEligibility(value: unknown) {
+  if (!isUnknownRecord(value)) return value;
+  const reviewerChecks = isUnknownRecord(value.reviewerChecks) ? value.reviewerChecks : {};
+  return {
+    ...value,
+    decision: coerceEligibilityDecision(value.decision),
+    confidence: coerceNumericScore(value.confidence),
+    summary: coerceOptionalString(value.summary),
+    reasons: coerceStringList(value.reasons),
+    exclusionReasons: coerceStringList(value.exclusionReasons),
+    reviewerChecks: {
+      originalObservationalData: coerceNullableBoolean(reviewerChecks.originalObservationalData),
+      instrumentOrGroupSpecificData: coerceNullableBoolean(reviewerChecks.instrumentOrGroupSpecificData),
+      regionSpecificPainOutcome: coerceNullableBoolean(reviewerChecks.regionSpecificPainOutcome),
+      extractableNumeratorDenominator: coerceNullableBoolean(reviewerChecks.extractableNumeratorDenominator),
+      treatmentOrInterventionStudy: coerceNullableBoolean(reviewerChecks.treatmentOrInterventionStudy),
+      nonEnglishFullText: coerceNullableBoolean(reviewerChecks.nonEnglishFullText),
+    },
+  };
+}
+
+function coerceAiStudy(value: unknown) {
+  if (!isUnknownRecord(value)) return value;
+  return {
+    ...value,
+    instruments: coerceStringList(value.instruments),
+  };
+}
+
+function coerceAiExtraction(value: unknown) {
+  const inputWasString = typeof value === "string" ? value : "";
+  const source = isUnknownRecord(value) ? value : {};
+  const rowsValue = source.rows ?? source.row ?? source.data ?? source.extractedData ?? source.extractionRows ?? value;
+
+  return {
+    ...source,
+    rows: coerceExtractionRows(rowsValue),
+    fieldEvidence: coerceFieldEvidence(
+      source.fieldEvidence ?? source.cellEvidence ?? source.field_evidence ?? source.evidenceByField,
+    ),
+    missingCriticalFields: coerceStringList(
+      source.missingCriticalFields ?? source.missing_fields ?? source.missingCritical ?? source.missing,
+    ),
+    validationIssues: normalizeList([...coerceStringList(source.validationIssues ?? source.issues), inputWasString]),
+  };
+}
+
+function coerceExtractionRows(value: unknown) {
+  const rawRows = Array.isArray(value) ? value : isUnknownRecord(value) ? coerceRecordRows(value) : [];
+  return rawRows.flatMap((item) => {
+    if (!isUnknownRecord(item)) return [];
+    return [
+      Object.fromEntries(
+        Object.entries(item).map(([key, cell]) => [String(key), coercePrimitiveCell(cell)]),
+      ),
+    ];
+  });
+}
+
+function coerceRecordRows(value: UnknownRecord) {
+  const entries = Object.entries(value);
+  if (entries.length === 0) return [];
+  const looksLikeIndexedRows = entries.every(([key, item]) => /^\d+$/.test(key) && isUnknownRecord(item));
+  return looksLikeIndexedRows ? entries.map(([, item]) => item) : [value];
+}
+
+function coerceFieldEvidence(value: unknown) {
+  const items = Array.isArray(value)
+    ? value
+    : isUnknownRecord(value)
+      ? Object.entries(value).map(([field, evidence]) => ({ field, evidence }))
+      : [];
+
+  return items.map((item) => {
+    const record = isUnknownRecord(item) ? item : {};
+    const rowIndex = Number(record.rowIndex ?? record.row ?? record.row_index ?? 0);
+    const field = coerceString(record.field ?? record.fieldName ?? record.column ?? record.parameter ?? record.variable);
+    const evidence = coerceString(
+      record.evidence ?? record.excerpt ?? record.quote ?? record.sourceText ?? record.rationale ?? record.support,
+    );
+    return {
+      rowIndex: Number.isFinite(rowIndex) && rowIndex >= 0 ? Math.floor(rowIndex) : 0,
+      field,
+      value: coercePrimitiveCell(record.value ?? record.extractedValue ?? record.cellValue),
+      evidence,
+      sourceHint: coerceNullableString(record.sourceHint ?? record.source ?? record.page ?? record.table ?? null),
+      needsReview: coerceBoolean(record.needsReview ?? record.needs_review) ?? true,
+    };
+  });
+}
+
+function coerceAiEvidence(value: unknown) {
+  const items = Array.isArray(value)
+    ? value
+    : isUnknownRecord(value)
+      ? Object.entries(value).map(([label, excerpt]) => ({ label, excerpt }))
+      : [];
+
+  return items.map((item, index) => {
+    const record = isUnknownRecord(item) ? item : {};
+    return {
+      label: coerceString(record.label ?? record.name ?? `evidence_${index + 1}`),
+      excerpt: coerceString(record.excerpt ?? record.quote ?? record.text ?? record.evidence),
+    };
+  });
+}
+
+function coerceAiReviewEvaluation(value: unknown) {
+  if (!isUnknownRecord(value)) return value;
+  return {
+    ...value,
+    score: coerceNumericScore(value.score),
+    grade: coerceOptionalString(value.grade),
+    summary: coerceOptionalString(value.summary),
+    improvement: coerceOptionalString(value.improvement),
+    criteria: coerceReviewCriteria(value.criteria),
+  };
+}
+
+function coerceReviewCriteria(value: unknown) {
+  if (isUnknownRecord(value)) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, criterion]) => [key, coerceReviewCriterion(criterion)]),
+    );
+  }
+  if (!Array.isArray(value)) return value;
+  return Object.fromEntries(
+    value.flatMap((item, index) => {
+      if (!isUnknownRecord(item)) return [];
+      const key = coerceString(item.key ?? item.name ?? item.criterion ?? `criterion_${index + 1}`);
+      return key ? [[key, coerceReviewCriterion(item)]] : [];
+    }),
+  );
+}
+
+function coerceReviewCriterion(value: unknown) {
+  if (!isUnknownRecord(value)) {
+    return { score: 0, status: "unclear", comment: coerceString(value) };
+  }
+  return {
+    ...value,
+    score: coerceNumericScore(value.score),
+    status: coerceOptionalString(value.status),
+    comment: coerceOptionalString(value.comment),
+  };
+}
+
+function coercePrimitiveCell(value: unknown) {
+  if (value === null || ["string", "number", "boolean"].includes(typeof value)) return value as string | number | boolean | null;
+  if (value === undefined) return "";
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function coerceStringList(value: unknown) {
+  if (Array.isArray(value)) return normalizeList(value);
+  if (value === null || value === undefined || value === "") return [];
+  if (isUnknownRecord(value)) return normalizeList(Object.values(value));
+  return normalizeList([value]);
+}
+
+function coerceEligibilityDecision(value: unknown) {
+  const normalized = coerceString(value).toLowerCase().replace(/[\s-]+/g, "_");
+  if (!normalized) return undefined;
+  if (normalized.includes("narrative") || normalized.includes("support")) return "include_narrative_support";
+  if (normalized.includes("quantitative") || normalized === "include" || normalized === "included") {
+    return "include_quantitative";
+  }
+  if (normalized.includes("exclude") || normalized === "excluded") return "exclude";
+  if (normalized.includes("uncertain") || normalized.includes("pending") || normalized.includes("maybe")) {
+    return "uncertain";
+  }
+  return undefined;
+}
+
+function coerceNumericScore(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim().toLowerCase();
+  const numeric = normalized.match(/-?\d+(?:\.\d+)?/);
+  if (numeric) return Number(numeric[0]);
+  if (normalized.includes("high")) return 85;
+  if (normalized.includes("moderate") || normalized.includes("medium")) return 60;
+  if (normalized.includes("low")) return 30;
+  if (normalized.includes("unsafe") || normalized.includes("fail")) return 10;
+  return undefined;
+}
+
+function coerceString(value: unknown) {
+  return String(value ?? "").replace(/\s+/g, " ").trim();
+}
+
+function coerceOptionalString(value: unknown) {
+  return value === undefined ? undefined : coerceString(value);
+}
+
+function coerceNullableString(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  return coerceString(value);
+}
+
+function coerceBoolean(value: unknown) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value === 1 ? true : value === 0 ? false : null;
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  if (["true", "yes", "y", "1", "pass", "included"].includes(normalized)) return true;
+  if (["false", "no", "n", "0", "fail", "excluded"].includes(normalized)) return false;
+  return null;
+}
+
+function coerceNullableBoolean(value: unknown) {
+  return coerceBoolean(value);
+}
+
+function summarizeSchemaErrors(fieldErrors: Record<string, string[] | undefined>) {
+  const summary = Object.entries(fieldErrors)
+    .flatMap(([field, errors]) => (errors?.length ? [`${field}: ${errors.join(", ")}`] : []))
+    .join("; ");
+  return summary || "unknown schema mismatch";
+}
+
 const defaultCriticalFields = [
   "study_id",
   "first_author",
@@ -1056,13 +1301,22 @@ ${text}`;
 
     if (!outputText.trim()) throw new Error("OpenAI returned an empty full-text analysis response.");
     const parsed = JSON.parse(extractJson(outputText)) as unknown;
-    const validated = aiMetaFullTextAnalysisSchema.safeParse(parsed);
+    const normalizedParsed = coerceAiMetaFullTextAnalysisCandidate(parsed);
+    const validated = aiMetaFullTextAnalysisSchema.safeParse(normalizedParsed);
     if (!validated.success) {
-      console.error("Meta full-text OpenAI analysis schema validation failed.", validated.error.flatten());
+      const flattened = validated.error.flatten();
+      console.error("Meta full-text OpenAI analysis schema validation failed.", {
+        reviewerId: reviewer.id,
+        label: reviewer.label,
+        providerType: reviewer.providerType,
+        modelName: reviewer.modelName,
+        fieldErrors: flattened.fieldErrors,
+        formErrors: flattened.formErrors,
+      });
       return {
         analysis: null,
         warning:
-          "OpenAI returned a response, but it did not match the required meta-analysis extraction schema. Fallback rules were used; retry after redeploying the latest version or changing the model.",
+          `Structured AI response did not match the meta-analysis schema after compatibility normalization. Details: ${summarizeSchemaErrors(flattened.fieldErrors)}`,
       };
     }
     return { analysis: validated.data as AiMetaFullTextAnalysis, warning: null };
