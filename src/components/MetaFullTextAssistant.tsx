@@ -687,6 +687,22 @@ function batchFileId(file: File, index: number) {
   return `${index}-${file.name}-${file.size}-${file.lastModified}`;
 }
 
+function fileSelectionKey(file: File) {
+  return `${file.name}::${file.size}::${file.lastModified}`;
+}
+
+function mergeSelectedFiles(currentFiles: File[], nextFiles: File[]) {
+  const seen = new Set<string>();
+  const merged: File[] = [];
+  for (const file of [...currentFiles, ...nextFiles]) {
+    const key = fileSelectionKey(file);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(file);
+  }
+  return merged;
+}
+
 function batchStatusLabel(status: BatchAnalysisStatus) {
   if (status === "analyzing") return "analyzing";
   if (status === "saved") return "saved";
@@ -1752,9 +1768,12 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
   }
 
   function handleFilesChange(nextFiles: File[]) {
-    setFiles(nextFiles);
+    if (nextFiles.length === 0) return;
+    const mergedFiles = mergeSelectedFiles(files, nextFiles);
+    const addedCount = Math.max(0, mergedFiles.length - files.length);
+    setFiles(mergedFiles);
     setBatchResults(
-      nextFiles.map((nextFile, index) => ({
+      mergedFiles.map((nextFile, index) => ({
         id: batchFileId(nextFile, index),
         fileName: nextFile.name,
         fileSize: nextFile.size,
@@ -1771,7 +1790,18 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
       resetVerificationState();
     }
     setError("");
-    setNotice("");
+    setNotice(
+      `Selected full-text files updated: ${mergedFiles.length.toLocaleString("ko-KR")} total${
+        addedCount > 0 ? `; ${addedCount.toLocaleString("ko-KR")} newly added` : "; no new files added"
+      }.`,
+    );
+  }
+
+  function clearSelectedFiles() {
+    setFiles([]);
+    setBatchResults([]);
+    setError("");
+    setNotice("Selected full-text files cleared.");
   }
 
   async function copyToClipboard(value: string, label: string) {
@@ -2285,10 +2315,28 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
               type="file"
               multiple
               accept=".pdf,.doc,.docx,.txt,.md,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
-              onChange={(event) => handleFilesChange(Array.from(event.target.files ?? []))}
+              onChange={(event) => {
+                handleFilesChange(Array.from(event.target.files ?? []));
+                event.currentTarget.value = "";
+              }}
               disabled={isAnalyzing}
               className="mt-3 w-full text-sm text-zinc-700 disabled:cursor-not-allowed disabled:opacity-60 file:mr-3 file:rounded-md file:border-0 file:bg-zinc-900 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-zinc-700"
             />
+            {files.length > 0 ? (
+              <div className="mt-3 flex flex-col gap-2 rounded-md border border-zinc-200 bg-zinc-50 p-2 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs font-semibold leading-5 text-zinc-700">
+                  누적 선택: {files.length.toLocaleString("ko-KR")}개 파일. `파일 선택`을 다시 눌러도 기존 선택은 유지되고 새 파일만 추가됩니다.
+                </p>
+                <button
+                  type="button"
+                  onClick={clearSelectedFiles}
+                  disabled={isAnalyzing}
+                  className="inline-flex h-8 items-center justify-center rounded-md border border-zinc-300 bg-white px-3 text-xs font-semibold text-zinc-700 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Clear selected files
+                </button>
+              </div>
+            ) : null}
             <label className="mt-3 flex items-start gap-2 rounded-md border border-emerald-200 bg-emerald-50 p-2 text-xs font-semibold leading-5 text-emerald-950">
               <input
                 type="checkbox"

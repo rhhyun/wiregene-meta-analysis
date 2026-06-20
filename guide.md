@@ -62,6 +62,8 @@ Ver 2.17부터 저장된 논문 목록의 `AI reviews x/y` 표시는 저장 이�
 
 Ver 2.18부터 기존 1개 AI 모델만 분석된 legacy record를 대량 업데이트할 수 있습니다. `full-text 파일`에서 PDF/Word 원문 여러 개를 한 번에 선택하고 `기존 저장 논문 자동 매칭 모드`를 켠 상태로 `Auto-match and run AI queue`를 실행하면, 앱이 파일명/저장 제목/추출 제목을 이용해 기존 논문과 매칭하고 같은 record에 source file과 선택한 AI reviewer 3개 결과를 순차 저장합니다. 매칭 실패 파일은 기본적으로 새 논문으로 저장하지 않아 중복 record가 생기지 않습니다. 새 연구에서 완전히 새 full-text를 저장해야 할 때만 자동 매칭 모드를 끕니다.
 
+Ver 2.19부터 `full-text 파일`의 파일 선택은 누적 방식입니다. 한 번에 일부 파일을 선택한 뒤 다시 `파일 선택`을 눌러 다른 PDF/Word 파일을 추가해도 기존 선택은 사라지지 않고 새 파일만 추가됩니다. 같은 파일은 파일명, 용량, 수정시각 기준으로 중복 제거됩니다. 선택을 처음부터 다시 시작하려면 `Clear selected files`를 누릅니다.
+
 ### AI Model Reviewer Comparison
 
 AI reviewer 1, 2, 3이 같은 논문을 독립적으로 판정합니다.

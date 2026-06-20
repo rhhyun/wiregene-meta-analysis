@@ -3911,6 +3911,45 @@ Regular Synology deploy/run command after GitHub push:
 git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
 ```
 
+## 2026-06-20 Full-text file selection made cumulative
+
+User issue:
+
+- In the `full-text 파일` upload control, selecting several files worked at first.
+- But if the researcher clicked `파일 선택` again and selected more files, the previously selected files disappeared.
+- This made the new batch workflow awkward because researchers often collect 60+ full-text files from multiple folders or select them in several passes.
+
+Implemented:
+
+- Updated `src/components/MetaFullTextAssistant.tsx`.
+- File selection now accumulates across multiple file-picker actions.
+- New files are merged with existing selected files.
+- Duplicate selected files are removed using `file name + file size + lastModified`.
+- The browser file input value is cleared after each selection so the same file can be selected again if needed.
+- Added an explicit `Clear selected files` button.
+- Added a visible accumulated-selection message:
+  - total selected file count,
+  - reminder that pressing `파일 선택` again adds files instead of replacing them.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.84`
+  - UI label: `Ver 2.19 | 2026 copyright by JK Hyun`
+
+Verification pending:
+
+```text
+npx.cmd tsc --noEmit --pretty false
+git diff --check
+npm.cmd run lint
+npm.cmd run build
+GitHub push and Vercel production deployment verification
+```
+
+Regular Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 ## 2026-06-20 Batch full-text auto-match and AI reviewer rerun
 
 User issue:
