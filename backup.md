@@ -1,3 +1,40 @@
+# 2026-06-20 add researcher-facing guide.md storage and workflow guide
+
+User issue:
+
+- Researchers need a clear guide explaining what is saved where.
+- The guide must be detailed enough for researchers who are not familiar with meta-analysis.
+- `guide.md` must be updated whenever version, storage behavior, screen names, or workflow content changes.
+
+Implemented:
+
+- Added root `guide.md`.
+- The guide explains:
+  - Meta workflow by screen.
+  - Meaning of copy/save/download/snapshot buttons.
+  - Exact storage map for study list, project workspace state, saved project files, AI settings, full-text history, full-text source files, extraction dataset, DB bundle, OAuth token, and API keys.
+  - Vercel + Google Drive online storage requirements.
+  - Synology/local Docker storage defaults.
+  - Google Drive Web OAuth connection workflow.
+  - full-text upload and source-file reuse policy.
+  - AI reviewer vs human reviewer workflow.
+  - Included-paper Excel dataset verification.
+  - DB bundle and DB snapshot policy.
+  - `storage-policy` endpoint checks.
+  - Required guide update policy.
+- Copied the full guide into the handoff workspace guide.md as well.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.66`
+  - UI label: `Ver 2.01 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed
+npm.cmd run lint: passed
+npm.cmd run build: passed
+```
+
 # 2026-06-20 implement Meta Google Drive Web OAuth connection flow
 
 User issue:
