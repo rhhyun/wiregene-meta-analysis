@@ -1,6 +1,6 @@
 # Wiregene Meta 사용 가이드
 
-문서 버전: Ver 2.11
+문서 버전: Ver 2.12
 최종 업데이트: 2026-06-20  
 적용 사이트: `https://meta.wiregene.com`  
 소스 저장소: `rhhyun/wiregene-meta-analysis`
@@ -185,6 +185,8 @@ Ver 2.11부터 `AI 평가 설정` 화면은 Synology 기본 저장소와 Google 
 서버 저장이 실패할 때 브라우저 다운로드나 임시 local/browser fallback 안내가 나타날 수 있습니다.
 
 이것은 연구를 계속하기 위한 임시 안전장치입니다. 장기 보관과 여러 PC 작업을 위해서는 Google Drive 또는 Synology/local Docker 저장이 정상 동작해야 합니다.
+
+Ver 2.12부터는 Vercel/serverless에서 Google Drive 저장소가 실패할 때 빈 `/var/task` 로컬 저장소를 실제 연구 저장소처럼 보여주지 않습니다. 저장소 요약에는 `Google Drive unavailable` 또는 `Storage unavailable`로 표시되며, `No saved full-text analyses yet` 또는 `No project files have been saved yet` 같은 문구로 기존 자료가 삭제된 것처럼 보이지 않게 합니다. full-text history 목록을 성공적으로 불러온 적이 있으면 브라우저에 마지막 overview 복사본을 남겨 두었다가, shared storage 장애 시 “마지막 브라우저 snapshot”으로 보여줍니다. 이 복사본은 복구용 화면 보호 장치일 뿐이고, 서버/Google Drive/Synology의 실제 원본 데이터를 대체하지 않습니다.
 
 ## 6. Google Drive 연결 절차
 

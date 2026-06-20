@@ -106,6 +106,16 @@ type MetaFullTextHistoryStats = {
   verificationCompletedCount: number;
 };
 
+type MetaFullTextHistoryOverviewPayload = {
+  records: MetaFullTextHistorySummary[];
+  reviewerSettings?: MetaFullTextReviewerSettings;
+  stats?: MetaFullTextHistoryStats;
+};
+
+type CachedMetaFullTextHistoryOverview = MetaFullTextHistoryOverviewPayload & {
+  cachedAt: string;
+};
+
 type MetaAiReviewerSlotSummary = {
   id: string;
   label: string;
@@ -197,6 +207,49 @@ function fullTextHistoryListUrl(projectId: string) {
   return `/api/meta-analysis/full-text/history?${searchParams.toString()}`;
 }
 
+function fullTextHistoryCacheKey(projectId: string) {
+  return `wiregene-meta-full-text-history-overview:${projectId.trim() || "default"}`;
+}
+
+function readCachedFullTextHistoryOverview(projectId: string): CachedMetaFullTextHistoryOverview | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(fullTextHistoryCacheKey(projectId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<CachedMetaFullTextHistoryOverview>;
+    if (!Array.isArray(parsed.records) || typeof parsed.cachedAt !== "string") return null;
+    return {
+      records: parsed.records,
+      reviewerSettings: parsed.reviewerSettings,
+      stats: parsed.stats,
+      cachedAt: parsed.cachedAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedFullTextHistoryOverview(projectId: string, payload: MetaFullTextHistoryOverviewPayload) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      fullTextHistoryCacheKey(projectId),
+      JSON.stringify({
+        records: payload.records,
+        reviewerSettings: payload.reviewerSettings,
+        stats: payload.stats,
+        cachedAt: new Date().toISOString(),
+      }),
+    );
+  } catch {
+    // The server-side history remains authoritative; browser cache is only a protective display copy.
+  }
+}
+
+function fullTextHistoryUnavailableMessage(message: string) {
+  return `${message} Existing full-text analysis records are not deleted; they are temporarily unavailable because shared storage could not be read. Reconnect Google Drive or use Synology/local Docker storage, then refresh.`;
+}
+
 function fullTextHistoryRecordUrl(id: string, projectId: string, action?: "reanalyze" | "source") {
   const searchParams = new URLSearchParams();
   if (projectId.trim()) searchParams.set("projectId", projectId.trim());
@@ -274,8 +327,7 @@ async function readHistoryListPayload(response: Response) {
   if (!response.ok) {
     throw new Error(apiErrorMessage(payload, "Saved full-text analyses could not be loaded."));
   }
-  return payload as {
-    records: MetaFullTextHistorySummary[];
+  return payload as MetaFullTextHistoryOverviewPayload & {
     reviewerSettings: MetaFullTextReviewerSettings;
     stats: MetaFullTextHistoryStats;
     deletedRecord?: MetaFullTextHistorySummary;
@@ -921,11 +973,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
     setHistoryItems((current) => [item, ...current.filter((record) => record.id !== item.id)].slice(0, 500));
   }
 
-  const applyHistoryOverview = useCallback((payload: {
-    records: MetaFullTextHistorySummary[];
-    reviewerSettings?: MetaFullTextReviewerSettings;
-    stats?: MetaFullTextHistoryStats;
-  }) => {
+  const applyHistoryOverview = useCallback((payload: MetaFullTextHistoryOverviewPayload, options: { persistCache?: boolean } = {}) => {
     setHistoryItems(payload.records);
     setSelectedHistoryIdsForDelete((current) => {
       const validIds = new Set(payload.records.map((record) => record.id));
@@ -940,7 +988,8 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
           Boolean(payload.reviewerSettings.reviewerTwoName.trim()),
       );
     }
-  }, []);
+    if (options.persistCache !== false) writeCachedFullTextHistoryOverview(projectId, payload);
+  }, [projectId]);
 
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
@@ -951,7 +1000,16 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
       );
       applyHistoryOverview(payload);
     } catch (caught) {
-      setHistoryError(caught instanceof Error ? caught.message : "Saved full-text analyses could not be loaded.");
+      const message = caught instanceof Error ? caught.message : "Saved full-text analyses could not be loaded.";
+      const cached = readCachedFullTextHistoryOverview(projectId);
+      if (cached?.records.length) {
+        applyHistoryOverview(cached, { persistCache: false });
+        setHistoryError(
+          `${fullTextHistoryUnavailableMessage(message)} Showing the last browser snapshot from ${new Date(cached.cachedAt).toLocaleString()}.`,
+        );
+      } else {
+        setHistoryError(fullTextHistoryUnavailableMessage(message));
+      }
     } finally {
       setHistoryLoading(false);
     }
@@ -991,7 +1049,16 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
         if (!cancelled) applyHistoryOverview(payload);
       } catch (caught) {
         if (!cancelled) {
-          setHistoryError(caught instanceof Error ? caught.message : "Saved full-text analyses could not be loaded.");
+          const message = caught instanceof Error ? caught.message : "Saved full-text analyses could not be loaded.";
+          const cached = readCachedFullTextHistoryOverview(projectId);
+          if (cached?.records.length) {
+            applyHistoryOverview(cached, { persistCache: false });
+            setHistoryError(
+              `${fullTextHistoryUnavailableMessage(message)} Showing the last browser snapshot from ${new Date(cached.cachedAt).toLocaleString()}.`,
+            );
+          } else {
+            setHistoryError(fullTextHistoryUnavailableMessage(message));
+          }
         }
       } finally {
         if (!cancelled) setHistoryLoading(false);
@@ -2300,8 +2367,14 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
               ) : null}
             </>
           ) : (
-            <p className="rounded-md border border-dashed border-zinc-200 bg-zinc-50 p-3 text-sm font-semibold text-zinc-500">
-              No saved full-text analyses yet.
+            <p
+              className={`rounded-md border border-dashed p-3 text-sm font-semibold ${
+                historyError ? "border-amber-200 bg-amber-50 text-amber-950" : "border-zinc-200 bg-zinc-50 text-zinc-500"
+              }`}
+            >
+              {historyError
+                ? "Saved full-text analyses are not visible because shared storage could not be loaded. They have not been deleted; reconnect storage and refresh."
+                : "No saved full-text analyses yet."}
             </p>
           )}
         </div>

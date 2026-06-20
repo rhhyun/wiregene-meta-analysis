@@ -1,3 +1,46 @@
+# 2026-06-20 protect Screening history from unsafe storage fallback
+
+User issue:
+
+- User showed the Screening page after storage changes. The page displayed `Synology/local folder` with an app path under `/var/task/.data/...`, warned about `GOOGLE_OAUTH_INVALID_GRANT`, and the previously saved Full-text article AI eligibility assistant records disappeared from the UI.
+- Reviewer verification save buttons were disabled because no saved full-text history record could be selected.
+- Root cause: when Google Drive project storage failed on Vercel/serverless, the project storage summary fell back to an empty local `/var/task` view, which looked like a real Synology/local store. Separately, full-text history load failures could still render an empty-state message, making existing saved analyses look deleted.
+
+Implemented:
+
+- `src/lib/meta-project-storage.ts`
+  - Added an explicit `unavailable` project-storage summary state.
+  - On Vercel/serverless, Google Drive project storage read failures now return `Google Drive unavailable` instead of pretending that empty local `/var/task` storage is the active project folder.
+  - Serverless reads no longer silently fall back from Google Drive to local project/user-project files.
+- `src/lib/meta-storage-policy.ts`
+  - Replaced “no action needed” fallback wording with data-preservation wording: existing shared research data was not deleted or replaced.
+- `src/components/MetaStudyWorkspace.tsx`
+  - Storage mode now shows `Google Drive unavailable`, `Storage unavailable`, or `Serverless local fallback blocked` when appropriate.
+  - Empty project-file lists no longer say “No project files have been saved yet” during storage-unavailable states.
+  - Storage panel text now explains that Synology/local Docker uses persistent per-project folders and Google Drive is the online shared-storage option.
+- `src/components/MetaFullTextAssistant.tsx`
+  - Successful full-text history overview loads are cached in browser localStorage as a protective display copy.
+  - Initial load and manual refresh use that last browser snapshot when shared storage is temporarily unavailable.
+  - If no snapshot exists, the UI now says saved analyses are temporarily unavailable and not deleted, instead of showing “No saved full-text analyses yet.”
+- `guide.md`
+  - Updated to Ver 2.12 with the serverless Google Drive failure policy and full-text history display-protection behavior.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.77`
+  - UI label: `Ver 2.12 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed
+npm.cmd run lint: passed
+git diff --check: passed
+npm.cmd run build: passed
+next start --port 3232: started from production build
+curl -I http://localhost:3232: HTTP 200
+curl -H "Host: meta.wiregene.com" http://127.0.0.1:3232: Meta page rendered with Ver 2.12
+next dev --port 3232: not used for final verification because the sandbox denied creating .next/dev; production build/start was used instead
+```
+
 # 2026-06-20 clarify AI settings Google Drive and Synology storage status
 
 User issue:

@@ -43,6 +43,7 @@ export type MetaProjectStorageSummary = {
   synologyPathHint: string | null;
   exists: boolean;
   files: MetaProjectFileSummary[];
+  unavailable?: boolean;
   warning?: string | null;
 };
 
@@ -147,11 +148,30 @@ export async function getMetaProjectStorageSummary(projectId: string): Promise<M
       };
     } catch (error) {
       if (!isRecoverableGoogleDriveStorageError(error)) throw error;
+      if (isServerlessRuntime()) return googleDriveUnavailableProjectStorageSummary(projectId, error);
       return localProjectStorageSummary(projectId, googleDriveFallbackWarning(error));
     }
   }
 
   return localProjectStorageSummary(projectId);
+}
+
+function googleDriveUnavailableProjectStorageSummary(projectId: string, error: unknown): MetaProjectStorageSummary {
+  const folderName = safeProjectFolder(projectId);
+  const storageBackend: MetaProjectStorageBackend = "google-drive";
+  const storageRoot = projectStorageRootForBackend(storageBackend);
+  return {
+    projectId,
+    folderName,
+    storageBackend,
+    storageRoot,
+    projectPath: `${storageRoot}/${folderName}`,
+    synologyPathHint: null,
+    exists: false,
+    files: [],
+    unavailable: true,
+    warning: googleDriveFallbackWarning(error),
+  };
 }
 
 export async function saveMetaProjectTextFile(input: {
@@ -249,7 +269,7 @@ export async function readMetaProjectTextFile(projectId: string, fileName: strin
     try {
       return await readTextFileFromGoogleDrive(projectDriveFileName(folderName, safeFileName));
     } catch (error) {
-      if (!isRecoverableGoogleDriveStorageError(error)) throw error;
+      if (!isRecoverableGoogleDriveStorageError(error) || isServerlessRuntime()) throw error;
       return readLocalMetaProjectTextFile(folderName, safeFileName);
     }
   }
@@ -363,7 +383,7 @@ async function readUserProjectsStorageText() {
     try {
       return await readTextFileFromGoogleDrive(userProjectsDriveFileName(), userProjectsDriveFileId());
     } catch (error) {
-      if (!isRecoverableGoogleDriveStorageError(error)) throw error;
+      if (!isRecoverableGoogleDriveStorageError(error) || isServerlessRuntime()) throw error;
       return readLocalUserProjectsStorageText();
     }
   }

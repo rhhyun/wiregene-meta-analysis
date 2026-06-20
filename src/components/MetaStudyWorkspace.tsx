@@ -162,6 +162,7 @@ type ProjectStorageSummary = {
   synologyPathHint: string | null;
   exists: boolean;
   files: ProjectStorageFileSummary[];
+  unavailable?: boolean;
   warning?: string | null;
 };
 
@@ -236,8 +237,19 @@ function browserFallbackProjectStorage(projectId: string, warning: string): Proj
     synologyPathHint: null,
     exists: false,
     files: [],
+    unavailable: true,
     warning,
   };
+}
+
+function projectStorageModeLabel(storage: ProjectStorageSummary | null) {
+  if (!storage) return "Loading...";
+  if (storage.unavailable) {
+    return storage.storageBackend === "google-drive" ? "Google Drive unavailable" : "Storage unavailable";
+  }
+  if (storage.storageBackend === "google-drive") return "Google Drive online";
+  if (storage.projectPath.includes("/var/task")) return "Serverless local fallback blocked";
+  return "Synology/local folder";
 }
 
 const analysisReadinessRows = [
@@ -3052,7 +3064,8 @@ function ProjectStoragePanel({ project }: { project: MetaStudyProject }) {
           <p className="text-sm font-semibold text-sky-900">Project file storage</p>
           <h3 className="mt-1 text-lg font-semibold text-zinc-950">Screening CSV/data folder</h3>
           <p className="mt-2 max-w-4xl text-sm leading-6 text-zinc-700">
-            Clipboard exports are not files until they are saved here. Each project uses its own server folder.
+            Clipboard exports are not files until they are saved here. Synology/local Docker keeps each project under its
+            own persistent folder; Google Drive is an online shared-storage option and must be connected before use.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -3091,7 +3104,7 @@ function ProjectStoragePanel({ project }: { project: MetaStudyProject }) {
         <Metric label="Saved files" value={loading ? "..." : files.length.toLocaleString()} />
         <Metric
           label="Storage mode"
-          value={!storage ? "Loading..." : storage.storageBackend === "google-drive" ? "Google Drive" : "Synology/local folder"}
+          value={projectStorageModeLabel(storage)}
         />
       </div>
 
@@ -3184,8 +3197,14 @@ function ProjectStoragePanel({ project }: { project: MetaStudyProject }) {
           </table>
         </div>
       ) : (
-        <p className="mt-3 rounded-md border border-sky-200 bg-white p-3 text-sm leading-6 text-zinc-600">
-          No project files have been saved yet.
+        <p
+          className={`mt-3 rounded-md border p-3 text-sm font-semibold leading-6 ${
+            storage?.unavailable ? "border-amber-200 bg-amber-50 text-amber-950" : "border-sky-200 bg-white text-zinc-600"
+          }`}
+        >
+          {storage?.unavailable
+            ? "Project files are not visible because the configured shared storage could not be loaded. They have not been deleted; reconnect storage and refresh."
+            : "No project files have been saved yet."}
         </p>
       )}
     </section>

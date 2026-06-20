@@ -46,7 +46,7 @@ export function isRecoverableGoogleDriveStorageError(error: unknown) {
 
 export function googleDriveFallbackWarning(error: unknown) {
   const code = googleDriveStorageErrorCode(error);
-  return `Meta is using local storage fallback for this request. No action is needed for the current research workflow.${code ? ` Diagnostic code: ${code}.` : ""}`;
+  return `Google Drive storage is unavailable. Existing shared research data was not deleted or replaced; reconnect Google Drive or use the Synology/local Docker deployment before continuing shared work.${code ? ` Diagnostic code: ${code}.` : ""}`;
 }
 
 export function isGoogleOauthStorageProblem(error: unknown) {
@@ -54,7 +54,7 @@ export function isGoogleOauthStorageProblem(error: unknown) {
 }
 
 export function storageFallbackNotice(action: string) {
-  return `${action}: Meta is continuing in local/browser fallback mode. No action is needed for the current research workflow.`;
+  return `${action}: Google Drive storage is unavailable, so Meta did not replace the shared research data with an empty local copy. Existing records are preserved in the configured shared storage; reconnect Google Drive or continue on Synology/local Docker.`;
 }
 
 export function metaStoragePolicySummary() {
