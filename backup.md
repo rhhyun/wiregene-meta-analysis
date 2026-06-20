@@ -3911,6 +3911,53 @@ Regular Synology deploy/run command after GitHub push:
 git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
 ```
 
+## 2026-06-20 AI reviewer progress denominator stabilized
+
+User issue:
+
+- During Screening, three AI models had been running correctly, but Gemini failed on the final article.
+- After that single model failure, previously completed saved articles suddenly changed from `AI reviews 3/3` to `AI reviews 3/2`.
+- This looked like saved reviewer history had been damaged, even though the underlying saved reviews were still present.
+
+Root cause:
+
+- The saved article list used the currently runnable/selected AI reviewer count as the denominator.
+- If one configured model became temporarily unavailable, the denominator could shrink from 3 to 2 for every saved record.
+
+Implemented:
+
+- Updated `src/components/MetaFullTextAssistant.tsx` so the AI reviewer target denominator is stable.
+- The denominator now uses the maximum of:
+  - the default three-model review plan,
+  - enabled AI reviewer slots,
+  - selected runnable reviewers,
+  - currently runnable reviewers,
+  - stored model-review counts already saved in history.
+- Result:
+  - Existing completed records remain `AI reviews 3/3`.
+  - A paper where one model truly failed remains visibly incomplete as `AI reviews 2/3`.
+  - A transient model/provider failure can no longer make other records display impossible values such as `3/2`.
+- Updated `guide.md` with the Ver 2.17 display rule.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.82`
+  - UI label: `Ver 2.17 | 2026 copyright by JK Hyun`
+
+Verification pending:
+
+```text
+npx.cmd tsc --noEmit --pretty false
+git diff --check
+npm.cmd run lint
+npm.cmd run build
+GitHub push and Vercel production deployment verification
+```
+
+Regular Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 ## 2026-06-20 Full-text upload block moved before saved analyses
 
 User issue:

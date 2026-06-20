@@ -750,8 +750,21 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
         ? "This will attach the selected full-text file to this legacy record, automatically run the selected AI reviewers, and replace the AI analysis in this same record. It does not create a duplicate."
         : "Legacy/no source means the previous AI result exists, but the original full-text file is not stored. Select exactly one matching full-text file to update this record.";
   const aiOnlyVerificationMode = verificationMode === "ai_only";
-  const aiComparisonTargetCount =
-    selectedRunnableAiReviewerIds.length || runnableAiReviewerSlots.length || aiReviewerSlots.filter(aiReviewerRunnable).length || 3;
+  const aiComparisonTargetCount = useMemo(() => {
+    const enabledSlotCount = aiReviewerSlots.filter((slot) => slot.enabled).length;
+    const storedReviewerTarget = historyItems.reduce(
+      (maxCount, item) => Math.max(maxCount, item.aiModelReviewCount, item.modelReviewCount),
+      0,
+    );
+
+    return Math.max(
+      3,
+      enabledSlotCount,
+      selectedRunnableAiReviewerIds.length,
+      runnableAiReviewerSlots.length,
+      storedReviewerTarget,
+    );
+  }, [aiReviewerSlots, historyItems, runnableAiReviewerSlots.length, selectedRunnableAiReviewerIds.length]);
   const aiComparisonProgress = useMemo(() => {
     const target = Math.max(1, aiComparisonTargetCount);
     return {
