@@ -897,7 +897,7 @@ const fixedExclusionReasons = [
   "duplicate/overlap cohort",
 ];
 
-const recommendedGeminiReviewerModelName = "gemini-2.5-flash-lite";
+const recommendedGeminiReviewerModelName = "gemini-3.1-flash-lite";
 
 function aiReviewerRunnable(slot: MetaAiReviewerSlotSummary) {
   return Boolean(slot.apiKeySource !== "missing" && (slot.providerType === "OPENAI" || slot.baseUrl || looksLikeOpenAiModel(slot.modelName)));

@@ -8,30 +8,30 @@ User issue:
 
 Decision:
 
-- Set the Gemini reviewer recommendation and default to `gemini-2.5-flash-lite`.
+- Set the Gemini reviewer recommendation and default to `gemini-3.1-flash-lite`.
 - Keep the Google OpenAI-compatible Base URL unchanged: `https://generativelanguage.googleapis.com/v1beta/openai`.
 - Rationale from official Gemini docs/pricing checked on 2026-06-21:
   - `gemini-3.5-flash` is positioned as a more capable model with much higher paid token pricing.
-  - `gemini-2.5-flash-lite` is documented as the smallest and most cost-effective Gemini model for at-scale usage.
+  - `gemini-3.1-flash-lite` is documented as the most cost-efficient Gemini 3.1 model for high-volume use.
 - The two other reviewer slots can still use GPT/DeepSeek or another provider; PI adjudication remains the final decision layer.
 
 Implemented:
 
 - `src/lib/meta-ai-settings.ts`
-  - default AI reviewer 3 Gemini model changed from `gemini-3.5-flash` to `gemini-2.5-flash-lite`.
-  - stored legacy Gemini reviewer values `gemini-3.5` and `gemini-3.5-flash` are normalized to `gemini-2.5-flash-lite` for OpenAI-compatible Gemini slots.
+  - default AI reviewer 3 Gemini model changed from `gemini-3.5-flash` to `gemini-3.1-flash-lite`.
+  - stored legacy Gemini reviewer values `gemini-3.5` and `gemini-3.5-flash` are normalized to `gemini-3.1-flash-lite` for OpenAI-compatible Gemini slots.
 - `src/lib/meta-full-text-analysis.ts`
-  - runtime request normalization now converts legacy Gemini 3.5 model ids to `gemini-2.5-flash-lite`.
+  - runtime request normalization now converts legacy Gemini 3.5 model ids to `gemini-3.1-flash-lite`.
   - Gemini 429/quota/timeout errors now include a model-specific hint instead of only a generic failure.
 - `src/components/MetaAiSettingsPanel.tsx`
-  - default Gemini reviewer value and inline hint changed to `gemini-2.5-flash-lite`.
+  - default Gemini reviewer value and inline hint changed to `gemini-3.1-flash-lite`.
 - `src/components/MetaFullTextAssistant.tsx`
-  - AI reviewer slot display shows legacy Gemini values as `legacy -> gemini-2.5-flash-lite`.
+  - AI reviewer slot display shows legacy Gemini values as `legacy -> gemini-3.1-flash-lite`.
 - `guide.md`
   - documented the recommended Gemini model, the unchanged Base URL, and legacy model normalization.
 - Version bumped:
-  - `package.json` / `package-lock.json`: `0.1.88`
-  - UI label: `Ver 2.23 | 2026 copyright by JK Hyun`
+  - `package.json` / `package-lock.json`: `0.1.89`
+  - UI label: `Ver 2.24 | 2026 copyright by JK Hyun`
 
 Verification completed:
 
@@ -40,13 +40,7 @@ npx.cmd tsc --noEmit --pretty false: passed
 git diff --check: passed
 npm.cmd run lint: passed
 npm.cmd run build: passed
-GitHub commit: 216abf9 Use Gemini Flash Lite for AI reviewer
-GitHub push: main -> origin/main
-Vercel production deployment: Ready
-Deployment URL: https://wiregene-meta-analysis-eoih56q6z-rhhyuns-projects.vercel.app
-Production alias: https://meta.wiregene.com
-meta.wiregene.com response: 401 Basic realm="Wiregene Meta" as expected
-Vercel log scan: no logs found in the post-deploy scan window
+GitHub/Vercel final verification: pending after this correction commit
 ```
 
 Regular Synology deploy/run command after GitHub push:
@@ -1188,7 +1182,7 @@ Implemented:
 - Saved-source action labels now say the selected saved record will be updated, and helper text states that the saved article count does not increase.
 - Saved-source rerun completion notice states that the same saved article record was updated and no duplicate was created.
 - AI model comparison now displays succeeded / failed / total counts.
-- At that time, Google Gemini OpenAI-compatible legacy shorthand `gemini-3.5` was mapped to `gemini-3.5-flash`; this was superseded on 2026-06-21 by `gemini-2.5-flash-lite` because of repeated 429/timeouts and cost concerns.
+- At that time, Google Gemini OpenAI-compatible legacy shorthand `gemini-3.5` was mapped to `gemini-3.5-flash`; this was superseded on 2026-06-21 by `gemini-3.1-flash-lite` because of repeated 429/timeouts and cost concerns.
 - Gemini 404 warnings now explain that the model id/Base URL should be checked instead of showing only a raw status code.
 - Version bumped:
   - `package.json` / `package-lock.json`: `0.1.53`

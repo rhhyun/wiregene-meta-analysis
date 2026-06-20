@@ -155,7 +155,7 @@ type AiMetaFullTextAnalysis = Partial<
 
 const primitiveCellSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
 const metaFullTextAnalysisSchemaVersion = "2026-06-18-multi-ai-v1";
-const recommendedGeminiReviewerModelName = "gemini-2.5-flash-lite";
+const recommendedGeminiReviewerModelName = "gemini-3.1-flash-lite";
 const aiReviewCriterionSchema = z
   .object({
     score: z.coerce.number().optional(),

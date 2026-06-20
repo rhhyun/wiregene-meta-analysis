@@ -127,7 +127,7 @@ export class MetaAiSettingsStorageError extends Error {
 }
 
 const defaultModelName = "gpt-5-nano";
-const recommendedGeminiReviewerModelName = "gemini-2.5-flash-lite";
+const recommendedGeminiReviewerModelName = "gemini-3.1-flash-lite";
 const legacyGeminiReviewerModels = new Set(["gemini-3.5", "gemini-3.5-flash"]);
 const encryptionPrefix = "aesgcm:v1:";
 const defaultStoragePath = ".data/meta/meta-ai-settings.json";

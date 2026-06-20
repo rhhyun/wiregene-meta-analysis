@@ -67,7 +67,7 @@ const sourceLabels: Record<MetaAiSettingsSummary["apiKeySource"], string> = {
   missing: "not configured",
 };
 
-const recommendedGeminiReviewerModelName = "gemini-2.5-flash-lite";
+const recommendedGeminiReviewerModelName = "gemini-3.1-flash-lite";
 
 function defaultReviewerSlots(settings: MetaAiSettingsSummary): MetaAiReviewerSlotSummary[] {
   return [
