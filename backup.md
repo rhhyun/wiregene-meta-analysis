@@ -1,3 +1,37 @@
+# 2026-06-20 replace OAuth start link flow with POST confirmation gate
+
+User issue:
+
+- User remained stuck on the Google `redirect_uri_mismatch` page.
+- A specialist sub-agent reviewed the OAuth structure and found that server-side preflight based on Google HTML/Location text is not reliable.
+- The sub-agent also found that simple links such as `/api/google-drive/oauth/start?go=1` still allowed users to leave the app and hit the Google error loop.
+
+Implemented:
+
+- Replaced `/api/google-drive/oauth/start` route structure:
+  - `GET /api/google-drive/oauth/start` never redirects to Google.
+  - `GET /api/google-drive/oauth/start?go=1` also never redirects to Google.
+  - `GET` only renders the Meta diagnostic/confirmation page.
+  - Google redirect is only created from `POST /api/google-drive/oauth/start`.
+- Added required confirmation gate:
+  - page shows redirect URI, redirect source, and masked Client ID.
+  - user must tick a checkbox confirming the exact redirect URI is registered in Google Cloud Authorized redirect URIs for the displayed Client ID.
+  - hidden nonce plus HttpOnly cookie must match before redirecting.
+- Kept Google authorization preflight as a secondary warning only, not as the primary safety mechanism.
+- Removed direct `<a href="?go=1">` style Google continuation links.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.72`
+  - UI label: `Ver 2.07 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed
+rg oauth/start?go=1 in src: 0 matches
+npm.cmd run lint: passed
+npm.cmd run build: passed
+```
+
 # 2026-06-20 force AI settings Google Drive button to diagnostic screen
 
 User issue:
