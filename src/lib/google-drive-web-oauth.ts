@@ -30,9 +30,28 @@ export type GoogleDriveOAuthTokenResult = {
   tokenType: string | null;
 };
 
+export type GoogleDriveOAuthRedirectUriDescription = {
+  redirectUri: string;
+  source: "GOOGLE_DRIVE_OAUTH_REDIRECT_URI" | "meta-production-default" | "request-origin";
+};
+
+export type GoogleDriveOAuthAuthorizationPreflight =
+  | { ok: true }
+  | {
+      ok: false;
+      code: string;
+      message: string;
+      status: number;
+      evidence: string;
+    };
+
 export function resolveGoogleDriveOAuthRedirectUri(requestUrl: string | URL) {
+  return describeGoogleDriveOAuthRedirectUri(requestUrl).redirectUri;
+}
+
+export function describeGoogleDriveOAuthRedirectUri(requestUrl: string | URL): GoogleDriveOAuthRedirectUriDescription {
   const configured = process.env.GOOGLE_DRIVE_OAUTH_REDIRECT_URI?.trim();
-  if (configured) return configured;
+  if (configured) return { redirectUri: configured, source: "GOOGLE_DRIVE_OAUTH_REDIRECT_URI" };
 
   const url = typeof requestUrl === "string" ? new URL(requestUrl) : requestUrl;
   const host = url.hostname.toLowerCase();
@@ -45,10 +64,10 @@ export function resolveGoogleDriveOAuthRedirectUri(requestUrl: string | URL) {
     host === "mata.wiregene.com" ||
     (process.env.VERCEL_ENV === "production" && explicitMode === "meta")
   ) {
-    return googleDriveOAuthProductionRedirectUri;
+    return { redirectUri: googleDriveOAuthProductionRedirectUri, source: "meta-production-default" };
   }
 
-  return `${url.origin}${googleDriveOAuthCallbackPath}`;
+  return { redirectUri: `${url.origin}${googleDriveOAuthCallbackPath}`, source: "request-origin" };
 }
 
 export function createGoogleDriveOAuthNonce() {
@@ -128,6 +147,54 @@ export function buildGoogleDriveOAuthAuthorizationUrl({
   url.searchParams.set("include_granted_scopes", "true");
   url.searchParams.set("state", state);
   return url;
+}
+
+export async function preflightGoogleDriveOAuthAuthorizationUrl(
+  authorizationUrl: URL,
+): Promise<GoogleDriveOAuthAuthorizationPreflight> {
+  try {
+    const response = await fetch(authorizationUrl, {
+      method: "GET",
+      redirect: "manual",
+      headers: {
+        accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "user-agent": "Wiregene-Meta-OAuth-Preflight/1.0",
+      },
+    });
+
+    const location = response.headers.get("location") ?? "";
+    const contentType = response.headers.get("content-type") ?? "";
+    const body = contentType.includes("text/html") || contentType.includes("text/plain")
+      ? await response.text().catch(() => "")
+      : "";
+    const evidence = normalizeOAuthEvidence(`${response.status} ${location} ${body}`);
+
+    if (/redirect_uri_mismatch/i.test(evidence)) {
+      return {
+        ok: false,
+        code: "redirect_uri_mismatch",
+        status: response.status,
+        message:
+          "Google rejected the OAuth authorization request before login because the redirect URI is not registered on this OAuth client.",
+        evidence: truncateEvidence(evidence),
+      };
+    }
+
+    if (/invalid_client/i.test(evidence)) {
+      return {
+        ok: false,
+        code: "invalid_client",
+        status: response.status,
+        message:
+          "Google rejected the OAuth authorization request because the configured client id is invalid or does not belong to an active Web OAuth client.",
+        evidence: truncateEvidence(evidence),
+      };
+    }
+
+    return { ok: true };
+  } catch {
+    return { ok: true };
+  }
 }
 
 export async function exchangeGoogleDriveOAuthCode({
@@ -237,4 +304,17 @@ function safeEqual(left: string, right: string) {
   const leftBuffer = Buffer.from(left);
   const rightBuffer = Buffer.from(right);
   return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function normalizeOAuthEvidence(value: string) {
+  return value
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function truncateEvidence(value: string) {
+  return value.length > 900 ? `${value.slice(0, 900)}...` : value;
 }

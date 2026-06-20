@@ -1,3 +1,39 @@
+# 2026-06-20 stop direct Google OAuth redirect mismatch screen
+
+User issue:
+
+- Clicking Google Drive OAuth still showed Google's Korean `400 redirect_uri_mismatch` page.
+- The app should not keep sending users into an external Google error page with no actionable app context.
+
+Investigation:
+
+- The connected Vercel app only exposed project `diabetic-foot-screening-wiregene-demo` with domains `dmfoot.wiregene.com` and related Vercel domains.
+- The `meta.wiregene.com` production project/env was not visible through the connected Vercel app, so the exact production `GOOGLE_DRIVE_CLIENT_ID` / `GOOGLE_DRIVE_OAUTH_REDIRECT_URI` could not be audited directly from MCP.
+- Therefore the app itself must expose the actual runtime OAuth values before redirecting to Google.
+
+Implemented:
+
+- Changed `/api/google-drive/oauth/start` flow:
+  - default `GET /start` now shows a Meta internal `Google Drive connection preflight` page instead of immediately redirecting to Google.
+  - the page displays exact redirect URI, redirect source, and masked Google Client ID.
+  - Google login happens only via `/api/google-drive/oauth/start?go=1`.
+- Added server-side Google authorization preflight before redirecting:
+  - if Google already returns `redirect_uri_mismatch` or `invalid_client`, Meta shows an internal diagnostic page and does not send the user to the Google error page.
+  - diagnostic page includes exact runtime redirect URI and masked client id.
+- Kept `/api/google-drive/oauth/start?diagnose=1` for direct diagnostic checks.
+- Updated `guide.md`.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.70`
+  - UI label: `Ver 2.05 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed
+npm.cmd run lint: passed
+npm.cmd run build: passed
+```
+
 # 2026-06-20 suppress Meta AI settings read failed OAuth details leak
 
 User issue:
