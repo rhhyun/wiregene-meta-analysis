@@ -1,3 +1,41 @@
+# 2026-06-20 clarify AI settings Google Drive and Synology storage status
+
+User issue:
+
+- User showed the AI evaluation settings screen after Google Drive had been connected.
+- The card still displayed a generic `Google Drive 연결 시작` button, so it was unclear whether Google Drive was connected, unavailable, or simply optional.
+- User also wanted the screen to explain that normal Meta work is saved to Synology by default.
+
+Implemented:
+
+- `src/lib/meta-ai-settings.ts`
+  - AI settings summary now includes `storageHealth`, `storageWarning`, `googleDriveAuthMode`, `synologyDownloadPrimary`, and `synologyDownloadPath`.
+  - Google Drive storage is distinguished as `google-drive-connected`, `google-drive-not-configured`, or `google-drive-unavailable`.
+  - Synology/local storage is distinguished as `synology-local` when `META_PROJECT_STORAGE_ROOT=download`.
+- `src/components/MetaAiSettingsPanel.tsx`
+  - Storage status card now shows a human-readable storage state instead of only `google-drive:meta-ai-settings.json`.
+  - Added a `기본 저장소` card explaining that Synology/local Docker stores project data in `/volume1/docker/meta/download/{project}`.
+  - Added a separate `Google Drive online storage` status card with clear states:
+    - `연결됨`
+    - `설정은 있으나 재연결 필요`
+    - `미설정`
+    - `현재 기본 작업은 Synology/local 저장소 사용`
+  - Google Drive button label now changes by state: reconnect, reconnect required, start connection, or configure connection.
+- `guide.md`
+  - Updated to Ver 2.11 and documented the new AI settings storage-status display.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.76`
+  - UI label: `Ver 2.11 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed
+npm.cmd run lint: passed
+git diff --check: passed
+npm.cmd run build: passed
+```
+
 # 2026-06-20 make Synology download the primary durable Meta store
 
 User issue:

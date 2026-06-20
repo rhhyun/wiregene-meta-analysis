@@ -35,6 +35,16 @@ export type MetaAiSettingsSummary = {
   modelReviewers: MetaAiReviewerSlotSummary[];
   storageBackend: "local-json" | "google-drive";
   storagePath: string;
+  storageHealth:
+    | "synology-local"
+    | "local-json"
+    | "google-drive-connected"
+    | "google-drive-not-configured"
+    | "google-drive-unavailable";
+  storageWarning: string | null;
+  googleDriveAuthMode: "oauth" | "service-account" | null;
+  synologyDownloadPrimary: boolean;
+  synologyDownloadPath: string;
   updatedAt: string | null;
   updatedBy: string | null;
 };
@@ -122,8 +132,16 @@ const defaultStoragePath = ".data/meta/meta-ai-settings.json";
 const defaultDriveFileName = "meta-ai-settings.json";
 
 export async function getMetaAiSettingsSummary(): Promise<MetaAiSettingsSummary> {
-  const settings = await readStoredMetaAiSettingsOrEmpty();
-  return toSummary(settings);
+  try {
+    const settings = await readStoredMetaAiSettings();
+    return toSummary(settings, { storageReadOk: true, storageWarning: null });
+  } catch (error) {
+    if (!isRecoverableGoogleDriveStorageError(error)) throw error;
+    return toSummary(emptySettings(), {
+      storageReadOk: false,
+      storageWarning: metaAiSettingsStorageWarning(error),
+    });
+  }
 }
 
 export async function updateMetaAiSettings(input: MetaAiSettingsUpdate): Promise<MetaAiSettingsSummary> {
@@ -355,7 +373,10 @@ async function moveCorruptGoogleDriveSettingsAside(fileName: string, raw: string
   }
 }
 
-function toSummary(settings: StoredMetaAiSettings): MetaAiSettingsSummary {
+function toSummary(
+  settings: StoredMetaAiSettings,
+  storageContext: { storageReadOk?: boolean; storageWarning?: string | null } = {},
+): MetaAiSettingsSummary {
   const savedKey = decryptSecret(settings.apiKeyEncrypted);
   const envKey = config.openaiApiKey.trim();
   const primaryKey = savedKey || envKey;
@@ -396,9 +417,43 @@ function toSummary(settings: StoredMetaAiSettings): MetaAiSettingsSummary {
     }),
     storageBackend: metaAiSettingsStorageBackend(),
     storagePath: metaAiSettingsStorageLocation(),
+    storageHealth: metaAiSettingsStorageHealth(storageContext.storageReadOk !== false),
+    storageWarning: storageContext.storageWarning ?? null,
+    googleDriveAuthMode: getGoogleDriveAuthMode(),
+    synologyDownloadPrimary: isSynologyDownloadPrimaryStorage(),
+    synologyDownloadPath: "/volume1/docker/meta/download",
     updatedAt: settings.updatedAt,
     updatedBy: settings.updatedBy,
   };
+}
+
+function metaAiSettingsStorageHealth(storageReadOk: boolean): MetaAiSettingsSummary["storageHealth"] {
+  if (metaAiSettingsStorageBackend() === "google-drive") {
+    if (!getGoogleDriveAuthMode()) return "google-drive-not-configured";
+    return storageReadOk ? "google-drive-connected" : "google-drive-unavailable";
+  }
+
+  return isSynologyDownloadPrimaryStorage() ? "synology-local" : "local-json";
+}
+
+function metaAiSettingsStorageWarning(error: unknown) {
+  const details = metaAiSettingsErrorDetails(error) as {
+    code?: unknown;
+    message?: unknown;
+    help?: unknown;
+  };
+  return [details.code, details.message, details.help]
+    .filter((value): value is string => typeof value === "string" && Boolean(value.trim()))
+    .join("; ");
+}
+
+function isSynologyDownloadPrimaryStorage() {
+  const configured = (process.env.META_PROJECT_STORAGE_ROOT ?? "")
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/^\.\//, "")
+    .replace(/\/+$/g, "");
+  return configured === "download" || configured === "/app/download";
 }
 
 function emptySettings(): StoredMetaAiSettings {

@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, CheckCircle2, Cloud, ExternalLink, KeyRound, Loader2, Save, Trash2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, Cloud, ExternalLink, HardDrive, KeyRound, Loader2, Save, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { apiErrorMessage } from "@/components/grant-error-message";
 
@@ -13,6 +13,16 @@ type MetaAiSettingsSummary = {
   modelReviewers: MetaAiReviewerSlotSummary[];
   storageBackend: "local-json" | "google-drive";
   storagePath: string;
+  storageHealth:
+    | "synology-local"
+    | "local-json"
+    | "google-drive-connected"
+    | "google-drive-not-configured"
+    | "google-drive-unavailable";
+  storageWarning: string | null;
+  googleDriveAuthMode: "oauth" | "service-account" | null;
+  synologyDownloadPrimary: boolean;
+  synologyDownloadPath: string;
   updatedAt: string | null;
   updatedBy: string | null;
 };
@@ -205,29 +215,60 @@ export function MetaAiSettingsPanel() {
             <StatusBox label="Source" value={sourceLabels[settings?.apiKeySource ?? "missing"]} />
             <StatusBox
               label="Storage"
-              value={settings ? `${settings.storageBackend}: ${settings.storagePath}` : "not loaded"}
+              value={settings ? storageHealthLabel(settings) : "not loaded"}
+              detail={settings?.storagePath}
             />
             <StatusBox label="Updated" value={settings?.updatedAt ? new Date(settings.updatedAt).toLocaleString("ko-KR") : "not saved"} />
           </div>
 
-          <section className="rounded-md border border-sky-200 bg-sky-50 p-4">
+          <section className="rounded-md border border-emerald-200 bg-emerald-50 p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-emerald-950">기본 저장소</p>
+                <p className="mt-1 text-sm leading-6 text-zinc-700">
+                  Synology/local Docker에서는 연구별 full-text 원문, AI 분석 history, reviewer 검증, extraction 결과를{" "}
+                  <code className="rounded bg-white px-1.5 py-0.5 text-xs font-semibold text-emerald-950">
+                    {settings?.synologyDownloadPath ?? "/volume1/docker/meta/download"}/{"{project}"}
+                  </code>
+                  에 저장합니다. Google Drive는 온라인 공유와 백업용 선택 저장소입니다.
+                </p>
+              </div>
+              <span
+                aria-label="Synology storage status"
+                className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md border border-emerald-200 bg-white px-3 text-sm font-semibold text-emerald-900"
+              >
+                <HardDrive className="h-4 w-4" aria-hidden />
+                {settings?.synologyDownloadPrimary ? "Synology 저장 사용 중" : "Synology 저장 가능"}
+              </span>
+            </div>
+          </section>
+
+          <section className={`rounded-md border p-4 ${googleDrivePanelClass(settings?.storageHealth)}`}>
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <p className="text-sm font-semibold text-sky-950">Google Drive online storage</p>
-                <p className="mt-1 text-sm leading-6 text-zinc-700">
-                  Web OAuth client로 Google Drive refresh token을 새로 발급하고 검증합니다. Google Cloud redirect URI는
-                  <code className="mx-1 rounded bg-white px-1.5 py-0.5 text-xs font-semibold text-sky-950">
-                    https://meta.wiregene.com/api/google-drive/oauth/callback
-                  </code>
-                  로 등록되어 있어야 합니다.
+                <p className="mt-1 text-sm font-semibold leading-6 text-zinc-900">
+                  현재 상태: {googleDriveStatusLabel(settings)}
                 </p>
+                <p className="mt-1 text-sm leading-6 text-zinc-700">
+                  AI 설정 저장소:{" "}
+                  <code className="rounded bg-white px-1.5 py-0.5 text-xs font-semibold text-sky-950">
+                    {settings?.storagePath ?? "not loaded"}
+                  </code>
+                  {settings?.googleDriveAuthMode ? ` · 인증 방식: ${settings.googleDriveAuthMode}` : ""}
+                </p>
+                {settings?.storageWarning ? (
+                  <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs font-semibold leading-5 text-amber-950">
+                    {settings.storageWarning}
+                  </p>
+                ) : null}
               </div>
               <a
                 href="/api/google-drive/oauth/start?diagnose=1"
                 className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md bg-sky-700 px-4 text-sm font-semibold text-white transition hover:bg-sky-800"
               >
                 <Cloud className="h-4 w-4" aria-hidden />
-                Google Drive 연결 시작
+                {googleDriveButtonLabel(settings)}
                 <ExternalLink className="h-4 w-4" aria-hidden />
               </a>
             </div>
@@ -463,13 +504,44 @@ export function MetaAiSettingsPanel() {
   );
 }
 
-function StatusBox({ label, value }: { label: string; value: string }) {
+function StatusBox({ label, value, detail }: { label: string; value: string; detail?: string | null }) {
   return (
     <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3">
       <p className="text-xs font-semibold uppercase text-zinc-500">{label}</p>
       <p className="mt-1 break-words text-sm font-semibold leading-6 text-zinc-950">{value}</p>
+      {detail ? <p className="mt-1 break-words text-xs leading-5 text-zinc-500">{detail}</p> : null}
     </div>
   );
+}
+
+function storageHealthLabel(settings: MetaAiSettingsSummary) {
+  if (settings.storageHealth === "synology-local") return "Synology/local download";
+  if (settings.storageHealth === "local-json") return "local JSON";
+  if (settings.storageHealth === "google-drive-connected") return "Google Drive connected";
+  if (settings.storageHealth === "google-drive-unavailable") return "Google Drive needs reconnect";
+  return "Google Drive not configured";
+}
+
+function googleDriveStatusLabel(settings: MetaAiSettingsSummary | null) {
+  if (!settings) return "확인 중";
+  if (settings.storageHealth === "google-drive-connected") return "연결됨";
+  if (settings.storageHealth === "google-drive-unavailable") return "설정은 있으나 재연결 필요";
+  if (settings.storageHealth === "google-drive-not-configured") return "미설정";
+  return "현재 기본 작업은 Synology/local 저장소 사용";
+}
+
+function googleDriveButtonLabel(settings: MetaAiSettingsSummary | null) {
+  if (!settings) return "Google Drive 연결 확인";
+  if (settings.storageHealth === "google-drive-connected") return "Google Drive 다시 연결";
+  if (settings.storageHealth === "google-drive-unavailable") return "Google Drive 재연결";
+  if (settings.storageHealth === "google-drive-not-configured") return "Google Drive 연결 시작";
+  return "Google Drive 연결 설정";
+}
+
+function googleDrivePanelClass(storageHealth: MetaAiSettingsSummary["storageHealth"] | undefined) {
+  if (storageHealth === "google-drive-connected") return "border-emerald-200 bg-emerald-50";
+  if (storageHealth === "google-drive-unavailable") return "border-amber-200 bg-amber-50";
+  return "border-sky-200 bg-sky-50";
 }
 
 function providerModelHint(slot: ReviewerSlotForm) {

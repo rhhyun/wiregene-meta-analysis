@@ -1,6 +1,6 @@
 # Wiregene Meta 사용 가이드
 
-문서 버전: Ver 2.10
+문서 버전: Ver 2.11
 최종 업데이트: 2026-06-20  
 적용 사이트: `https://meta.wiregene.com`  
 소스 저장소: `rhhyun/wiregene-meta-analysis`
@@ -177,6 +177,8 @@ Ver 2.10부터 Synology의 표준 영구 저장 폴더는 `/volume1/docker/meta/
 기존 `/volume1/docker/meta/data`에 저장된 자료가 있으면 Synology 시작 스크립트가 새 위치에 파일이 없을 때만 `/volume1/docker/meta/download`로 복사합니다. 기존 파일은 삭제하지 않습니다.
 
 Synology에서도 Google Drive 저장을 쓰려면 `META_ALLOW_GOOGLE_DRIVE_STORAGE=true`를 명시적으로 켜야 합니다. 다만 Google Drive OAuth가 실패해도 Synology 작업은 `/volume1/docker/meta/download` local storage로 계속 진행하는 것이 기본 정책입니다.
+
+Ver 2.11부터 `AI 평가 설정` 화면은 Synology 기본 저장소와 Google Drive 연결 상태를 분리해서 표시합니다. `기본 저장소` 박스는 Synology/local Docker에서 실제 연구 데이터가 `/volume1/docker/meta/download/{project}`에 저장된다는 뜻입니다. `Google Drive online storage` 박스는 Google Drive가 온라인 공유/백업용으로 연결되어 있는지 보여줍니다. 상태가 `연결됨`이면 인증 정보가 구성되어 AI 설정 저장소를 읽을 수 있는 상태이고, `설정은 있으나 재연결 필요`이면 refresh token 또는 권한 문제로 다시 연결해야 합니다. 버튼 문구도 상태에 따라 `Google Drive 다시 연결`, `Google Drive 재연결`, `Google Drive 연결 시작`, `Google Drive 연결 설정`으로 바뀝니다.
 
 ### Browser fallback
 
