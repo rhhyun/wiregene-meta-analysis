@@ -1,6 +1,6 @@
 # Wiregene Meta 사용 가이드
 
-문서 버전: Ver 2.28
+문서 버전: Ver 2.29
 최종 업데이트: 2026-06-21
 적용 사이트: `https://meta.wiregene.com`  
 소스 저장소: `rhhyun/wiregene-meta-analysis`
@@ -81,6 +81,8 @@ Ver 2.26부터 `Saved AI review article list` 바로 위에 `AI model reviewers 
 Ver 2.27부터 `Article list`에는 각 논문 행마다 `full-text saved` 또는 `full-text missing` 배지가 항상 표시됩니다. 행을 열지 않아도 어떤 논문이 바로 AI review 가능한지 알 수 있습니다. 목록 헤더에는 현재 보이는 논문 중 full-text 저장 완료 수와 미저장 수가 함께 표시됩니다. 선택한 논문 중 full-text가 없는 항목이 있으면 `AI model reviewers for selected articles` 패널 안에 논문 번호가 바로 표시되며, `Run AI review on selected`를 눌렀을 때도 건너뛴 논문 번호가 오류/경고 문구에 남습니다. 따라서 위아래로 이동하면서 어느 PDF/Word를 다시 업로드해야 하는지 찾지 않아도 됩니다.
 
 ### AI Model Reviewer Comparison
+
+Ver 2.29부터 `Run selected AI review (x/y)`의 숫자는 선택 논문 AI review run의 실제 진행률입니다. `y`는 Article list에서 선택한 전체 논문 수이고, `x`는 현재 선택 run에서 완료된 논문 수입니다. 버튼을 누르는 순간 선택된 논문 ID와 full-text source가 저장된 논문 ID를 고정한 뒤 그 run의 batch queue만 세므로, 분석이 끝나는 논문마다 `1/y`, `2/y`처럼 증가합니다. full-text source가 없는 논문은 분모에는 남아 연구자가 빠진 논문을 인지할 수 있고, 분석 queue에서는 source가 저장된 논문만 순차 실행됩니다. run 전에는 현재 선택 run이 아직 시작되지 않았으므로 `0/y`에서 시작합니다. 기존처럼 AI-ready saved source 수를 분자로 쓰지 않습니다.
 
 Ver 2.28부터 Screening의 반복 작업은 `Saved AI review article list` 안의 compact workbench에서 진행합니다. full-text PDF/Word 선택, `Analyze full text`, 기존 record 자동 매칭, Excel source sheet 선택, 선택 논문 AI review 실행 버튼이 같은 화면 안에 모여 있습니다. 위쪽의 `AI reviewer setup / source status`와 `Advanced full-text upload fields`, `Full-text missing`, `Sheet progress`는 평소에는 접힌 상태로 두고 필요할 때만 열어 확인합니다. 따라서 연구자는 full-text 목록을 보면서 바로 업로드, AI reviewer 선택, 선택 논문 재분석, source 저장을 이어서 진행하면 됩니다.
 

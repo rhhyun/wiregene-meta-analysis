@@ -985,6 +985,12 @@ function isLegacyGeminiReviewerModel(modelName: string) {
   return normalized === "gemini-3.5" || normalized === "gemini-3.5-flash";
 }
 
+function sameStringMembers(left: readonly string[], right: readonly string[]) {
+  if (left.length !== right.length) return false;
+  const rightSet = new Set(right);
+  return left.every((item) => rightSet.has(item));
+}
+
 export function MetaFullTextAssistant({ extractionColumns, focus, projectId, worksheetOptions = [] }: MetaFullTextAssistantProps) {
   const analyzingRef = useRef(false);
   const batchWakeLockRef = useRef<WakeLockSentinelLike | null>(null);
@@ -1034,6 +1040,10 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("all");
   const [historySortKey, setHistorySortKey] = useState<HistorySortKey>("number");
   const [historySortDirection, setHistorySortDirection] = useState<HistorySortDirection>("asc");
+  const [selectedAiReviewRun, setSelectedAiReviewRun] = useState<{
+    selectedIds: string[];
+    sourceSavedIds: string[];
+  } | null>(null);
 
   const reviewerNamesReady = Boolean(reviewerOneName.trim()) && Boolean(reviewerTwoName.trim());
   const reviewerSettingsReady = reviewerNamesReady && reviewerNamesSaved;
@@ -1248,6 +1258,47 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
     () => compactArticleNumberList(selectedLegacyArticleNumbersForAction),
     [selectedLegacyArticleNumbersForAction],
   );
+  const selectedHistoryIdsForAction = useMemo(
+    () => selectedHistoryItemsForAction.map((item) => item.id),
+    [selectedHistoryItemsForAction],
+  );
+  const selectedSourceSavedHistoryIdsForAction = useMemo(
+    () => selectedSourceSavedHistoryItemsForAction.map((item) => item.id),
+    [selectedSourceSavedHistoryItemsForAction],
+  );
+  const selectedAiReviewRunMatchesCurrentSelection = selectedAiReviewRun
+    ? sameStringMembers(selectedAiReviewRun.selectedIds, selectedHistoryIdsForAction)
+    : false;
+  const selectedAiReviewRunIsDisplayed =
+    Boolean(selectedAiReviewRun) && (isReanalyzingSavedSource || selectedAiReviewRunMatchesCurrentSelection);
+  const selectedArticleAiReviewTotalCount = selectedAiReviewRunIsDisplayed
+    ? (selectedAiReviewRun?.selectedIds.length ?? 0)
+    : selectedHistoryItemsForAction.length;
+  const selectedArticleAiReviewSourceIdSet = useMemo(
+    () =>
+      new Set(
+        selectedAiReviewRunIsDisplayed
+          ? (selectedAiReviewRun?.sourceSavedIds ?? [])
+          : selectedSourceSavedHistoryIdsForAction,
+      ),
+    [selectedAiReviewRun, selectedAiReviewRunIsDisplayed, selectedSourceSavedHistoryIdsForAction],
+  );
+  const selectedSavedSourceRunResults = useMemo(
+    () =>
+      batchResults.filter(
+        (item) => item.savedSourceRerun && Boolean(item.savedRecordId) && selectedArticleAiReviewSourceIdSet.has(item.savedRecordId ?? ""),
+      ),
+    [batchResults, selectedArticleAiReviewSourceIdSet],
+  );
+  const selectedSavedSourceRunFinishedCount = useMemo(
+    () =>
+      selectedSavedSourceRunResults.filter(
+        (item) => item.status === "saved" || item.status === "analyzed_not_saved" || item.status === "failed",
+      ).length,
+    [selectedSavedSourceRunResults],
+  );
+  const selectedArticleAiReviewCompletedCount = selectedAiReviewRunIsDisplayed ? selectedSavedSourceRunFinishedCount : 0;
+  const selectedArticleAiReviewProgressLabel = `${selectedArticleAiReviewCompletedCount.toLocaleString("ko-KR")}/${selectedArticleAiReviewTotalCount.toLocaleString("ko-KR")}`;
   const visibleSourceSavedHistoryCount = useMemo(
     () => sortedHistoryItems.filter((item) => item.sourceFileSaved).length,
     [sortedHistoryItems],
@@ -2003,6 +2054,10 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
     setAnalysis(null);
     setCurrentHistoryId(null);
     resetVerificationState();
+    setSelectedAiReviewRun({
+      selectedIds: selectedHistoryItemsForAction.map((item) => item.id),
+      sourceSavedIds: queuedItems.map((item) => item.id),
+    });
     setBatchResults(
       queuedItems.map((item) => ({
         id: `saved-${item.id}`,
@@ -3211,7 +3266,8 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
               <p className="text-xs font-semibold leading-5 text-zinc-700">
                 Selected articles: {selectedHistoryItemsForAction.length.toLocaleString("ko-KR")} · AI-ready saved source{" "}
                 {selectedSourceSavedHistoryItemsForAction.length.toLocaleString("ko-KR")} · full-text missing{" "}
-                {selectedLegacyHistoryItemsForAction.length.toLocaleString("ko-KR")} · reviewers: {selectedAiReviewerLabel}
+                {selectedLegacyHistoryItemsForAction.length.toLocaleString("ko-KR")} · completed {selectedArticleAiReviewProgressLabel} · reviewers:{" "}
+                {selectedAiReviewerLabel}
               </p>
               {selectedLegacyArticleNumberText ? (
                 <p className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold leading-5 text-amber-950">
@@ -3235,8 +3291,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                 className="inline-flex h-8 items-center justify-center gap-2 rounded-md bg-emerald-700 px-3 text-xs font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
               >
                 {isReanalyzingSavedSource || isAnalyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden />}
-                Run AI review on selected ({selectedSourceSavedHistoryItemsForAction.length.toLocaleString("ko-KR")}/
-                {selectedHistoryItemsForAction.length.toLocaleString("ko-KR")})
+                Run AI review on selected ({selectedArticleAiReviewProgressLabel})
               </button>
             </div>
           </div>
@@ -3392,8 +3447,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                       ) : (
                         <RefreshCw className="h-3.5 w-3.5" aria-hidden />
                       )}
-                      Run selected AI review ({selectedSourceSavedHistoryItemsForAction.length.toLocaleString("ko-KR")}/
-                      {selectedHistoryItemsForAction.length.toLocaleString("ko-KR")})
+                      Run selected AI review ({selectedArticleAiReviewProgressLabel})
                     </button>
                     <button
                       type="button"

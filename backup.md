@@ -1,3 +1,45 @@
+# 2026-06-21 Selected AI review progress numerator fix
+
+User issue:
+
+- `Run selected AI review (32/32)` was displayed even before or during the selected article AI review run.
+- The denominator should be all selected articles, and the numerator should be how many selected articles have completed in the current AI review run.
+- The old UI used `AI-ready saved source count / selected article count`, so it stayed `32/32` and did not change as analysis progressed.
+
+Implemented:
+
+- `src/components/MetaFullTextAssistant.tsx`
+  - Added selected-run progress state that locks the selected article IDs and saved-source IDs at the moment `Run selected AI review` starts.
+  - The progress numerator is derived only from that run's saved-source batch queue, so it increments while the queue runs instead of staying fixed.
+  - `Run selected AI review (x/y)` now uses:
+    - `y`: all selected Article list records.
+    - `x`: finished records in the current selected-source AI review run.
+  - A selected-source run starts at `0/y`, increments as each record becomes `saved`, `analyzed_not_saved`, or `failed`, and no longer uses AI-ready source count as the numerator.
+  - `Selected articles` summary now also shows `completed x/y`.
+- `guide.md`
+  - Added Ver 2.29 instructions defining the progress numerator/denominator.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.94`
+  - UI label: `Ver 2.29 | 2026 copyright by JK Hyun`
+
+Verification completed:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed
+git diff --check: passed
+npm.cmd run lint: passed
+npm.cmd run build: passed
+next start --hostname 127.0.0.1 --port 3215: HTTP 200
+GitHub push to main: pending in this handoff section until commit/push completes
+Vercel production readiness and meta.wiregene.com auth check: pending in this handoff section until deployment completes
+```
+
+Regular Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 # 2026-06-21 Compact screening workbench and editable AI guidance
 
 User issue:
