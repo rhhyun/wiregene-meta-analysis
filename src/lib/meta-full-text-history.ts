@@ -7,6 +7,7 @@ import {
   writeTextFileToGoogleDrive,
 } from "./google-drive-storage";
 import type { MetaFullTextAnalysis } from "./meta-full-text-analysis";
+import { normalizeMetaFullTextResearcherGuidance } from "./meta-full-text-prompt-guidance";
 import {
   deleteMetaFullTextSourceFile,
   normalizeMetaFullTextSourceFile,
@@ -76,6 +77,7 @@ export type MetaFullTextHistorySummary = {
   savedAt: string;
   analyzedAt: string;
   titleGuess: string | null;
+  displayTitle: string | null;
   firstAuthor: string | null;
   decision: MetaFullTextAnalysis["eligibility"]["decision"];
   confidence: number;
@@ -563,6 +565,7 @@ function toSummary(record: MetaFullTextHistoryRecord): MetaFullTextHistorySummar
     savedAt: record.savedAt,
     analyzedAt: record.analysis.analyzedAt,
     titleGuess: record.analysis.titleGuess,
+    displayTitle: inferDisplayTitle(record),
     firstAuthor: inferFirstAuthor(record),
     decision: record.analysis.eligibility.decision,
     confidence: record.analysis.eligibility.confidence,
@@ -601,6 +604,46 @@ export function summarizeMetaFullTextHistoryRecord(record: MetaFullTextHistoryRe
 
 function inferFirstAuthor(record: MetaFullTextHistoryRecord) {
   return firstAuthorFromReferenceRecord(record.referenceRecord) ?? firstAuthorFromFileName(record.fileName);
+}
+
+function inferDisplayTitle(record: MetaFullTextHistoryRecord) {
+  return cleanTitleCandidate(record.analysis.titleGuess) ?? titleFromReferenceRecord(record.referenceRecord);
+}
+
+function titleFromReferenceRecord(value: string | null) {
+  const lines = (value ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !/^Excel source sheet: .+; review mode: .+$/i.test(line));
+
+  for (const line of lines) {
+    const labelledTitle = line.match(/^(?:title|article\s*title)\s*[:=]\s*(.+)$/i);
+    if (labelledTitle?.[1]) {
+      const candidate = cleanTitleCandidate(labelledTitle[1]);
+      if (candidate) return candidate;
+    }
+
+    const cells = splitReferenceRowCells(line);
+    const candidates = cells
+      .map(cleanTitleCandidate)
+      .filter((candidate): candidate is string => Boolean(candidate))
+      .sort((left, right) => right.length - left.length);
+    if (candidates[0]) return candidates[0];
+  }
+
+  return null;
+}
+
+function cleanTitleCandidate(value: string | null | undefined) {
+  const candidate = (value ?? "")
+    .replace(/\s+/g, " ")
+    .replace(/^["'`]+|["'`]+$/g, "")
+    .trim();
+  if (candidate.length < 18) return null;
+  if (/^(?:doi|pmid|pmcid|abstract|author|first\s*author|year)\b/i.test(candidate)) return null;
+  if (/^(?:19|20)\d{2}$/.test(candidate)) return null;
+  if (/^https?:\/\//i.test(candidate)) return null;
+  return candidate.slice(0, 220);
 }
 
 function firstAuthorFromReferenceRecord(value: string | null) {
@@ -851,6 +894,7 @@ function mergeFullTextAnalyses(current: MetaFullTextAnalysis, selected: MetaFull
       ...current,
       analyzedAt: new Date().toISOString(),
       aiWarning: selected.aiWarning ?? current.aiWarning,
+      researcherGuidance: selected.researcherGuidance ?? current.researcherGuidance ?? null,
       modelReviews: mergedReviews,
       extraction: {
         ...current.extraction,
@@ -868,6 +912,7 @@ function mergeFullTextAnalyses(current: MetaFullTextAnalysis, selected: MetaFull
     ...selected,
     analyzedAt: new Date().toISOString(),
     aiWarning: selected.aiWarning ?? current.aiWarning,
+    researcherGuidance: selected.researcherGuidance ?? current.researcherGuidance ?? null,
     modelReviews: mergedReviews,
     nextActions: Array.from(new Set([...selected.nextActions, ...current.nextActions].filter(Boolean))).slice(0, 8),
     extraction: {
@@ -975,10 +1020,14 @@ function findFuzzyTitleDuplicate(title: string, records: MetaFullTextHistoryReco
 }
 
 function normalizeStoredAnalysis(analysis: Partial<MetaFullTextAnalysis>): MetaFullTextAnalysis {
+  const rawResearcherGuidance = typeof analysis.researcherGuidance === "string" ? analysis.researcherGuidance : "";
   return {
     ...(analysis as MetaFullTextAnalysis),
     analysisSchemaVersion: cleanString(analysis.analysisSchemaVersion) || "legacy",
     sourceFileSha256: cleanString(analysis.sourceFileSha256),
+    researcherGuidance: rawResearcherGuidance.trim()
+      ? normalizeMetaFullTextResearcherGuidance(rawResearcherGuidance)
+      : null,
     modelReviews: Array.isArray(analysis.modelReviews) ? analysis.modelReviews : [],
   };
 }

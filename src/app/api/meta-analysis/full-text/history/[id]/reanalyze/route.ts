@@ -10,6 +10,7 @@ import {
   replaceMetaFullTextHistoryAnalysis,
 } from "@/lib/meta-full-text-history";
 import { readVerifiedMetaFullTextSourceFile } from "@/lib/meta-full-text-source-files";
+import { normalizeMetaFullTextResearcherGuidance } from "@/lib/meta-full-text-prompt-guidance";
 import { cleanMetaProjectId } from "@/lib/meta-project-scope";
 import { orchestralPainProject } from "@/lib/meta-projects";
 
@@ -24,6 +25,7 @@ type RouteContext = {
 type ReanalyzeRequest = {
   reviewerIds: string[];
   projectId: string | null;
+  researcherGuidance: string | null;
 };
 
 export async function POST(request: Request, context: RouteContext) {
@@ -57,6 +59,7 @@ export async function POST(request: Request, context: RouteContext) {
         ? record.analysis.extraction.columns
         : orchestralPainProject.extractionColumns,
       reviewerIds: reanalyzeRequest.reviewerIds,
+      researcherGuidance: reanalyzeRequest.researcherGuidance,
     });
     const nextAnalysis = reanalyzeRequest.reviewerIds.length
       ? mergeSelectedModelReviewsIntoPrimary(record.analysis, analysis)
@@ -88,11 +91,16 @@ export async function POST(request: Request, context: RouteContext) {
 async function parseReanalyzeRequest(request: Request): Promise<ReanalyzeRequest> {
   const urlProjectId = cleanMetaProjectId(new URL(request.url).searchParams.get("projectId"));
   const contentType = request.headers.get("content-type") ?? "";
-  if (!contentType.toLowerCase().includes("application/json")) return { reviewerIds: [], projectId: urlProjectId || null };
+  if (!contentType.toLowerCase().includes("application/json")) {
+    return { reviewerIds: [], projectId: urlProjectId || null, researcherGuidance: null };
+  }
   const payload = (await request.json().catch(() => ({}))) as Record<string, unknown>;
   return {
     reviewerIds: normalizeReviewerIds(payload.reviewerIds),
     projectId: cleanMetaProjectId(payload.projectId) || urlProjectId || null,
+    researcherGuidance: normalizeMetaFullTextResearcherGuidance(
+      typeof payload.researcherGuidance === "string" ? payload.researcherGuidance : "",
+    ),
   };
 }
 

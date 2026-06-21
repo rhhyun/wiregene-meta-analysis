@@ -6,6 +6,7 @@ import {
   resolveMetaAiReviewerConfigs,
   type MetaAiReviewerConfig,
 } from "./meta-ai-settings";
+import { normalizeMetaFullTextResearcherGuidance } from "./meta-full-text-prompt-guidance";
 import { extractPdfTextWithPdfParse } from "./pdf-text";
 import { extractWordTextWithWordExtractor } from "./word-text";
 
@@ -89,6 +90,7 @@ export type MetaFullTextAnalysis = {
   aiConfigSource: "saved" | "environment" | "missing" | null;
   aiWarning: string | null;
   referenceRecord: string | null;
+  researcherGuidance: string | null;
   titleGuess: string | null;
   eligibility: {
     decision: MetaFullTextDecision;
@@ -136,6 +138,7 @@ export type AnalyzeMetaFullTextInput = {
   referenceRecord?: string | null;
   extractionColumns: string[];
   reviewerIds?: string[] | null;
+  researcherGuidance?: string | null;
 };
 
 type AiMetaFullTextReviewEvaluation = Partial<{
@@ -730,6 +733,7 @@ export async function analyzeMetaFullTextUpload(input: AnalyzeMetaFullTextInput)
     fileName: input.fileName,
     fileType,
     referenceRecord: input.referenceRecord ?? null,
+    researcherGuidance: input.researcherGuidance ?? null,
     text,
     analysisText,
     sourceFileSha256,
@@ -775,6 +779,7 @@ export async function analyzeMetaFullTextUpload(input: AnalyzeMetaFullTextInput)
       extractionColumns: input.extractionColumns,
       fallback,
       reviewer,
+      researcherGuidance: input.researcherGuidance ?? null,
     });
     modelReviews.push(createModelReviewSummary(reviewer, ai.analysis, ai.warning, fallback));
     if (ai.analysis && !primaryAi) primaryAi = { analysis: ai.analysis, reviewer };
@@ -785,6 +790,7 @@ export async function analyzeMetaFullTextUpload(input: AnalyzeMetaFullTextInput)
     return withAiWarning(
       {
         ...fallback,
+        researcherGuidance: normalizeMetaFullTextResearcherGuidance(input.researcherGuidance),
         modelReviews,
       },
       warnings || "AI model reviewers did not return a valid structured result, so fallback rules were used.",
@@ -821,6 +827,7 @@ export async function analyzeMetaFullTextUpload(input: AnalyzeMetaFullTextInput)
     model: primaryAi.reviewer.modelName,
     aiConfigSource: primaryAi.reviewer.apiKeySource,
     aiWarning: null,
+    researcherGuidance: normalizeMetaFullTextResearcherGuidance(input.researcherGuidance),
     modelReviews,
   });
   return {
@@ -970,6 +977,7 @@ function fallbackAnalyzeFullText({
   fileName,
   fileType,
   referenceRecord,
+  researcherGuidance,
   text,
   analysisText,
   sourceFileSha256,
@@ -979,6 +987,7 @@ function fallbackAnalyzeFullText({
   fileName: string;
   fileType: MetaFullTextFileType;
   referenceRecord: string | null;
+  researcherGuidance: string | null;
   text: string;
   analysisText: string;
   sourceFileSha256: string;
@@ -1020,6 +1029,7 @@ function fallbackAnalyzeFullText({
     aiConfigSource: null,
     aiWarning: null,
     referenceRecord,
+    researcherGuidance: normalizeMetaFullTextResearcherGuidance(researcherGuidance),
     titleGuess: guessTitle(analysisText, referenceRecord),
     eligibility: {
       decision,
@@ -1103,6 +1113,7 @@ async function analyzeWithAiReviewer({
   extractionColumns,
   fallback,
   reviewer,
+  researcherGuidance,
 }: {
   fileName: string;
   fileType: MetaFullTextFileType;
@@ -1111,6 +1122,7 @@ async function analyzeWithAiReviewer({
   extractionColumns: string[];
   fallback: MetaFullTextAnalysis;
   reviewer: MetaAiReviewerConfig;
+  researcherGuidance: string | null;
 }): Promise<{ analysis: AiMetaFullTextAnalysis | null; warning: string | null }> {
   const openai = new OpenAI({
     apiKey: reviewer.apiKey,
@@ -1119,33 +1131,14 @@ async function analyzeWithAiReviewer({
     timeout: 45_000,
   });
   try {
+    const guidance = normalizeMetaFullTextResearcherGuidance(researcherGuidance);
     const prompt = `You are a meticulous systematic-review and meta-analysis extraction assistant.
 
 Task:
 Analyze the uploaded full-text article for a systematic review/meta-analysis on instrument-imposed postural asymmetry and region/laterality-specific playing-related musculoskeletal pain (PRMD) in instrumental/orchestral musicians.
 
 Important rules:
-- Do not invent values. Use null or an empty string when a value is not explicitly supported.
-- Eligibility is only a draft for human verification.
-- Prefer quantitative inclusion only when original observational data, instrument/instrument-group data, region-specific pain outcomes, and extractable denominator/numerator or prevalence are present.
-- Exclude RCTs, treatment/intervention/effect studies, case reports, reviews, conference-only records, non-English full text, wrong population, wrong outcome, and studies without extractable denominator-based pain outcomes.
-- Extract numbers exactly as reported. If only percent is reported without denominator, put a note instead of fabricating n.
-- Actively extract study-level characteristics that are usually in title page, abstract, Methods, Table 1, participant/general characteristics tables, affiliations, Results tables, figures, and supplements.
-- Always look for and fill first_author, year, country, design, sample_size_total, sample_size_analyzed, population_source, professional_status, mean_age, female_percent, playing_hours, years_experience, instrument_group_reported, and specific_instrument when the article reports them.
-- Derive country from study setting, recruitment site, sample description, or author affiliation only when no explicit study country is reported; note the source in fieldEvidence.
-- Search tables/figures for instrument-specific denominators, body-region pain counts/percentages, recall window, and PRMD/pain definitions before marking these cells missing.
-- For every non-empty extracted numeric cell, provide cell-level evidence with field name, value, short exact excerpt, and page/table/figure/supplement hint when available.
-- For every non-empty key descriptive cell, especially first_author, country, sample_size_total, mean_age, female_percent, instrument_group_reported, and specific_instrument, provide fieldEvidence when the text/table/affiliation supports it.
-- Do not fill instrument group or asymmetry mapping from background-only mentions; use actual sample/group information only.
-- Never infer left/right laterality from instrument playing side. Fill left/right cells only when the article explicitly reports left/right outcomes.
-- If an article is treatment/intervention/RCT/effect-focused, do not mark it quantitative unless independent baseline observational prevalence with explicit denominator/numerator is clearly extractable.
-- If a numeric cell lacks source evidence, leave the cell empty or mark it needs review instead of fabricating a value.
-- For risk-of-bias fields, extract only article-supported facts needed for observational-study RoB judgment: sampling/recruitment, measurement/outcome definition, confounding/adjustment, missing data, selective reporting, response rate, funding, and conflict-of-interest statements.
-- For publication-bias fields, collect only study-level inputs that later funnel/small-study-effect checks need: outcome group, effect size/prevalence input, standard error or data needed to compute it, and whether the row is eligible for funnel/small-study assessment. Do not claim publication bias from a single article.
-- Use rob_supporting_quote and rob_page_table for short evidence excerpts or page/table/supplement hints. If the full text lacks evidence, leave the field empty and list it in manual_required_fields.
-- Keep evidence excerpts short.
-- Also evaluate the quality of your own screening/extraction using the reviewEvaluation criteria below.
-- Return only one JSON object.
+${guidance}
 
 Review evaluation criteria:
 ${JSON.stringify(metaReviewEvaluationCriteria, null, 2)}

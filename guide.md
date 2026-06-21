@@ -1,6 +1,6 @@
 # Wiregene Meta 사용 가이드
 
-문서 버전: Ver 2.27
+문서 버전: Ver 2.28
 최종 업데이트: 2026-06-21
 적용 사이트: `https://meta.wiregene.com`  
 소스 저장소: `rhhyun/wiregene-meta-analysis`
@@ -81,6 +81,12 @@ Ver 2.26부터 `Saved AI review article list` 바로 위에 `AI model reviewers 
 Ver 2.27부터 `Article list`에는 각 논문 행마다 `full-text saved` 또는 `full-text missing` 배지가 항상 표시됩니다. 행을 열지 않아도 어떤 논문이 바로 AI review 가능한지 알 수 있습니다. 목록 헤더에는 현재 보이는 논문 중 full-text 저장 완료 수와 미저장 수가 함께 표시됩니다. 선택한 논문 중 full-text가 없는 항목이 있으면 `AI model reviewers for selected articles` 패널 안에 논문 번호가 바로 표시되며, `Run AI review on selected`를 눌렀을 때도 건너뛴 논문 번호가 오류/경고 문구에 남습니다. 따라서 위아래로 이동하면서 어느 PDF/Word를 다시 업로드해야 하는지 찾지 않아도 됩니다.
 
 ### AI Model Reviewer Comparison
+
+Ver 2.28부터 Screening의 반복 작업은 `Saved AI review article list` 안의 compact workbench에서 진행합니다. full-text PDF/Word 선택, `Analyze full text`, 기존 record 자동 매칭, Excel source sheet 선택, 선택 논문 AI review 실행 버튼이 같은 화면 안에 모여 있습니다. 위쪽의 `AI reviewer setup / source status`와 `Advanced full-text upload fields`, `Full-text missing`, `Sheet progress`는 평소에는 접힌 상태로 두고 필요할 때만 열어 확인합니다. 따라서 연구자는 full-text 목록을 보면서 바로 업로드, AI reviewer 선택, 선택 논문 재분석, source 저장을 이어서 진행하면 됩니다.
+
+Ver 2.28부터 저장된 논문 목록의 기본 제목은 publisher PDF 파일명이 아닙니다. 각 행은 연구자가 붙인 일련번호를 먼저 보여주고, 그 뒤에는 AI가 추정한 논문 제목 또는 Excel/reference row에서 확인한 논문 제목 첫 줄을 표시합니다. 원래 PDF/Word 파일명과 source 저장소는 행을 클릭했을 때만 상세 정보로 보입니다. 정렬도 번호순, 제목순, 1저자순을 지원하되 실제 record와 저장된 source file은 변경하지 않습니다.
+
+Ver 2.28부터 AI 모델에 전달되는 판정 가이드는 연구자가 직접 확인하고 수정할 수 있습니다. `Excel row / AI judgment guide`를 열면 현재 실행에 사용될 지침이 그대로 보이며, 수정한 내용은 업로드 분석과 저장된 full-text 재분석 모두에 전달됩니다. 분석 결과 화면의 `AI judgment guide used for this result`에는 해당 결과에 실제 저장된 실행 가이드가 접힌 상태로 남습니다. 검증 CSV에도 `ai_researcher_guidance`가 포함되므로, 나중에 모델 간 판정 차이가 왜 생겼는지 감사 추적할 수 있습니다. 기본 지침으로 되돌리려면 `Reset guide`를 누릅니다.
 
 AI reviewer 1, 2, 3이 같은 논문을 독립적으로 판정합니다.
 

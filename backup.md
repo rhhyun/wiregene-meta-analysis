@@ -1,3 +1,55 @@
+# 2026-06-21 Compact screening workbench and editable AI guidance
+
+User issue:
+
+- Screening had too much always-visible explanation, and the full-text/source controls were separated from the saved article list and run buttons, causing repeated scrolling.
+- Saved article rows were still too dependent on publisher PDF filenames. Researchers need the article serial number plus the actual article title, because filenames differ by publisher and are not reliable identifiers.
+- AI reviewers can distort inclusion/exclusion reasoning if the prompt constraints are hidden. Researchers need to see and edit the AI judgment guide before running OpenAI-compatible models, and later audit which guide was used.
+
+Implemented:
+
+- `src/components/MetaFullTextAssistant.tsx`
+  - Moved the practical full-text workbench into the `Saved AI review article list` area: file selection, `Analyze full text`, existing-record matching mode, Excel source sheet, saved-source update, and selected-article AI review controls now sit together.
+  - Collapsed secondary explanation and advanced areas into `AI reviewer setup / source status`, `Advanced full-text upload fields`, `Full-text missing`, `Sheet progress`, and `Excel row / AI judgment guide`.
+  - Article rows now display serial number + article title derived from AI title or Excel/reference-row title, while the source filename is only shown in row details.
+  - Title sorting and batch matching now use the display title fallback instead of relying only on raw filename/titleGuess.
+  - Added editable run-level AI guidance with browser caching, reset-to-default, upload analysis forwarding, saved-source reanalysis forwarding, and result display.
+  - Verification CSV now includes `ai_researcher_guidance`.
+- `src/lib/meta-full-text-prompt-guidance.ts`
+  - Added the shared default AI judgment guide and normalization helper.
+- `src/lib/meta-full-text-analysis.ts`
+  - Replaced hardcoded prompt rules with the editable researcher guidance.
+  - Stored `researcherGuidance` in each new full-text analysis result, including fallback/failed-reviewer cases.
+- `src/lib/meta-full-text-history.ts`
+  - Added `displayTitle` to history summaries and normalized stored `researcherGuidance`.
+  - Preserved guidance when merging selected AI model reviews into existing records.
+- API routes:
+  - `/api/meta-analysis/full-text/analyze`
+  - `/api/meta-analysis/full-text/history/[id]/reanalyze`
+  - Both now accept and forward `researcherGuidance`.
+- `guide.md`
+  - Added Ver 2.28 instructions for the compact workbench, serial-number/title display, and editable AI judgment guide.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.93`
+  - UI label: `Ver 2.28 | 2026 copyright by JK Hyun`
+
+Verification planned:
+
+```text
+npx.cmd tsc --noEmit --pretty false
+git diff --check
+npm.cmd run lint
+npm.cmd run build
+GitHub push to main
+Vercel production readiness and meta.wiregene.com auth check
+```
+
+Regular Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 # 2026-06-21 Full-text missing article numbers
 
 User issue:

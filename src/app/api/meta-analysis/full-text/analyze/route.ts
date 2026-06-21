@@ -6,6 +6,7 @@ import {
   readBinaryFileFromGoogleDrive,
 } from "@/lib/google-drive-storage";
 import { analyzeMetaFullTextUpload } from "@/lib/meta-full-text-analysis";
+import { normalizeMetaFullTextResearcherGuidance } from "@/lib/meta-full-text-prompt-guidance";
 import {
   findMetaFullTextDuplicateRecord,
   mergeMetaFullTextHistoryAnalysis,
@@ -22,6 +23,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 const maxColumnPayloadCharacters = 4_000;
+const maxGuidancePayloadCharacters = 12_000;
 
 const columnsSchema = z
   .string()
@@ -58,6 +60,7 @@ type AnalyzeRequestInput = {
   mimeType: string;
   fileSize: number;
   referenceRecord: string | null;
+  researcherGuidance: string | null;
   sourceSheet: string;
   sourceLabel: string;
   reviewMode: string;
@@ -75,6 +78,11 @@ type AnalyzeRequestInput = {
 function formString(formData: FormData, key: string) {
   const value = formData.get(key);
   return typeof value === "string" ? value.trim().slice(0, maxColumnPayloadCharacters) : "";
+}
+
+function formLongString(formData: FormData, key: string, limit: number) {
+  const value = formData.get(key);
+  return typeof value === "string" ? value.trim().slice(0, limit) : "";
 }
 
 function payloadString(payload: unknown, key: string) {
@@ -108,6 +116,12 @@ function payloadReviewerIds(payload: unknown) {
 
 function normalizeDuplicatePolicy(value: string) {
   return value.trim().toLowerCase() === "merge" ? "merge" : "new";
+}
+
+function payloadLongString(payload: unknown, key: string, limit: number) {
+  if (!payload || typeof payload !== "object") return "";
+  const value = (payload as Record<string, unknown>)[key];
+  return typeof value === "string" ? value.trim().slice(0, limit) : "";
 }
 
 function normalizeUnmatchedPolicy(value: string) {
@@ -202,6 +216,9 @@ async function parseMultipartAnalyzeRequest(
     mimeType: uploaded.type,
     fileSize: uploaded.size,
     referenceRecord: formString(formData, "referenceRecord") || null,
+    researcherGuidance: normalizeMetaFullTextResearcherGuidance(
+      formLongString(formData, "researcherGuidance", maxGuidancePayloadCharacters),
+    ),
     sourceSheet: formString(formData, "sourceSheet"),
     sourceLabel: formString(formData, "sourceLabel"),
     reviewMode: formString(formData, "reviewMode"),
@@ -251,6 +268,9 @@ async function parseGoogleDriveAnalyzeRequest(
     mimeType,
     fileSize,
     referenceRecord: payloadString(payload, "referenceRecord") || null,
+    researcherGuidance: normalizeMetaFullTextResearcherGuidance(
+      payloadLongString(payload, "researcherGuidance", maxGuidancePayloadCharacters),
+    ),
     sourceSheet: payloadString(payload, "sourceSheet"),
     sourceLabel: payloadString(payload, "sourceLabel"),
     reviewMode: payloadString(payload, "reviewMode"),
@@ -285,6 +305,7 @@ async function analyzeAndSave(input: AnalyzeRequestInput, context: AnalyzeReques
     referenceRecord: input.referenceRecord,
     extractionColumns: input.extractionColumns,
     reviewerIds: input.reviewerIds,
+    researcherGuidance: input.researcherGuidance,
   });
 
   console.info("[meta-full-text/analyze] analysis completed", {

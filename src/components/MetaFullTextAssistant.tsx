@@ -17,6 +17,10 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiErrorMessage } from "@/components/grant-error-message";
 import type { MetaFullTextAnalysis } from "@/lib/meta-full-text-analysis";
+import {
+  defaultMetaFullTextResearcherGuidance,
+  normalizeMetaFullTextResearcherGuidance,
+} from "@/lib/meta-full-text-prompt-guidance";
 
 type MetaFullTextAssistantProps = {
   extractionColumns: string[];
@@ -59,6 +63,7 @@ type MetaFullTextHistorySummary = {
   savedAt: string;
   analyzedAt: string;
   titleGuess: string | null;
+  displayTitle: string | null;
   firstAuthor: string | null;
   decision: MetaFullTextAnalysis["eligibility"]["decision"];
   confidence: number;
@@ -242,6 +247,10 @@ function fullTextHistoryListUrl(projectId: string) {
 
 function fullTextHistoryCacheKey(projectId: string) {
   return `wiregene-meta-full-text-history-overview:${projectId.trim() || "default"}`;
+}
+
+function aiGuidanceCacheKey(projectId: string) {
+  return `wiregene-meta-full-text-ai-guidance:${projectId.trim() || "default"}`;
 }
 
 function readCachedFullTextHistoryOverview(projectId: string): CachedMetaFullTextHistoryOverview | null {
@@ -594,9 +603,10 @@ function yearAdjustedScore(score: number, sourceText: string, targetText: string
 
 function scoreHistoryItemForFile(nextFile: File, item: MetaFullTextHistorySummary) {
   const fileName = nextFile.name;
+  const displayTitle = item.displayTitle || item.titleGuess || "";
   const fileKey = normalizedArticleFileKey(fileName);
   const historyFileKey = normalizedArticleFileKey(item.fileName);
-  const titleKey = normalizedArticleFileKey(item.titleGuess ?? "");
+  const titleKey = normalizedArticleFileKey(displayTitle);
   if (fileKey && historyFileKey && fileKey === historyFileKey) {
     return { score: 1, reason: "file name exact match" };
   }
@@ -617,9 +627,9 @@ function scoreHistoryItemForFile(nextFile: File, item: MetaFullTextHistorySummar
   const sourceTokens = articleMatchTokens(fileName);
   const fileTokenScore = yearAdjustedScore(tokenOverlapScore(sourceTokens, articleMatchTokens(item.fileName)), fileName, item.fileName);
   const titleTokenScore = yearAdjustedScore(
-    tokenOverlapScore(sourceTokens, articleMatchTokens(item.titleGuess)),
+    tokenOverlapScore(sourceTokens, articleMatchTokens(displayTitle)),
     fileName,
-    item.titleGuess ?? "",
+    displayTitle,
   );
   const score = Math.max(fileTokenScore, titleTokenScore);
   return {
@@ -650,7 +660,7 @@ function batchMatchForFile(nextFile: File, historyItems: MetaFullTextHistorySumm
   return {
     targetId: match.item.id,
     targetFileName: match.item.fileName,
-    targetTitleGuess: match.item.titleGuess,
+    targetTitleGuess: match.item.displayTitle || match.item.titleGuess,
     sourceFileSaved: match.item.sourceFileSaved,
     aiModelReviewCount: match.item.aiModelReviewCount,
     score: match.score,
@@ -874,8 +884,8 @@ function historyArticleNumberValue(item: Pick<MetaFullTextHistorySummary, "fileN
   return Number.isFinite(value) ? value : Number.MAX_SAFE_INTEGER;
 }
 
-function historyArticleTitle(item: Pick<MetaFullTextHistorySummary, "titleGuess">) {
-  const title = item.titleGuess?.replace(/\s+/g, " ").trim();
+function historyArticleTitle(item: Pick<MetaFullTextHistorySummary, "displayTitle" | "titleGuess">) {
+  const title = (item.displayTitle || item.titleGuess)?.replace(/\s+/g, " ").trim();
   return title || "제목 확인 전 - 선택 후 원문/엑셀 정보를 확인";
 }
 
@@ -982,6 +992,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
   const [batchResults, setBatchResults] = useState<BatchAnalysisResult[]>([]);
   const [worksheetName, setWorksheetName] = useState(worksheetOptions[0]?.sheetName ?? "");
   const [referenceRecord, setReferenceRecord] = useState("");
+  const [researcherAiGuidance, setResearcherAiGuidance] = useState(defaultMetaFullTextResearcherGuidance);
   const [analysis, setAnalysis] = useState<MetaFullTextAnalysis | null>(null);
   const [historyItems, setHistoryItems] = useState<MetaFullTextHistorySummary[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
@@ -1194,7 +1205,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
       if (historySortKey === "number") {
         result = (leftArticleNumber - rightArticleNumber) * directionMultiplier;
       } else if (historySortKey === "title") {
-        result = compareNullableHistoryText(left.titleGuess, right.titleGuess, historySortDirection);
+        result = compareNullableHistoryText(left.displayTitle || left.titleGuess, right.displayTitle || right.titleGuess, historySortDirection);
       } else {
         result = compareNullableHistoryText(left.firstAuthor, right.firstAuthor, historySortDirection);
       }
@@ -1332,6 +1343,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
           ai_review_improvement: analysis.reviewEvaluation.improvement,
           ai_review_criteria_json: JSON.stringify(analysis.reviewEvaluation.criteria),
           ai_model_reviews_json: JSON.stringify(analysis.modelReviews),
+          ai_researcher_guidance: analysis.researcherGuidance ?? "",
           ai_config_source: analysis.aiConfigSource ?? "",
           ai_warning: analysis.aiWarning ?? "",
           verification_mode: verificationMode,
@@ -1500,6 +1512,25 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
       cancelled = true;
     };
   }, [applyHistoryOverview, projectId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const cached = window.localStorage.getItem(aiGuidanceCacheKey(projectId));
+      if (cached?.trim()) setResearcherAiGuidance(normalizeMetaFullTextResearcherGuidance(cached));
+    } catch {
+      // The default guidance remains usable even if browser storage is unavailable.
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(aiGuidanceCacheKey(projectId), normalizeMetaFullTextResearcherGuidance(researcherAiGuidance));
+    } catch {
+      // Run-level guidance still goes to the API; local persistence is a convenience only.
+    }
+  }, [projectId, researcherAiGuidance]);
 
   useEffect(() => {
     void loadAiReviewerSettings();
@@ -1866,7 +1897,11 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ projectId, reviewerIds: selectedRunnableAiReviewerIds }),
+          body: JSON.stringify({
+            projectId,
+            reviewerIds: selectedRunnableAiReviewerIds,
+            researcherGuidance: normalizeMetaFullTextResearcherGuidance(researcherAiGuidance),
+          }),
         },
         {
           label: `Saved-source AI reanalysis for ${item.fileName}`,
@@ -2324,6 +2359,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
     formData.set("reviewerOneName", reviewerOneName);
     formData.set("reviewerTwoName", reviewerTwoName);
     formData.set("reviewerIds", selectedRunnableAiReviewerIds.join(","));
+    formData.set("researcherGuidance", normalizeMetaFullTextResearcherGuidance(researcherAiGuidance));
     formData.set("duplicatePolicy", duplicateTarget || unmatchedPolicy === "skip_new" ? "merge" : "new");
     if (duplicateTarget) formData.set("duplicateTargetId", duplicateTarget.id);
     formData.set("unmatchedPolicy", unmatchedPolicy);
@@ -2359,6 +2395,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
       reviewerOneName,
       reviewerTwoName,
       reviewerIds: selectedRunnableAiReviewerIds,
+      researcherGuidance: normalizeMetaFullTextResearcherGuidance(researcherAiGuidance),
       duplicatePolicy: duplicateTarget || unmatchedPolicy === "skip_new" ? "merge" : "new",
       duplicateTargetId: duplicateTarget?.id ?? null,
       unmatchedPolicy,
@@ -2688,7 +2725,11 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
         ) : null}
       </section>
 
-      <section className="mt-4 rounded-md border border-emerald-200 bg-white p-3">
+      <details className="mt-4 rounded-md border border-zinc-200 bg-white p-3">
+        <summary className="cursor-pointer text-sm font-semibold text-zinc-950">
+          AI reviewer setup / source status
+        </summary>
+        <div className="mt-3">
         <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <p className="text-sm font-semibold text-zinc-950">AI model reviewers for this run</p>
@@ -2813,8 +2854,13 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
           {aiComparisonProgress.target} AI model review(s). Saved-source records needing rerun:{" "}
           {aiComparisonProgress.savedSourceNeedsRun}; legacy records needing source upload: {aiComparisonProgress.uploadNeeded}.
         </p>
-      </section>
-      <div className="mt-4 grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">
+        </div>
+      </details>
+      <details className="mt-4 rounded-md border border-zinc-200 bg-white p-3">
+        <summary className="cursor-pointer text-sm font-semibold text-zinc-950">
+          Advanced full-text upload fields
+        </summary>
+      <div className="mt-3 grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">
         <label className="grid gap-2 text-sm font-semibold text-zinc-700">
           full-text 파일
           <div className="rounded-md border border-dashed border-emerald-300 bg-white p-4">
@@ -2956,6 +3002,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
           </label>
         </div>
       </div>
+      </details>
 
       <section className="mt-4 rounded-md border border-emerald-200 bg-white p-3">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -2983,6 +3030,128 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
             {historyError}
           </div>
         ) : null}
+        <div className="mt-3 rounded-md border border-emerald-200 bg-white p-3">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+            <div className="grid flex-1 gap-2 lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:items-end">
+              <label className="grid gap-1 text-xs font-semibold uppercase text-zinc-500">
+                full-text PDF/Word
+                <input
+                  type="file"
+                  multiple
+                  accept=".pdf,.doc,.docx,.txt,.md,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+                  onChange={(event) => {
+                    handleFilesChange(Array.from(event.target.files ?? []));
+                    event.currentTarget.value = "";
+                  }}
+                  disabled={isAnalyzing}
+                  className="h-10 rounded-md border border-zinc-300 bg-white px-2 text-sm normal-case text-zinc-800 disabled:cursor-not-allowed disabled:opacity-60 file:mr-3 file:rounded-md file:border-0 file:bg-zinc-900 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={analyzeFullText}
+                disabled={
+                  isAnalyzing ||
+                  files.length === 0 ||
+                  selectedRunnableAiReviewerIds.length === 0 ||
+                  Boolean(currentHistoryItem && !currentHistoryItem.sourceFileSaved && files.length === 1)
+                }
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
+              >
+                {isAnalyzing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <SearchCheck className="h-4 w-4" aria-hidden />}
+                {analyzeButtonLabel}
+              </button>
+              <button
+                type="button"
+                onClick={clearSelectedFiles}
+                disabled={isAnalyzing || files.length === 0}
+                className="inline-flex h-10 items-center justify-center rounded-md border border-zinc-300 bg-white px-3 text-xs font-semibold text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Clear files
+              </button>
+            </div>
+            <div className="min-w-0 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-semibold leading-5 text-zinc-700 xl:max-w-md">
+              {selectedFileLabel} · {selectedFileDetail} · matched {batchAutoMatchCount.toLocaleString("ko-KR")}/
+              {files.length.toLocaleString("ko-KR")} · AI {selectedAiReviewerLabel}
+            </div>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <label className="inline-flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-950">
+              <input
+                type="checkbox"
+                checked={batchExistingOnlyMode}
+                onChange={(event) => setBatchExistingOnlyMode(event.target.checked)}
+                disabled={isAnalyzing}
+                className="h-4 w-4 shrink-0 accent-emerald-700 disabled:opacity-40"
+              />
+              Existing records only
+            </label>
+            {worksheetOptions.length > 0 ? (
+              <select
+                value={worksheetName}
+                onChange={(event) => setWorksheetName(event.target.value)}
+                className="h-9 min-w-64 rounded-md border border-zinc-300 bg-white px-3 text-xs font-semibold text-zinc-900 outline-none focus:border-emerald-500"
+                aria-label="Excel source sheet"
+              >
+                {worksheetOptions.map((worksheet) => (
+                  <option key={worksheet.sheetName} value={worksheet.sheetName}>
+                    {worksheet.sheetName} · {worksheet.label}
+                  </option>
+                ))}
+              </select>
+            ) : null}
+            {currentHistoryItem && !currentHistoryItem.sourceFileSaved ? (
+              <button
+                type="button"
+                onClick={() => void saveSourceToSelectedHistory({ rerunAfterSave: true })}
+                disabled={!canUpgradeLegacyRecordWithAi}
+                className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 text-xs font-semibold text-amber-950 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:border-zinc-200 disabled:bg-zinc-100 disabled:text-zinc-400"
+              >
+                {isSavingSourceToHistory ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Save className="h-3.5 w-3.5" aria-hidden />}
+                Save source + run
+              </button>
+            ) : null}
+          </div>
+          <details className="mt-2 rounded-md border border-zinc-200 bg-zinc-50 p-2">
+            <summary className="cursor-pointer text-xs font-semibold text-zinc-700">
+              Excel row / AI judgment guide
+            </summary>
+            <div className="mt-2 grid gap-3 lg:grid-cols-2">
+              <label className="grid gap-1 text-xs font-semibold uppercase text-zinc-500">
+                Excel screening row or article info
+                <textarea
+                  value={referenceRecord}
+                  onChange={(event) => setReferenceRecord(stripGeneratedReferenceContext(event.target.value))}
+                  rows={5}
+                  placeholder="Screening_ID, first author, year, title, DOI, PMID, abstract"
+                  className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-normal normal-case leading-6 text-zinc-800 outline-none focus:border-emerald-500"
+                />
+              </label>
+              <label className="grid gap-1 text-xs font-semibold uppercase text-zinc-500">
+                AI judgment guide for this run
+                <textarea
+                  value={researcherAiGuidance}
+                  onChange={(event) => setResearcherAiGuidance(event.target.value)}
+                  rows={8}
+                  className="rounded-md border border-zinc-300 bg-white px-3 py-2 font-mono text-xs font-normal normal-case leading-5 text-zinc-800 outline-none focus:border-emerald-500"
+                />
+              </label>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setResearcherAiGuidance(defaultMetaFullTextResearcherGuidance)}
+                disabled={isAnalyzing}
+                className="inline-flex h-8 items-center justify-center rounded-md border border-zinc-300 bg-white px-3 text-xs font-semibold text-zinc-700 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Reset guide
+              </button>
+              <span className="text-xs font-semibold leading-8 text-zinc-500">
+                This exact guide is sent to every selected AI reviewer for upload and saved-source rerun.
+              </span>
+            </div>
+          </details>
+        </div>
         <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 p-3">
           <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
             <div>
@@ -3073,12 +3242,21 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
           </div>
         </div>
         {historyDecisionCounts.legacy_source > 0 ? (
-          <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm font-semibold leading-6 text-amber-950">
-            현재 저장된 분석 결과 중 {historyDecisionCounts.legacy_source.toLocaleString("ko-KR")}개는 `legacy/no source`입니다. 이 기록들은 GPT-5-nano 분석 결과만 저장되어 있고 원문 PDF/Word full-text 파일은 저장되어 있지 않습니다. 새 AI model을 적용하려면 각 논문 기록을 선택하고 matching full-text article을 한 번 업로드해 source를 연결해야 합니다.
-          </div>
+          <details className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm font-semibold leading-6 text-amber-950">
+            <summary className="cursor-pointer">
+              Full-text missing {historyDecisionCounts.legacy_source.toLocaleString("ko-KR")}개
+            </summary>
+            <p className="mt-2 text-xs leading-5 text-amber-900">
+              이 기록들은 이전 AI 분석 결과만 저장되어 있고 원문 PDF/Word source가 저장되어 있지 않습니다. 새 AI model을 적용하려면 해당 논문 번호의 full-text를 업로드해 기존 record와 매칭한 뒤 실행합니다.
+            </p>
+          </details>
         ) : null}
         {historySheetProgress.length > 0 ? (
-          <div className="mt-3 overflow-x-auto rounded-md border border-zinc-200 bg-white">
+          <details className="mt-3 rounded-md border border-zinc-200 bg-white p-3">
+            <summary className="cursor-pointer text-xs font-semibold uppercase text-zinc-500">
+              Sheet progress
+            </summary>
+          <div className="mt-2 overflow-x-auto">
             <table className="w-full min-w-[760px] border-collapse text-left text-xs">
               <thead className="bg-zinc-50 text-zinc-500">
                 <tr>
@@ -3104,6 +3282,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
               </tbody>
             </table>
           </div>
+          </details>
         ) : null}
         <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
           {([
@@ -3554,6 +3733,15 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
             <InfoBox label="추출 row" value={`${analysis.extraction.rows.length.toLocaleString()} rows`} />
             <InfoBox label="누락 critical fields" value={`${analysis.extraction.missingCriticalFields.length.toLocaleString()}`} />
           </div>
+
+          <details className="rounded-md border border-zinc-200 bg-white p-3">
+            <summary className="cursor-pointer text-sm font-semibold text-zinc-950">
+              AI judgment guide used for this result
+            </summary>
+            <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap rounded-md border border-zinc-200 bg-zinc-50 p-3 text-xs leading-5 text-zinc-700">
+              {analysis.researcherGuidance || "No run-specific AI judgment guide is stored for this legacy result."}
+            </pre>
+          </details>
 
           <section className="rounded-md border border-zinc-200 bg-white p-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
