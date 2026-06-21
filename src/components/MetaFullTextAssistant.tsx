@@ -884,6 +884,12 @@ function historyFirstAuthorLabel(item: Pick<MetaFullTextHistorySummary, "firstAu
   return author || "1저자 확인 전";
 }
 
+function compactArticleNumberList(numbers: string[], limit = 30) {
+  const visible = numbers.slice(0, limit).join(", ");
+  const hiddenCount = Math.max(0, numbers.length - limit);
+  return hiddenCount > 0 ? `${visible} 외 ${hiddenCount.toLocaleString("ko-KR")}개` : visible;
+}
+
 const historySortCollator = new Intl.Collator("ko-KR", { numeric: true, sensitivity: "base" });
 
 function compareNullableHistoryText(left: string | null | undefined, right: string | null | undefined, direction: HistorySortDirection) {
@@ -1220,10 +1226,26 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
     () => selectedHistoryItemsForAction.filter((item) => !item.sourceFileSaved),
     [selectedHistoryItemsForAction],
   );
+  const selectedLegacyArticleNumbersForAction = useMemo(
+    () =>
+      selectedLegacyHistoryItemsForAction.map((item, index) =>
+        historyArticleNumber(item, historyOriginalIndexById.get(item.id) ?? index),
+      ),
+    [historyOriginalIndexById, selectedLegacyHistoryItemsForAction],
+  );
+  const selectedLegacyArticleNumberText = useMemo(
+    () => compactArticleNumberList(selectedLegacyArticleNumbersForAction),
+    [selectedLegacyArticleNumbersForAction],
+  );
+  const visibleSourceSavedHistoryCount = useMemo(
+    () => sortedHistoryItems.filter((item) => item.sourceFileSaved).length,
+    [sortedHistoryItems],
+  );
+  const visibleMissingSourceHistoryCount = Math.max(0, sortedHistoryItems.length - visibleSourceSavedHistoryCount);
   const allVisibleHistorySelectedForDelete =
     visibleHistoryIds.length > 0 && selectedVisibleHistoryDeleteCount === visibleHistoryIds.length;
   const selectedHistoryAiReviewDisabled =
-    selectedSourceSavedHistoryItemsForAction.length === 0 ||
+    selectedHistoryItemsForAction.length === 0 ||
     selectedRunnableAiReviewerIds.length === 0 ||
     isAnalyzing ||
     isReanalyzingSavedSource ||
@@ -1913,7 +1935,13 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
     const legacyCount = selectedLegacyHistoryItemsForAction.length;
     if (queuedItems.length === 0) {
       setError(
-        `Selected ${selectedHistoryItemsForAction.length.toLocaleString("ko-KR")} record(s), but none have a saved full-text source. Upload and match the legacy/no-source full text first.`,
+        [
+          `Selected ${selectedHistoryItemsForAction.length.toLocaleString("ko-KR")} record(s), but none have a saved full-text source.`,
+          selectedLegacyArticleNumberText ? `Full-text missing article numbers: ${selectedLegacyArticleNumberText}.` : "",
+          "Upload and match those PDF/Word full-text files first.",
+        ]
+          .filter(Boolean)
+          .join(" "),
       );
       return;
     }
@@ -1922,9 +1950,12 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
         [
           `Run AI review on ${queuedItems.length.toLocaleString("ko-KR")} selected saved-source record(s)?`,
           `${legacyCount.toLocaleString("ko-KR")} selected legacy/no-source record(s) will be skipped because the original PDF/Word source is not stored yet.`,
+          selectedLegacyArticleNumberText ? `Full-text missing article numbers: ${selectedLegacyArticleNumberText}.` : "",
           "",
           "Use batch full-text upload for those legacy records first, then rerun selected AI review.",
-        ].join("\n"),
+        ]
+          .filter((line) => line !== "")
+          .join("\n"),
       );
       if (!confirmed) return;
     }
@@ -2025,7 +2056,13 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
       );
       if (failedCount > 0 || legacyCount > 0) {
         setError(
-          `Selected article AI review completed with ${failedCount} failed record(s) and ${legacyCount} legacy/no-source skipped record(s). Check the queue details below.`,
+          [
+            `Selected article AI review completed with ${failedCount} failed record(s) and ${legacyCount} legacy/no-source skipped record(s).`,
+            selectedLegacyArticleNumberText ? `Full-text missing article numbers skipped: ${selectedLegacyArticleNumberText}.` : "",
+            "Check the queue details below.",
+          ]
+            .filter(Boolean)
+            .join(" "),
         );
       }
     } catch (caught) {
@@ -3001,11 +3038,18 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
             )}
           </div>
           <div className="mt-3 flex flex-col gap-2 rounded-md border border-emerald-200 bg-white p-3 xl:flex-row xl:items-center xl:justify-between">
-            <p className="text-xs font-semibold leading-5 text-zinc-700">
-              Selected articles: {selectedHistoryItemsForAction.length.toLocaleString("ko-KR")} · AI-ready saved source{" "}
-              {selectedSourceSavedHistoryItemsForAction.length.toLocaleString("ko-KR")} · legacy/no source{" "}
-              {selectedLegacyHistoryItemsForAction.length.toLocaleString("ko-KR")} · reviewers: {selectedAiReviewerLabel}
-            </p>
+            <div className="grid gap-1">
+              <p className="text-xs font-semibold leading-5 text-zinc-700">
+                Selected articles: {selectedHistoryItemsForAction.length.toLocaleString("ko-KR")} · AI-ready saved source{" "}
+                {selectedSourceSavedHistoryItemsForAction.length.toLocaleString("ko-KR")} · full-text missing{" "}
+                {selectedLegacyHistoryItemsForAction.length.toLocaleString("ko-KR")} · reviewers: {selectedAiReviewerLabel}
+              </p>
+              {selectedLegacyArticleNumberText ? (
+                <p className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold leading-5 text-amber-950">
+                  선택 항목 중 full-text 없음: {selectedLegacyArticleNumberText}. 이 번호는 PDF/Word source 업로드 후 AI review를 실행합니다.
+                </p>
+              ) : null}
+            </div>
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
@@ -3022,7 +3066,8 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                 className="inline-flex h-8 items-center justify-center gap-2 rounded-md bg-emerald-700 px-3 text-xs font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
               >
                 {isReanalyzingSavedSource || isAnalyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden />}
-                Run AI review on selected ({selectedSourceSavedHistoryItemsForAction.length.toLocaleString("ko-KR")})
+                Run AI review on selected ({selectedSourceSavedHistoryItemsForAction.length.toLocaleString("ko-KR")}/
+                {selectedHistoryItemsForAction.length.toLocaleString("ko-KR")})
               </button>
             </div>
           </div>
@@ -3085,7 +3130,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
         <div className="mt-2 flex flex-wrap gap-2">
           {([
             ["all", `All saved ${historyDecisionCounts.all}`],
-            ["legacy_source", `Legacy/no source ${historyDecisionCounts.legacy_source}`],
+            ["legacy_source", `Full-text missing ${historyDecisionCounts.legacy_source}`],
             ["verification_pending", `Verification pending ${historyDecisionCounts.verification_pending}`],
             ["verification_complete", `Verified ${historyDecisionCounts.verification_complete}`],
           ] as const).map(([filter, label]) => (
@@ -3111,7 +3156,11 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                   <span>
                     Article list ({sortedHistoryItems.length.toLocaleString("ko-KR")}/{historyItems.length.toLocaleString("ko-KR")} shown)
                   </span>
-                  <span>{historyItems.filter((item) => item.verificationComplete).length.toLocaleString("ko-KR")} verified</span>
+                  <span>
+                    full-text saved {visibleSourceSavedHistoryCount.toLocaleString("ko-KR")} · missing{" "}
+                    {visibleMissingSourceHistoryCount.toLocaleString("ko-KR")} ·{" "}
+                    {historyItems.filter((item) => item.verificationComplete).length.toLocaleString("ko-KR")} verified
+                  </span>
                 </div>
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2">
                   <span className="text-xs font-semibold text-zinc-600">정렬 기준</span>
@@ -3164,7 +3213,8 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                       ) : (
                         <RefreshCw className="h-3.5 w-3.5" aria-hidden />
                       )}
-                      Run selected AI review ({selectedSourceSavedHistoryItemsForAction.length.toLocaleString("ko-KR")})
+                      Run selected AI review ({selectedSourceSavedHistoryItemsForAction.length.toLocaleString("ko-KR")}/
+                      {selectedHistoryItemsForAction.length.toLocaleString("ko-KR")})
                     </button>
                     <button
                       type="button"
@@ -3222,6 +3272,15 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                                   <p className="mt-1 text-xs font-medium text-zinc-500">1저자: {firstAuthor}</p>
                                 </div>
                                 <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                                  <span
+                                    className={`rounded-md px-2 py-1 text-xs font-semibold ${
+                                      item.sourceFileSaved
+                                        ? "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-100"
+                                        : "bg-rose-50 text-rose-800 ring-1 ring-rose-100"
+                                    }`}
+                                  >
+                                    {item.sourceFileSaved ? "full-text saved" : "full-text missing"}
+                                  </span>
                                   <span
                                     className={`rounded-md px-2 py-1 text-xs font-semibold ${
                                       item.verificationComplete ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-900"

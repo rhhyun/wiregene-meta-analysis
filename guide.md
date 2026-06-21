@@ -1,6 +1,6 @@
 # Wiregene Meta 사용 가이드
 
-문서 버전: Ver 2.26
+문서 버전: Ver 2.27
 최종 업데이트: 2026-06-21
 적용 사이트: `https://meta.wiregene.com`  
 소스 저장소: `rhhyun/wiregene-meta-analysis`
@@ -77,6 +77,8 @@ Google Gemini를 OpenAI-compatible slot으로 쓸 때 Base URL은 그대로 `htt
 Ver 2.25부터 `Saved AI review article list`는 기본적으로 full-text 파일명 앞 번호를 기준으로 오름차순 정렬됩니다. 목록 위의 정렬 버튼에서 `번호순`, `제목순`, `1저자순`을 선택할 수 있고, 같은 버튼을 다시 누르면 오름차순과 내림차순이 전환됩니다. `1저자`는 엑셀 screening row/referenceRecord에서 우선 추출하며, 값이 없을 때만 파일명 앞부분에서 보조 추정합니다. 정렬은 화면 표시와 선택/일괄 삭제 대상에만 적용되고, 저장된 AI 분석 결과, reviewer 검증, source file 저장 상태는 변경하지 않습니다.
 
 Ver 2.26부터 `Saved AI review article list` 바로 위에 `AI model reviewers for selected articles` 패널이 표시됩니다. 여기에서 AI reviewer 1/2/3을 선택하고, Article list에서 체크한 논문들을 그대로 AI review 대상으로 실행할 수 있습니다. `Select shown for AI review`를 누르면 현재 필터/정렬로 보이는 논문을 한 번에 선택하고, `Run AI review on selected`를 누르면 full-text source가 저장된 record를 순차적으로 다시 분석합니다. 이 과정은 같은 saved article record에 AI model draft를 갱신하며 새 중복 논문을 만들지 않습니다. `legacy/no source` record는 원문 PDF/Word가 저장되어 있지 않으므로 자동으로 건너뛰고, 먼저 full-text batch upload로 기존 record와 매칭해 source를 저장해야 합니다. 선택된 논문 AI review는 기존 batch queue에 진행률과 실패 항목을 표시합니다.
+
+Ver 2.27부터 `Article list`에는 각 논문 행마다 `full-text saved` 또는 `full-text missing` 배지가 항상 표시됩니다. 행을 열지 않아도 어떤 논문이 바로 AI review 가능한지 알 수 있습니다. 목록 헤더에는 현재 보이는 논문 중 full-text 저장 완료 수와 미저장 수가 함께 표시됩니다. 선택한 논문 중 full-text가 없는 항목이 있으면 `AI model reviewers for selected articles` 패널 안에 논문 번호가 바로 표시되며, `Run AI review on selected`를 눌렀을 때도 건너뛴 논문 번호가 오류/경고 문구에 남습니다. 따라서 위아래로 이동하면서 어느 PDF/Word를 다시 업로드해야 하는지 찾지 않아도 됩니다.
 
 ### AI Model Reviewer Comparison
 

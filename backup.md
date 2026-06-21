@@ -1,3 +1,42 @@
+# 2026-06-21 Full-text missing article numbers
+
+User issue:
+
+- When selected saved articles could not be reanalyzed because the full-text article source file was missing, the UI only said the record was `legacy/no source`.
+- The researcher had to scroll between the AI reviewer panel, article list, and upload area to figure out which article number needed PDF/Word upload.
+- The Article list itself needed to show whether full-text was stored so the user could avoid manual back-and-forth.
+
+Implemented:
+
+- `src/components/MetaFullTextAssistant.tsx`
+  - Added `full-text saved` / `full-text missing` badges directly on every `Article list` row.
+  - Added visible full-text saved and missing counts in the Article list header.
+  - Added selected full-text-missing article numbers inside `AI model reviewers for selected articles`.
+  - Changed the selected AI review button to show ready/selected counts, for example `Run selected AI review (5/8)`.
+  - If the selected records have no saved source at all, the button now produces a clear error with the missing article numbers instead of staying silent behind a disabled state.
+  - Confirmation and completion warnings now include skipped full-text-missing article numbers.
+  - Renamed the filter chip from `Legacy/no source` to `Full-text missing` for researcher-facing clarity.
+- `guide.md`
+  - Added Ver 2.27 instructions explaining full-text saved/missing badges and skipped-number warnings.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.92`
+  - UI label: `Ver 2.27 | 2026 copyright by JK Hyun`
+
+Verification completed before deployment:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed
+git diff --check: passed
+npm.cmd run lint: passed
+npm.cmd run build: passed
+```
+
+Regular Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 # 2026-06-21 Selected article AI review runner
 
 User issue:
