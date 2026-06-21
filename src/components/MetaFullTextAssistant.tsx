@@ -677,8 +677,8 @@ function duplicateMergePrompt(duplicates: { file: File; target: MetaFullTextHist
   return [
     `${duplicates.length} uploaded full-text file(s) match existing saved article record(s).`,
     "",
-    "OK: merge the new AI model result into the existing record. The paper will not appear twice, and previous AI decisions/model reviews remain in the comparison history.",
-    "Cancel: stop this run so a duplicate saved article is not created.",
+    "OK: update the matched existing record(s). The paper will not appear twice, and previous AI decisions/model reviews remain in the comparison history.",
+    "Cancel: stop this run. Turn off update-matched-only mode if these uploads should be saved as new article records.",
     "",
     preview,
     extra,
@@ -1033,7 +1033,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
   const [selectedHistoryIdsForDelete, setSelectedHistoryIdsForDelete] = useState<string[]>([]);
   const [isBatchDeletingHistory, setIsBatchDeletingHistory] = useState(false);
   const [selectedAiReviewerIds, setSelectedAiReviewerIds] = useState<string[]>([]);
-  const [batchExistingOnlyMode, setBatchExistingOnlyMode] = useState(true);
+  const [batchExistingOnlyMode, setBatchExistingOnlyMode] = useState(false);
   const [aiSettingsLoading, setAiSettingsLoading] = useState(true);
   const [aiSettingsError, setAiSettingsError] = useState("");
   const [reviewerNamesSaved, setReviewerNamesSaved] = useState(false);
@@ -1325,12 +1325,12 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
       ? "Use saved-record update button above"
     : files.length > 1
       ? preventUnmatchedNewRecords
-        ? `Auto-match and run AI queue (${files.length})`
-        : `Analyze queue; save new if unmatched (${files.length})`
+        ? `Update matched records only (${files.length})`
+        : `Analyze queue; save new articles (${files.length})`
       : files.length === 1
         ? preventUnmatchedNewRecords
-          ? "Auto-match and run AI"
-          : "Analyze full text"
+          ? "Update matched record only"
+          : "Analyze full text; save new"
         : "Analyze full text";
 
   const extractionCsv = useMemo(() => {
@@ -2549,10 +2549,10 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
       .filter((item): item is { file: File; resultId: string; target: MetaFullTextHistorySummary } => Boolean(item.target));
     const duplicateTargetByResultId = new Map<string, MetaFullTextHistorySummary>();
     const unmatchedPolicy: "save_new" | "skip_new" = preventUnmatchedNewRecords ? "skip_new" : "save_new";
-    if (duplicateMatches.length > 0) {
+    if (duplicateMatches.length > 0 && preventUnmatchedNewRecords) {
       const confirmed = window.confirm(duplicateMergePrompt(duplicateMatches));
       if (!confirmed) {
-        setNotice("Duplicate full-text upload canceled. No duplicate saved article record was created.");
+        setNotice("Matched-record update canceled. Turn off update-matched-only mode to save these uploads as new article records.");
         return;
       }
       for (const match of duplicateMatches) duplicateTargetByResultId.set(match.resultId, match.target);
@@ -2565,9 +2565,14 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
           : "A saved record is selected, but unmatched files can still be saved as NEW saved article record(s). To update only the selected record without duplication, cancel this and use the saved-record update button.",
       );
       if (!confirmed) return;
-    } else if (!currentHistoryItem && duplicateMatches.length === 0 && historyDecisionCounts.legacy_source > 0) {
+    } else if (
+      !currentHistoryItem &&
+      duplicateMatches.length === 0 &&
+      historyDecisionCounts.legacy_source > 0 &&
+      preventUnmatchedNewRecords
+    ) {
       const confirmed = window.confirm(
-        "No saved record is selected. This batch path will auto-match uploaded files to existing saved article records. Unmatched files will NOT be saved as new records while existing-only mode is checked.",
+        "No saved record is selected. Update-matched-only mode is checked, so unmatched uploaded files will NOT be saved as new article records. Turn this mode off when adding new articles.",
       );
       if (!confirmed) return;
     }
@@ -2954,17 +2959,17 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                 </button>
               </div>
             ) : null}
-            <label className="mt-3 flex items-start gap-2 rounded-md border border-emerald-200 bg-emerald-50 p-2 text-xs font-semibold leading-5 text-emerald-950">
+            <label className="mt-3 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs font-semibold leading-5 text-amber-950">
               <input
                 type="checkbox"
                 checked={batchExistingOnlyMode}
                 onChange={(event) => setBatchExistingOnlyMode(event.target.checked)}
                 disabled={isAnalyzing}
-                className="mt-1 h-4 w-4 shrink-0 accent-emerald-700 disabled:opacity-40"
+                className="mt-1 h-4 w-4 shrink-0 accent-amber-700 disabled:opacity-40"
               />
               <span>
-                기존 저장 논문 자동 매칭 모드: 매칭된 파일은 기존 record에 source를 저장하고 선택한 AI reviewer를 실행합니다.
-                매칭 실패 파일은 새 논문으로 저장하지 않습니다.
+                기존 record만 업데이트: 특수한 경우에만 켭니다. 켜면 매칭된 파일만 기존 record에 병합하고,
+                매칭 실패 파일은 새 논문으로 저장하지 않습니다. 새 article 추가가 기본 작업이면 이 옵션을 끕니다.
               </span>
             </label>
             {files.length > 0 ? (
@@ -3000,14 +3005,16 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
               {analyzeButtonLabel}
             </button>
             <p className="mt-2 text-xs font-semibold leading-5 text-zinc-600">
-              Select multiple PDF, Word, TXT, or MD files once. Matched files update existing saved records; unmatched files are only saved as new records when existing-only mode is unchecked.
+              Select multiple PDF, Word, TXT, or MD files once. By default, unmatched files are saved as NEW article records. Turn on update-matched-only mode only when you intentionally want to prevent new records.
             </p>
             <p className="mt-2 text-xs font-semibold leading-5 text-zinc-600">
               AI reviewer run: {selectedAiReviewerLabel}
             </p>
             {!currentHistoryItem && files.length > 0 ? (
               <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs font-semibold leading-5 text-amber-950">
-                No saved record is selected. In existing-only mode, the batch path still updates matched existing records and does not create new records for unmatched files. Uncheck existing-only mode only when you intentionally want unmatched full texts saved as new article records.
+                {preventUnmatchedNewRecords
+                  ? "No saved record is selected. Update-matched-only mode is ON, so unmatched full-text files will not be saved as new articles."
+                  : "No saved record is selected. This is the normal add-new workflow: unmatched full-text files will be saved as new article records."}
               </p>
             ) : null}
             {currentHistoryItem && !currentHistoryItem.sourceFileSaved ? (
@@ -3131,16 +3138,19 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
             </div>
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <label className="inline-flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-950">
+            <label className="inline-flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-950">
               <input
                 type="checkbox"
                 checked={batchExistingOnlyMode}
                 onChange={(event) => setBatchExistingOnlyMode(event.target.checked)}
                 disabled={isAnalyzing}
-                className="h-4 w-4 shrink-0 accent-emerald-700 disabled:opacity-40"
+                className="h-4 w-4 shrink-0 accent-amber-700 disabled:opacity-40"
               />
-              Existing records only
+              Update matched existing only
             </label>
+            <span className="text-xs font-semibold leading-5 text-zinc-600">
+              기본값: 매칭되지 않은 full-text는 새 article record로 저장합니다.
+            </span>
             {worksheetOptions.length > 0 ? (
               <select
                 value={worksheetName}
@@ -3709,10 +3719,11 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                   </p>
                 ) : item.match ? (
                   <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-5 opacity-90">
-                    Auto-match: {item.match.targetFileName} ·{" "}
+                    {preventUnmatchedNewRecords ? "Update target" : "Possible existing match"}: {item.match.targetFileName} ·{" "}
                     {item.match.sourceFileSaved ? "source already saved" : "legacy/no source"} · AI reviews{" "}
                     {item.match.aiModelReviewCount}/{aiComparisonProgress.target} · score{" "}
                     {Math.round(item.match.score * 100)}% · {item.match.reason}
+                    {preventUnmatchedNewRecords ? "" : " · default action: save as new article unless checksum is identical"}
                   </p>
                 ) : (
                   <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-5 opacity-90">

@@ -1,3 +1,43 @@
+# 2026-06-21 Full-text upload default saves new articles
+
+User issue:
+
+- When adding 9 new full-text articles, the upload workflow compared the files against existing records and did not save unmatched/different articles because existing-only mode was the default.
+- This was backwards for the real research workflow: adding newly found full-text articles is the normal case, while replacing/updating an existing record is a special case.
+
+Implemented:
+
+- `src/components/MetaFullTextAssistant.tsx`
+  - Changed `batchExistingOnlyMode` default from `true` to `false`.
+  - The normal upload path now sends `unmatchedPolicy: save_new`, so unmatched full-text files are saved as new article records.
+  - Automatic local match candidates no longer force an existing-record merge in the default mode.
+  - `Update matched existing only` is now an explicit special-mode checkbox. When checked, matched files merge into existing records and unmatched files are not saved.
+  - Default-mode UI text now states that unmatched full-text files are saved as new article records.
+  - The old existing-only warning confirmation only appears when the special mode is actually checked.
+- `guide.md`
+  - Added Ver 2.30 instructions explaining that new article saving is the default and existing-record replacement is the exception.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.95`
+  - UI label: `Ver 2.30 | 2026 copyright by JK Hyun`
+
+Verification completed:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed
+git diff --check: passed
+npm.cmd run lint: passed
+npm.cmd run build: passed
+next start --hostname 127.0.0.1 --port 3216: HTTP 200
+GitHub push to main: pending in this handoff section until commit/push completes
+Vercel production readiness and meta.wiregene.com auth check: pending in this handoff section until deployment completes
+```
+
+Regular Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 # 2026-06-21 Selected AI review progress numerator fix
 
 User issue:

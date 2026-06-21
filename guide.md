@@ -1,9 +1,17 @@
 # Wiregene Meta 사용 가이드
 
-문서 버전: Ver 2.29
+문서 버전: Ver 2.30
 최종 업데이트: 2026-06-21
 적용 사이트: `https://meta.wiregene.com`  
 소스 저장소: `rhhyun/wiregene-meta-analysis`
+
+## 2026-06-21 Ver 2.30 업데이트: full-text 업로드 기본값은 새 article 저장
+
+Ver 2.30부터 full-text PDF/Word를 업로드할 때 기본 동작은 `새 article record 저장`입니다. 연구자가 새 논문 9개, 30개, 100개를 추가로 확보해 업로드하는 상황이 일반적인 workflow이므로, 매칭되지 않은 파일은 자동으로 새 논문 record로 저장됩니다.
+
+`Update matched existing only`는 특별한 경우에만 켭니다. 이 옵션을 켜면 업로드 파일이 기존 saved article과 매칭될 때만 같은 record에 병합하고, 매칭 실패 파일은 새 논문으로 저장하지 않습니다. 즉 이 옵션은 기존 legacy/no-source record를 원문 PDF/Word로 보강하거나, 이미 저장된 논문의 AI reviewer 결과를 의도적으로 갱신할 때 사용하는 예외 모드입니다.
+
+자동 match 후보가 보이더라도 기본 모드에서는 기존 record를 대체하지 않습니다. checksum이 완전히 같은 재업로드는 중복 방지를 위해 서버에서 같은 record로 병합될 수 있지만, 일반적인 새 full-text 업로드는 새 article로 저장됩니다. 기존 record를 대체하려면 연구자가 `Update matched existing only`를 켠 뒤 확인창에서 병합을 승인해야 합니다.
 
 이 문서는 메타분석 경험이 많지 않은 연구자도 Wiregene Meta에서 새 연구 주제를 만들고, 검색 전략을 정리하고, full-text PDF/Word를 AI로 검토하고, 최종 엑셀 데이터셋을 검증할 수 있도록 만든 운영 가이드입니다.
 
@@ -60,7 +68,7 @@ Ver 2.16부터 화면 순서는 `AI model reviewers for this run` → `full-text
 
 Ver 2.17부터 저장된 논문 목록의 `AI reviews x/y` 표시는 저장 이력과 설정된 reviewer slot 수를 함께 기준으로 계산합니다. 한 모델이 일시적으로 실패하거나 잠시 실행 불가로 판단되어도 다른 논문들의 분모가 `3`에서 `2`로 내려가지 않습니다. 따라서 3개 모델을 기준으로 진행한 논문은 계속 `3/3`으로 남고, 실제로 한 모델이 실패한 논문만 `2/3`처럼 검토가 덜 끝난 상태로 표시됩니다.
 
-Ver 2.18부터 기존 1개 AI 모델만 분석된 legacy record를 대량 업데이트할 수 있습니다. `full-text 파일`에서 PDF/Word 원문 여러 개를 한 번에 선택하고 `기존 저장 논문 자동 매칭 모드`를 켠 상태로 `Auto-match and run AI queue`를 실행하면, 앱이 파일명/저장 제목/추출 제목을 이용해 기존 논문과 매칭하고 같은 record에 source file과 선택한 AI reviewer 3개 결과를 순차 저장합니다. 매칭 실패 파일은 기본적으로 새 논문으로 저장하지 않아 중복 record가 생기지 않습니다. 새 연구에서 완전히 새 full-text를 저장해야 할 때만 자동 매칭 모드를 끕니다.
+Ver 2.18부터 기존 1개 AI 모델만 분석된 legacy record를 대량 업데이트할 수 있습니다. Ver 2.30 이후에는 새 full-text 업로드가 기본 workflow이므로, 매칭되지 않은 파일은 새 article record로 저장됩니다. 기존 논문 record만 보강하려면 `Update matched existing only`를 명시적으로 켠 뒤 실행합니다. 이 예외 모드에서는 앱이 파일명/저장 제목/추출 제목을 이용해 기존 논문과 매칭하고 같은 record에 source file과 선택한 AI reviewer 결과를 순차 저장하며, 매칭 실패 파일은 새 논문으로 저장하지 않습니다.
 
 Ver 2.19부터 `full-text 파일`의 파일 선택은 누적 방식입니다. 한 번에 일부 파일을 선택한 뒤 다시 `파일 선택`을 눌러 다른 PDF/Word 파일을 추가해도 기존 선택은 사라지지 않고 새 파일만 추가됩니다. 같은 파일은 파일명, 용량, 수정시각 기준으로 중복 제거됩니다. 선택을 처음부터 다시 시작하려면 `Clear selected files`를 누릅니다.
 
