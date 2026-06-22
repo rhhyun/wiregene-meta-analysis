@@ -8,6 +8,45 @@
 - Full-text history, source files, reviewer decisions, PI adjudication, and extraction datasets must be scoped by `projectId`; no research topic should share a global full-text or Excel dataset store with another topic.
 - Current public Meta deployment URL is `https://search.wiregene.com`; the app must enter Meta mode on that host.
 
+## 2026-06-22 Screening AI score interpretation lock
+
+Screening page AI numbers are triage and extraction-quality signals. They are not final study-selection authority. Reviewer 1, Reviewer 2, and PI adjudication remain the final decision path.
+
+Canonical scales from Ver 2.31 onward:
+
+| Field | Scale | Meaning | Do not use for |
+| --- | --- | --- | --- |
+| `Confidence` | 0-100 | AI confidence in the eligibility decision shown at the top, such as quantitative candidate, narrative/support, exclude, or uncertain. | It does not measure extraction completeness or numeric reliability by itself. |
+| `Score` | 0-100 | Quality score for the AI full-text screening/extraction output: protocol fit, extracted fields, source evidence, numeric consistency, actionability, and visible risk. | It does not override the actual eligibility decision. |
+| `Grade` | `high`, `moderate`, `low`, `unsafe` | Categorical quality label for the same AI output. | It is not a GRADE certainty-of-evidence rating for the meta-analysis result. |
+
+Scale normalization rule:
+
+- AI models sometimes return confidence as 0-1, such as `0.96` or `1`, or score as 1-5, such as `4/5`.
+- The app must normalize these to 0-100 before display/storage when possible: `0.96 -> 96`, `1 -> 100`, `4/5 -> 80`.
+- Legacy records should be interpreted with this normalization rule during review.
+
+Grade thresholds:
+
+| Grade | Score range | Operational meaning |
+| --- | --- | --- |
+| `high` | 85-100 | AI output is strongly usable as a reviewer draft; remaining work is verification, not rescue. |
+| `moderate` | 65-84 | Usable draft, but some fields or evidence still need manual confirmation. |
+| `low` | 40-64 | Major manual checking is required; do not finalize include/exclude from AI alone. |
+| `unsafe` | 0-39 | Failed/fallback/unusable; treat as human-review only. |
+
+Selection rules:
+
+| Situation | Minimum condition | Action |
+| --- | --- | --- |
+| Quantitative include candidate | `decision=include_quantitative`, `confidence>=80`, `score>=65`, `grade=high/moderate`, explicit denominator/numerator or prevalence, numeric `fieldEvidence`, and no material AI-model conflict | Reviewer 1/2 may select quantitative include after checking source table/figure/supplement. PI still finalizes. |
+| Narrative/support candidate | Topic/protocol fit is clear but n/total, effect size, or cell-level numeric evidence is incomplete | Mark narrative/support or keep for background/discussion; do not put into quantitative meta-analysis dataset. |
+| Exclude | `decision=exclude`, `confidence>=80`, and at least one fixed exclusion reason is clearly supported by the full text | Reviewer may exclude after confirming the cited reason. |
+| Pending/manual verification | `confidence<70`, `score<65`, `grade=low/unsafe`, missing critical fields, no numeric source evidence, OCR/table limitation, non-English uncertainty, or AI reviewer disagreement | Keep as pending/conflict. Human reviewer must inspect the full text before include/exclude. |
+| AI model disagreement | Valid model drafts disagree on include/exclude or on quantitative extractability | Do not resolve by average score. Escalate to reviewer discussion or PI adjudication. |
+
+Practical rule for the screenshot-type case: a result that displays old-scale `confidence 1` and `score 4` must not be interpreted literally as 1/100 and 4/100. It should be normalized as approximately `confidence 100` and `score 80` only if the stored AI draft clearly used 0-1 and 1-5 scales. After Ver 2.31 the app should store the normalized 0-100 values.
+
 > 최초 작성: 2026-06-18 | 담당: JK Hyun
 
 ---

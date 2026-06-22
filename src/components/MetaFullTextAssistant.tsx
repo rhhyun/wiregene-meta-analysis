@@ -941,6 +941,22 @@ const fixedExclusionReasons = [
   "duplicate/overlap cohort",
 ];
 
+const aiScreeningScoreGuide = [
+  [
+    "Confidence",
+    "0-100 AI eligibility confidence. >=80 can support a draft decision; 70-79 requires careful reviewer check; <70 stays human-verification/pending. Confidence alone never proves quantitative extractability.",
+  ],
+  ["Score", "0-100 quality score for the AI full-text screening/extraction output. high 85-100, moderate 65-84, low 40-64, unsafe <40."],
+  ["Grade", "Categorical quality label from the same quality review. low/unsafe overrides a high-looking decision and requires manual verification before include/exclude."],
+  [
+    "Quantitative include",
+    "Use only when decision=정량 분석 후보, confidence>=80, score>=65, grade high/moderate, denominator/numerator or prevalence is extractable, numeric fieldEvidence exists, and model drafts do not materially conflict.",
+  ],
+  ["Narrative/support", "Use when the article fits the topic but quantitative n/total or effect-size extraction is incomplete."],
+  ["Exclude", "Use when decision=제외, confidence>=80, and a fixed exclusion reason is clearly supported by the full text."],
+  ["Hold/manual", "Use when confidence<70, score<65, grade low/unsafe, critical fields are missing, numeric evidence is absent, or AI model reviewers disagree."],
+] as const;
+
 const historySortOptions: { value: HistorySortKey; label: string }[] = [
   { value: "number", label: "번호순" },
   { value: "title", label: "제목순" },
@@ -3806,6 +3822,20 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
             <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap rounded-md border border-zinc-200 bg-zinc-50 p-3 text-xs leading-5 text-zinc-700">
               {analysis.researcherGuidance || "No run-specific AI judgment guide is stored for this legacy result."}
             </pre>
+          </details>
+
+          <details className="rounded-md border border-zinc-200 bg-white p-3">
+            <summary className="cursor-pointer text-sm font-semibold text-zinc-950">
+              Confidence / Score / Grade selection criteria
+            </summary>
+            <div className="mt-3 grid gap-2">
+              {aiScreeningScoreGuide.map(([label, description]) => (
+                <div key={label} className="rounded-md border border-zinc-100 bg-zinc-50 p-3">
+                  <p className="text-xs font-semibold uppercase text-zinc-500">{label}</p>
+                  <p className="mt-1 text-sm leading-6 text-zinc-700">{description}</p>
+                </div>
+              ))}
+            </div>
           </details>
 
           <section className="rounded-md border border-zinc-200 bg-white p-4">

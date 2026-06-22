@@ -1,5 +1,14 @@
 # Wiregene Meta — 개발 작업 계획 (plan.md)
 
+## 2026-06-22 screening score criteria checkpoint
+
+- Active version after this checkpoint: `Ver 2.31`, package `0.1.96`.
+- Screening `Confidence`, `Score`, and `Grade` are now locked in `research.md` and `guide.md`.
+- Canonical scale is 0-100 for both eligibility confidence and AI review quality score.
+- AI outputs using 0-1 confidence or 1-5 quality scores are normalized to 0-100 before storage/display where possible.
+- Screening result UI now includes a visible `Confidence / Score / Grade selection criteria` panel.
+- Selection rule: quantitative include requires `decision=include_quantitative`, `confidence>=80`, `score>=65`, `grade=high/moderate`, explicit denominator/numerator or prevalence, numeric field evidence, and no material AI-model conflict. Otherwise reviewer/PI verification remains mandatory.
+
 ## 2026-06-19 continuity checkpoint
 
 - Current working repo confirmed: `C:\Users\HyunJK\Documents\GitHub\meta.wiregene.com`.

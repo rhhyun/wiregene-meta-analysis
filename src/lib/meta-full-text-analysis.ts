@@ -261,7 +261,7 @@ function coerceAiEligibility(value: unknown) {
   return {
     ...value,
     decision: coerceEligibilityDecision(value.decision),
-    confidence: coerceNumericScore(value.confidence),
+    confidence: coerceConfidenceScore(value.confidence),
     summary: coerceOptionalString(value.summary),
     reasons: coerceStringList(value.reasons),
     exclusionReasons: coerceStringList(value.exclusionReasons),
@@ -366,7 +366,7 @@ function coerceAiReviewEvaluation(value: unknown) {
   if (!isUnknownRecord(value)) return value;
   return {
     ...value,
-    score: coerceNumericScore(value.score),
+    score: coerceReviewQualityScore(value.score),
     grade: coerceOptionalString(value.grade),
     summary: coerceOptionalString(value.summary),
     improvement: coerceOptionalString(value.improvement),
@@ -396,7 +396,7 @@ function coerceReviewCriterion(value: unknown) {
   }
   return {
     ...value,
-    score: coerceNumericScore(value.score),
+    score: coerceReviewQualityScore(value.score),
     status: coerceOptionalString(value.status),
     comment: coerceOptionalString(value.comment),
   };
@@ -444,6 +444,22 @@ function coerceNumericScore(value: unknown) {
   if (normalized.includes("low")) return 30;
   if (normalized.includes("unsafe") || normalized.includes("fail")) return 10;
   return undefined;
+}
+
+function normalizeZeroToHundredScore(value: number | undefined, options: { oneScale?: boolean; fiveScale?: boolean; tenScale?: boolean } = {}) {
+  if (value === undefined || !Number.isFinite(value)) return undefined;
+  if (options.oneScale && value > 0 && value <= 1) return Math.round(value * 100);
+  if (options.fiveScale && value > 0 && value <= 5) return Math.round(value * 20);
+  if (options.tenScale && value > 0 && value <= 10) return Math.round(value * 10);
+  return Math.round(value);
+}
+
+function coerceConfidenceScore(value: unknown) {
+  return normalizeZeroToHundredScore(coerceNumericScore(value), { oneScale: true });
+}
+
+function coerceReviewQualityScore(value: unknown) {
+  return normalizeZeroToHundredScore(coerceNumericScore(value), { fiveScale: true, tenScale: true });
 }
 
 function coerceString(value: unknown) {
@@ -548,6 +564,16 @@ const metaReviewEvaluationCriteria = {
   risk_visibility:
     "Uncertainty, OCR/table limitations, non-English risk, treatment/intervention design, overlap cohorts, and missing denominators are explicitly visible.",
 };
+
+const metaFullTextScoringRules = [
+  "eligibility.confidence is a 0-100 percentage for the AI eligibility decision, not a 0-1 probability. Return 96 for 96% confidence; do not return 0.96.",
+  "reviewEvaluation.score and each criterion score are 0-100 quality scores for the AI screening/extraction output, not a 1-5 score. Convert 4/5 to 80 before returning JSON.",
+  "Grade mapping: high=85-100 with no major unresolved issue; moderate=65-84 or usable with limited missing fields; low=40-64 or major manual checks needed; unsafe=0-39, fallback, failed, or not usable for decisions.",
+  "Quantitative inclusion should be selected only when decision=include_quantitative, confidence>=80, reviewEvaluation.score>=65, grade is high or moderate, denominator/numerator or prevalence is extractable, and numeric fieldEvidence is present.",
+  "Narrative/support inclusion is appropriate when the article is topically relevant but quantitative n/total or effect-size extraction is incomplete.",
+  "Exclusion can be accepted only when confidence>=80 and at least one fixed exclusion reason is clearly supported by the full text.",
+  "Use uncertain/human verification when confidence<70, score<65, grade is low/unsafe, model drafts disagree, critical fields are missing, or numeric source evidence is absent.",
+];
 
 const stringSchema = { type: "string" } as const;
 const nullableStringSchema = { type: ["string", "null"] } as const;
@@ -1143,6 +1169,9 @@ ${guidance}
 Review evaluation criteria:
 ${JSON.stringify(metaReviewEvaluationCriteria, null, 2)}
 
+Scoring and selection rules:
+${metaFullTextScoringRules.map((rule) => `- ${rule}`).join("\n")}
+
 Return this JSON schema:
 {
   "titleGuess": "string or null",
@@ -1389,7 +1418,7 @@ function createModelReviewSummary(
     truncated: fallback.truncated,
     aiUsed: Boolean(analysis),
     decision: analysis?.eligibility?.decision ?? "uncertain",
-    confidence: clamp(Number(eligibility.confidence) || 0, 0, 100),
+    confidence: clamp(coerceConfidenceScore(eligibility.confidence) ?? 0, 0, 100),
     summary: eligibility.summary || warning || "No structured result returned.",
     reasons: normalizeList(eligibility.reasons).slice(0, 8),
     exclusionReasons: normalizeList(eligibility.exclusionReasons).slice(0, 8),
@@ -1471,7 +1500,7 @@ function normalizeAnalysis(analysis: MetaFullTextAnalysis): MetaFullTextAnalysis
   const safety = applyEligibilitySafety(
     {
       ...analysis.eligibility,
-      confidence: clamp(Number(analysis.eligibility.confidence) || 0, 0, 100),
+      confidence: clamp(coerceConfidenceScore(analysis.eligibility.confidence) ?? 0, 0, 100),
       reasons: normalizeList(analysis.eligibility.reasons),
       exclusionReasons: normalizeList(analysis.eligibility.exclusionReasons),
     },
@@ -1525,7 +1554,7 @@ function normalizeModelReview(review: MetaFullTextModelReview): MetaFullTextMode
     truncated: Boolean(review.truncated),
     aiUsed: Boolean(review.aiUsed),
     decision,
-    confidence: clamp(Number(review.confidence) || 0, 0, 100),
+    confidence: clamp(coerceConfidenceScore(review.confidence) ?? 0, 0, 100),
     summary: conciseReviewText(review.summary || "", 720),
     reasons: normalizeList(review.reasons).slice(0, 8),
     exclusionReasons: normalizeList(review.exclusionReasons).slice(0, 8),
@@ -1649,9 +1678,9 @@ function applyEligibilitySafety(
   };
 }
 
-function reviewCriterion(score: number, status: string, comment: string): MetaFullTextReviewCriterion {
+function reviewCriterion(score: unknown, status: string, comment: string): MetaFullTextReviewCriterion {
   return {
-    score: clamp(Number(score) || 0, 0, 100),
+    score: clamp(coerceReviewQualityScore(score) ?? 0, 0, 100),
     status: String(status || "unclear").replace(/\s+/g, " ").trim().slice(0, 60),
     comment: conciseReviewText(comment, 420),
   };
@@ -1681,7 +1710,7 @@ function normalizeReviewEvaluation(
   const source = (value && typeof value === "object" ? value : {}) as AiMetaFullTextReviewEvaluation;
   const fallbackCriteria = fallback.criteria ?? {};
   return {
-    score: clamp(Number(source.score ?? fallback.score ?? 0) || 0, 0, 100),
+    score: clamp(coerceReviewQualityScore(source.score ?? fallback.score ?? 0) ?? 0, 0, 100),
     grade: conciseReviewText(source.grade ?? fallback.grade ?? "unsafe", 80),
     summary: conciseReviewText(source.summary ?? fallback.summary ?? "", 520),
     improvement: conciseReviewText(source.improvement ?? fallback.improvement ?? "", 520),
@@ -1704,7 +1733,7 @@ function normalizeReviewCriteria(
       return [
         key,
         reviewCriterion(
-          Number(raw.score ?? 0),
+          raw.score ?? 0,
           String(raw.status ?? "unclear"),
           String(raw.comment ?? metaReviewEvaluationCriteria[key as keyof typeof metaReviewEvaluationCriteria]),
         ),

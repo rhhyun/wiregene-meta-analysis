@@ -1,3 +1,32 @@
+# 2026-06-22 Screening score criteria and normalization
+
+User issue:
+
+- Screening results showed mixed-scale AI values such as `confidence 1`, model-review `confidence 0.96`, and `score 4/moderate`, so researchers could not know how to interpret Confidence, Score, and Grade or when to select include/exclude.
+
+Implemented:
+
+- Added the official Screening AI score interpretation lock to `research.md`.
+- Added the same operational criteria to `guide.md`.
+- Added a visible `Confidence / Score / Grade selection criteria` details panel in the Screening result area.
+- Added scoring and selection rules to the AI prompt so every full-text run receives the same criteria.
+- Added default AI judgment-guide lines that are stored with each result and exported through the existing researcher guidance audit trail.
+- Normalized AI confidence and review score scales:
+  - Confidence 0-1 outputs are stored as 0-100 (`0.96 -> 96`, `1 -> 100`).
+  - Review score / criterion score 1-5 outputs are stored as 0-100 (`4/5 -> 80`).
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.96`
+  - UI label: `Ver 2.31 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed.
+npm.cmd run lint: passed.
+npm.cmd run build: passed.
+Local Meta dev SSR check on http://127.0.0.1:3321: Ver 2.31 visible.
+```
+
 # 2026-06-21 Full-text upload default saves new articles
 
 User issue:

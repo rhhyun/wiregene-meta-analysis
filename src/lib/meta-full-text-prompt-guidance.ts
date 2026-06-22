@@ -18,6 +18,13 @@ export const defaultMetaFullTextResearcherGuidanceLines = [
   "For publication-bias fields, collect only study-level inputs that later funnel/small-study-effect checks need: outcome group, effect size/prevalence input, standard error or data needed to compute it, and whether the row is eligible for funnel/small-study assessment. Do not claim publication bias from a single article.",
   "Use rob_supporting_quote and rob_page_table for short evidence excerpts or page/table/supplement hints. If the full text lacks evidence, leave the field empty and list it in manual_required_fields.",
   "Keep evidence excerpts short.",
+  "Use eligibility.confidence as a 0-100 percentage, not a 0-1 probability. Return 96 for 96% confidence; do not return 0.96.",
+  "Use reviewEvaluation.score and criterion scores as 0-100 quality scores, not 1-5 scores. Convert 4/5 to 80 before returning JSON.",
+  "Grade mapping is high=85-100 with no major unresolved issue, moderate=65-84 or usable with limited missing fields, low=40-64 or major manual checks needed, unsafe=0-39/fallback/failed/not usable.",
+  "Select quantitative inclusion only when decision is include_quantitative, confidence is at least 80, score is at least 65, grade is high or moderate, denominator/numerator or prevalence is extractable, and numeric fieldEvidence is present.",
+  "Use include_narrative_support when the article is relevant but quantitative n/total or effect-size extraction is incomplete.",
+  "Accept exclusion only when confidence is at least 80 and a fixed exclusion reason is clearly supported by the full text.",
+  "Use uncertain/human verification when confidence is below 70, score is below 65, grade is low/unsafe, model drafts disagree, critical fields are missing, or numeric source evidence is absent.",
   "Also evaluate the quality of your own screening/extraction using the reviewEvaluation criteria below.",
   "Return only one JSON object.",
 ];

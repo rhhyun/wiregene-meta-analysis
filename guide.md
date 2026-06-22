@@ -1,7 +1,7 @@
 # Wiregene Meta 사용 가이드
 
-문서 버전: Ver 2.30
-최종 업데이트: 2026-06-21
+문서 버전: Ver 2.31
+최종 업데이트: 2026-06-22
 적용 사이트: `https://meta.wiregene.com`  
 소스 저장소: `rhhyun/wiregene-meta-analysis`
 
@@ -89,6 +89,25 @@ Ver 2.26부터 `Saved AI review article list` 바로 위에 `AI model reviewers 
 Ver 2.27부터 `Article list`에는 각 논문 행마다 `full-text saved` 또는 `full-text missing` 배지가 항상 표시됩니다. 행을 열지 않아도 어떤 논문이 바로 AI review 가능한지 알 수 있습니다. 목록 헤더에는 현재 보이는 논문 중 full-text 저장 완료 수와 미저장 수가 함께 표시됩니다. 선택한 논문 중 full-text가 없는 항목이 있으면 `AI model reviewers for selected articles` 패널 안에 논문 번호가 바로 표시되며, `Run AI review on selected`를 눌렀을 때도 건너뛴 논문 번호가 오류/경고 문구에 남습니다. 따라서 위아래로 이동하면서 어느 PDF/Word를 다시 업로드해야 하는지 찾지 않아도 됩니다.
 
 ### AI Model Reviewer Comparison
+
+### Confidence / Score / Grade 해석 기준
+
+Ver 2.31부터 Screening 결과의 `Confidence`, `Score`, `Grade`는 아래 기준으로 해석합니다. 이 숫자는 AI triage와 extraction quality를 보는 보조 지표이며, reviewer 1/2와 PI 최종판정을 대체하지 않습니다.
+
+| 항목 | 기준척도 | 의미 |
+|---|---|---|
+| `Confidence` | 0-100 | AI가 현재 eligibility decision을 얼마나 확신하는지 나타냅니다. extraction 완성도를 뜻하지 않습니다. |
+| `Score` | 0-100 | AI full-text screening/extraction 결과물 자체의 품질점수입니다. protocol fit, critical field, source evidence, numeric consistency, reviewer actionability, risk visibility를 봅니다. |
+| `Grade` | `high`, `moderate`, `low`, `unsafe` | Score를 범주형으로 요약한 품질등급입니다. meta-analysis 결과의 GRADE certainty가 아닙니다. |
+
+AI 모델이 `confidence 0.96`, `confidence 1`, `score 4`처럼 0-1 또는 1-5 척도로 응답하면 앱은 0-100으로 정규화합니다. 예를 들어 `0.96 -> 96`, `1 -> 100`, `4/5 -> 80`입니다.
+
+| 상황 | 최소 기준 | 조치 |
+|---|---|---|
+| 정량분석 후보 선택 | `decision=정량 분석 후보`, `confidence>=80`, `score>=65`, `grade=high/moderate`, denominator/numerator 또는 prevalence 추출 가능, numeric field evidence 존재, AI model 간 중대한 conflict 없음 | reviewer가 원문 table/figure/supplement를 확인한 뒤 정량 포함으로 선택할 수 있습니다. PI가 최종 확정합니다. |
+| 서술/근거 후보 | 연구질문에는 맞지만 n/total 또는 effect size 추출이 불완전 | 정량 dataset에는 넣지 않고 narrative/background/discussion 용도로 분류합니다. |
+| 제외 | `decision=제외`, `confidence>=80`, 고정 제외사유가 full text에서 명확 | reviewer가 제외사유를 확인한 뒤 제외할 수 있습니다. |
+| 보류/manual 확인 | `confidence<70`, `score<65`, `grade=low/unsafe`, critical field 누락, numeric evidence 없음, OCR/table limitation, non-English uncertainty, AI reviewer disagreement | pending/conflict로 두고 사람이 full text를 직접 확인합니다. |
 
 Ver 2.29부터 `Run selected AI review (x/y)`의 숫자는 선택 논문 AI review run의 실제 진행률입니다. `y`는 Article list에서 선택한 전체 논문 수이고, `x`는 현재 선택 run에서 완료된 논문 수입니다. 버튼을 누르는 순간 선택된 논문 ID와 full-text source가 저장된 논문 ID를 고정한 뒤 그 run의 batch queue만 세므로, 분석이 끝나는 논문마다 `1/y`, `2/y`처럼 증가합니다. full-text source가 없는 논문은 분모에는 남아 연구자가 빠진 논문을 인지할 수 있고, 분석 queue에서는 source가 저장된 논문만 순차 실행됩니다. run 전에는 현재 선택 run이 아직 시작되지 않았으므로 `0/y`에서 시작합니다. 기존처럼 AI-ready saved source 수를 분자로 쓰지 않습니다.
 
