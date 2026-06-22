@@ -1,6 +1,6 @@
 # Wiregene Meta 사용 가이드
 
-문서 버전: Ver 2.33
+문서 버전: Ver 2.34
 최종 업데이트: 2026-06-22
 적용 사이트: `https://meta.wiregene.com`  
 소스 저장소: `rhhyun/wiregene-meta-analysis`
@@ -136,6 +136,21 @@ Nyman et al. 2007, `Work Postures and Neck-Shoulder Pain Among Orchestra Musicia
 - `Elevated arm, >3 h/day`는 pooled violin/viola group입니다. 논문이 분리값을 보고하지 않으면 violin과 viola를 임의로 나누지 않습니다.
 - 노출군은 instrument, arm elevation/posture, playing time이 결합된 군입니다. 이를 순수한 asymmetry effect로 해석하지 않습니다.
 - `현재 통증`이고 strict playing-related PRMD 정의가 아니므로 outcome definition을 그대로 기록합니다.
+
+### Piatkowska 2016 calibration rule
+
+Piatkowska et al. 2016, `Cervical Pain in Young Professional Musicians - Quality of Life`는 symptomatic cohort 보정 예시입니다. 논문에 VAS, NDI, SF-36 평균값이 있어 정량자료처럼 보이지만, 연구대상이 이미 cervical pain이 있는 음악대학 학생으로 선별되었기 때문에 유병률 메타분석의 `pain_n / total_n`으로 사용할 수 없습니다.
+
+운영 규칙은 다음과 같습니다.
+
+- 최종 상태는 `Primary prevalence meta-analysis: 제외`, `Narrative/secondary continuous-outcome synthesis: 제한적 포함`입니다.
+- 45명 모두가 cervical pain 보유자인 것은 결과가 아니라 포함 기준입니다. `45/45 = 100%` 경추 통증 유병률로 코딩하지 않습니다.
+- Table 3의 VAS, NDI, SF-36 평균값은 통증 보유자 내 중증도/삶의 질 자료입니다. 별도 사전 정의된 continuous-outcome 분석이 없으면 primary prevalence dataset에는 넣지 않습니다.
+- 제목은 professional musicians이지만 실제 표본은 두 음악대학 학생입니다. population status는 student/trainee로 기록합니다.
+- 모집 흐름 `80 assessed -> 60 eligible -> 50 stage II -> 45 final`과 eligible 기준 25% 탈락을 risk/limitation으로 표시합니다.
+- 악기군별 탈락자 수와 각 시점 분석 표본수가 명확하지 않으면 stage-specific sample size uncertainty로 표시합니다.
+- Cervical pain이 악기 연주 때문에 발생했거나 연주를 방해했다는 명시적 playing-related PRMD 정의가 아니므로 outcome definition을 그대로 기록합니다.
+- 초록의 `moderate disability`와 Table 3/본문의 mild/slight disability 해석 불일치는 reporting inconsistency로 표시합니다.
 
 Ver 2.29부터 `Run selected AI review (x/y)`의 숫자는 선택 논문 AI review run의 실제 진행률입니다. `y`는 Article list에서 선택한 전체 논문 수이고, `x`는 현재 선택 run에서 완료된 논문 수입니다. 버튼을 누르는 순간 선택된 논문 ID와 full-text source가 저장된 논문 ID를 고정한 뒤 그 run의 batch queue만 세므로, 분석이 끝나는 논문마다 `1/y`, `2/y`처럼 증가합니다. full-text source가 없는 논문은 분모에는 남아 연구자가 빠진 논문을 인지할 수 있고, 분석 queue에서는 source가 저장된 논문만 순차 실행됩니다. run 전에는 현재 선택 run이 아직 시작되지 않았으므로 `0/y`에서 시작합니다. 기존처럼 AI-ready saved source 수를 분자로 쓰지 않습니다.
 

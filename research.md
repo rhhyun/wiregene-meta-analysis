@@ -97,6 +97,33 @@ AI performance rule derived from this case:
 - If the article is otherwise relevant, keep it as `include_narrative_support` or as a secondary composite-outcome source, and record the exact composite outcome and exposure-group definitions.
 - Reconstructed n values from percentages can be retained as secondary evidence when they reproduce the article's reported ORs, but they must not be converted into neck pain, shoulder pain, left shoulder pain, or right shoulder pain rows.
 
+## 2026-06-22 Piatkowska 2016 symptomatic-cohort calibration rule
+
+Piatkowska et al. 2016, `Cervical Pain in Young Professional Musicians - Quality of Life`, is a calibration example for studies with continuous symptom/disability outcomes in participants already selected for pain. These studies can look quantitative, but they do not provide valid prevalence numerator/denominator pairs for the primary meta-analysis.
+
+Locked adjudication for this calibration case:
+
+| Item | Rule |
+| --- | --- |
+| Primary prevalence meta-analysis | Exclude |
+| Narrative or secondary synthesis | Limited include |
+| Study class | Repeated-measures symptomatic observational cohort |
+| Actual population | Music college students, not professional musicians despite the title wording |
+| Instrument groups | Violin 15, cello 15, piano 15 final completers |
+| Prevalence n/N | Not extractable; do not code 45/45 as cervical pain prevalence |
+| Why 45/45 is invalid | Cervical pain was an inclusion criterion, not an outcome observed in an at-risk population |
+| Quantitative source | Table 3 VAS, NDI, and SF-36 continuous mean scores by instrument/time point |
+| Attrition issue | Flow 80 assessed -> 60 eligible -> 50 second-stage -> 45 final; 15/60 eligible participants dropped out, with possible outcome-related reasons |
+| Outcome definition | Cervical pain, not explicitly playing-related PRMD |
+| Reporting issue | Abstract `moderate` disability statement conflicts with NDI table/body text indicating mild/slight disability |
+
+AI performance rule derived from this case:
+
+- If participants are recruited because they already have pain, disability, or symptoms, the AI must not convert final completers into prevalence cases.
+- Continuous VAS/NDI/SF-36 or quality-of-life means are not denominator-based pain prevalence data. They can support narrative synthesis or a separately prespecified continuous-outcome analysis only.
+- The AI must distinguish actual recruited population from title language; music students should be coded as students/trainees even when a title says professional musicians.
+- Attrition, unclear instrument-specific dropouts, and stage-specific sample-size uncertainty should be flagged as risk/limitations, not silently ignored.
+
 > 최초 작성: 2026-06-18 | 담당: JK Hyun
 
 ---

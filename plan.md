@@ -1,5 +1,16 @@
 # Wiregene Meta — 개발 작업 계획 (plan.md)
 
+## 2026-06-22 Piatkowska 2016 symptomatic-cohort calibration checkpoint
+
+- Active version after this checkpoint: `Ver 2.34`, package `0.1.99`.
+- Added a calibration rule from article 88 / Piatkowska et al. 2016:
+  - symptomatic cohorts preselected for pain are not prevalence studies;
+  - do not code all final completers as pain cases when pain was an inclusion criterion;
+  - VAS, NDI, SF-36, quality-of-life, severity, and disability means are continuous outcomes, not `pain_n / total_n` prevalence data;
+  - title wording does not override the actual recruited population, so music students remain student/trainee status;
+  - attrition and unclear stage-specific instrument sample sizes must be flagged.
+- The rule is injected into the server prompt and default AI judgment guide, and documented in `research.md` and `guide.md`.
+
 ## 2026-06-22 Nyman 2007 composite-outcome calibration checkpoint
 
 - Active version after this checkpoint: `Ver 2.33`, package `0.1.98`.

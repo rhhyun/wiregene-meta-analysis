@@ -1,3 +1,33 @@
+# 2026-06-22 Piatkowska 2016 symptomatic-cohort AI calibration guidance
+
+User issue:
+
+- Article 88 (`Piatkowska et al., 2016, Cervical Pain in Young Professional Musicians - Quality of Life`) was pending.
+- Human PI verification showed the paper should be excluded from the primary prevalence meta-analysis and retained only as limited narrative or separately prespecified continuous-outcome evidence.
+
+Implemented:
+
+- Added a server-side calibration rule that symptomatic cohorts or case-only samples preselected for pain cannot be converted into prevalence numerator/denominator data.
+- Added continuous-outcome restrictions:
+  - VAS, NDI, SF-36, quality-of-life, severity, or disability means are not `pain_n / total_n` prevalence data;
+  - final completers who all have pain because of inclusion criteria must not be coded as `45/45 = 100%` prevalence;
+  - music college students must be classified as students/trainees even when the title says professional musicians;
+  - attrition, outcome-related dropout risk, and unclear stage-specific instrument sample sizes must be flagged.
+- Added the explicit Piatkowska 2016 calibration example to default AI judgment guidance and always-injected scoring/selection rules.
+- Added text retention keywords for cervical pain, VAS, NDI, SF-36, quality of life, disability, symptomatic cohort, attrition, and student status.
+- Added the calibration rule to `research.md`, `guide.md`, and the handoff workspace `research.md`.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.99`
+  - UI label: `Ver 2.34 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed.
+npm.cmd run lint: passed.
+npm.cmd run build: passed.
+```
+
 # 2026-06-22 Nyman 2007 composite-outcome AI calibration guidance
 
 User issue:

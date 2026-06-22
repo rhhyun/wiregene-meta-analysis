@@ -510,7 +510,7 @@ const defaultCriticalFields = [
 
 const defaultOpenAiFullTextCharacterLimit = 65_000;
 const openAiFullTextKeywordPattern =
-  /(?:abstract|method|methods|participants|respondents|sample|survey|questionnaire|result|results|prevalence|pain|musculoskeletal|PRMD|instrument|guitar|classical\s+guitar|violin|viola|cello|orchestra|table|appendix|thenar|posterior\s+neck|lower\s+back|occupational\s+health|neck|shoulder|interscapular|shoulder\s+blades|neutral\s+arm|elevated\s+arm|work\s+postures|posture|playing\s+time|discussion|conclusion)/gi;
+  /(?:abstract|method|methods|participants|respondents|sample|survey|questionnaire|result|results|prevalence|pain|musculoskeletal|PRMD|instrument|guitar|classical\s+guitar|violin|viola|cello|piano|orchestra|table|appendix|thenar|posterior\s+neck|lower\s+back|occupational\s+health|neck|cervical|shoulder|interscapular|shoulder\s+blades|neutral\s+arm|elevated\s+arm|work\s+postures|posture|playing\s+time|VAS|NDI|SF-36|quality\s+of\s+life|disability|symptomatic|attrition|student|students|discussion|conclusion)/gi;
 
 const instrumentTerms = [
   "violin",
@@ -580,7 +580,12 @@ const metaFullTextScoringRules = [
   "For otherwise relevant composite-outcome papers, choose include_narrative_support or record primary-analysis exclusion with secondary/narrative inclusion. Extract reconstructable group n/total values as secondary evidence only.",
   "When exposure groups combine instrument type with posture, arm elevation, or playing time, keep the original group label and do not reinterpret the result as a pure asymmetry effect. Do not split pooled violin/viola or similar pooled instruments unless separate values are reported.",
   "Nyman et al. 2007 calibration: Work Postures and Neck-Shoulder Pain Among Orchestra Musicians has useful orchestra/posture groups and reconstructable Table II cases, but the outcome is current composite neck, shoulder, or interscapular pain with no separate anatomical or left/right estimates. Primary region/laterality meta-analysis should be excluded; retain for narrative or secondary composite-outcome synthesis.",
-  "Narrative/support inclusion is appropriate when the article is topically relevant but quantitative n/total or effect-size extraction is incomplete, or when numeric data exist but the outcome/grouping is incompatible with the primary region/laterality meta-analysis.",
+  "If participants were selected because they already had pain or disability, do not code all included participants as prevalence cases. Symptomatic cohorts and case-only samples lack a valid at-risk source population denominator for primary prevalence meta-analysis.",
+  "Continuous outcomes such as VAS, NDI, SF-36, quality-of-life, severity, or disability mean scores are not pain_n/total_n prevalence data. Keep them only for narrative synthesis or a separately prespecified continuous-outcome analysis.",
+  "Classify the actual recruited population, not title wording. A sample of music college students remains student/trainee status even if the title says professional musicians.",
+  "Flag attrition, outcome-related dropout, and unclear stage-specific instrument sample sizes; do not use final completers as the denominator for prevalence when eligibility/enrollment flow shows selected symptomatic participants.",
+  "Piatkowska et al. 2016 calibration: Cervical Pain in Young Professional Musicians - Quality of Life is a repeated-measures symptomatic cohort of music students preselected for cervical pain. It reports instrument-specific VAS/NDI/SF-36 means but no valid pain-case numerator/denominator from an at-risk source population. Exclude from primary prevalence meta-analysis; retain only for narrative or separately prespecified continuous-outcome synthesis.",
+  "Narrative/support inclusion is appropriate when the article is topically relevant but quantitative n/total or effect-size extraction is incomplete, when numeric data exist but the outcome/grouping is incompatible with the primary region/laterality meta-analysis, or when only continuous symptom/disability scores are available.",
   "Exclusion can be accepted only when confidence>=80 and at least one fixed exclusion reason is clearly supported by the full text.",
   "Use uncertain/human verification when confidence<70, score<65, grade is low/unsafe, model drafts disagree, critical fields are missing, or numeric source evidence is absent.",
 ];
