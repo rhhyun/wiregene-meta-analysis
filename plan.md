@@ -1,5 +1,16 @@
 # Wiregene Meta — 개발 작업 계획 (plan.md)
 
+## 2026-06-22 Nyman 2007 composite-outcome calibration checkpoint
+
+- Active version after this checkpoint: `Ver 2.33`, package `0.1.98`.
+- Added a calibration rule from article 42 / Nyman et al. 2007:
+  - numeric extractability alone is not enough for primary quantitative inclusion;
+  - composite neck-shoulder or neck/shoulder/interscapular outcomes without separate anatomical and laterality-specific estimates are excluded from the primary region/laterality meta-analysis;
+  - reconstructable Table II values can be retained only for narrative or secondary composite-outcome synthesis;
+  - pooled violin/viola groups must not be split without separate reported values;
+  - posture/arm-elevation/playing-time exposure groups must not be reinterpreted as pure asymmetry effects.
+- The rule is injected into the server prompt and default AI judgment guide, and documented in `research.md` and `guide.md`.
+
 ## 2026-06-22 Zuhdi 2020 calibration checkpoint
 
 - Active version after this checkpoint: `Ver 2.32`, package `0.1.97`.

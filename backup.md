@@ -1,3 +1,33 @@
+# 2026-06-22 Nyman 2007 composite-outcome AI calibration guidance
+
+User issue:
+
+- Article 42 (`Nyman et al., 2007, Work Postures and Neck-Shoulder Pain Among Orchestra Musicians`) was pending.
+- Human PI verification showed DeepSeek was closest: the article is relevant and has reconstructable quantitative values, but it should be excluded from the primary region/laterality meta-analysis and retained for narrative or secondary composite-outcome synthesis.
+
+Implemented:
+
+- Added a server-side calibration rule that numeric extractability alone is not enough for `include_quantitative`; the outcome must map to the protocol's primary anatomical region and laterality rows.
+- Added composite-outcome restrictions:
+  - neck-shoulder complaint, neck/shoulder/interscapular pain combined, or any-region upper-body pain without separate anatomical/laterality estimates should not become primary quantitative rows;
+  - reconstructable group n/total values may be recorded as secondary evidence;
+  - pooled violin/viola or other pooled instrument groups must not be split unless the article reports separate values;
+  - exposure groups combining instrument, arm elevation/posture, and playing time must not be interpreted as pure asymmetry effects.
+- Added the explicit Nyman 2007 calibration example to default AI judgment guidance and always-injected scoring/selection rules.
+- Added text retention keywords for neck/shoulder/interscapular/posture/arm-elevation terms so relevant Table II and Figure 1 context is less likely to be dropped before model review.
+- Added the calibration rule to `research.md`, `guide.md`, and the handoff workspace `research.md`.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.98`
+  - UI label: `Ver 2.33 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed.
+npm.cmd run lint: passed.
+npm.cmd run build: passed.
+```
+
 # 2026-06-22 Zuhdi 2020 AI calibration guidance
 
 User issue:

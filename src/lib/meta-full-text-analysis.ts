@@ -510,7 +510,7 @@ const defaultCriticalFields = [
 
 const defaultOpenAiFullTextCharacterLimit = 65_000;
 const openAiFullTextKeywordPattern =
-  /(?:abstract|method|methods|participants|respondents|sample|survey|questionnaire|result|results|prevalence|pain|musculoskeletal|PRMD|instrument|guitar|classical\s+guitar|violin|viola|cello|orchestra|table|appendix|thenar|posterior\s+neck|lower\s+back|occupational\s+health|discussion|conclusion)/gi;
+  /(?:abstract|method|methods|participants|respondents|sample|survey|questionnaire|result|results|prevalence|pain|musculoskeletal|PRMD|instrument|guitar|classical\s+guitar|violin|viola|cello|orchestra|table|appendix|thenar|posterior\s+neck|lower\s+back|occupational\s+health|neck|shoulder|interscapular|shoulder\s+blades|neutral\s+arm|elevated\s+arm|work\s+postures|posture|playing\s+time|discussion|conclusion)/gi;
 
 const instrumentTerms = [
   "violin",
@@ -569,14 +569,18 @@ const metaFullTextScoringRules = [
   "eligibility.confidence is a 0-100 percentage for the AI eligibility decision, not a 0-1 probability. Return 96 for 96% confidence; do not return 0.96.",
   "reviewEvaluation.score and each criterion score are 0-100 quality scores for the AI screening/extraction output, not a 1-5 score. Convert 4/5 to 80 before returning JSON.",
   "Grade mapping: high=85-100 with no major unresolved issue; moderate=65-84 or usable with limited missing fields; low=40-64 or major manual checks needed; unsafe=0-39, fallback, failed, or not usable for decisions.",
-  "Quantitative inclusion should be selected only when decision=include_quantitative, confidence>=80, reviewEvaluation.score>=65, grade is high or moderate, denominator/numerator or prevalence is extractable, and numeric fieldEvidence is present.",
+  "Quantitative inclusion should be selected only when decision=include_quantitative, confidence>=80, reviewEvaluation.score>=65, grade is high or moderate, denominator/numerator or prevalence is extractable, numeric fieldEvidence is present, and the outcome can be mapped to the protocol's primary region/laterality rows.",
   "Do not downgrade an instrument-specific observational study only because it is not a core orchestral comparative study. Core comparative status and instrument-specific quantitative eligibility are separate labels.",
   "If site/laterality n/total values are present in a table or appendix, table extraction incompleteness is an extraction quality problem, not an eligibility exclusion reason. Keep the article as a quantitative candidate and list the exact table to verify.",
   "If only the highest-prevalence body sites are reported, extract the reported sites and mark unreported sites as NR. Never code unreported contralateral or lower-prevalence sites as 0.",
   "If numerator and percentage disagree for an overall prevalence value, flag a numerator-percentage discrepancy and avoid using that overall value as final, but still use internally consistent site-specific rows.",
   "For classical guitar papers, keep asymmetry_group unclassified/other unless the protocol has a predefined guitar class; do not force a guitar paper into high/moderate/low asymmetry by intuition.",
   "Zuhdi et al. 2020 calibration: Occupational Health Problems of Classical Guitarists is an instrument-specific observational quantitative candidate when Table 5 is available; denominator n=190, top 22 site/laterality pain counts should be extracted, overall 168/190 vs 88.9% should be flagged, and unreported sites remain NR.",
-  "Narrative/support inclusion is appropriate when the article is topically relevant but quantitative n/total or effect-size extraction is incomplete.",
+  "If the only reported pain outcome is a composite anatomical outcome, such as neck-shoulder complaint or neck/shoulder/interscapular pain combined, and separate anatomical and laterality-specific estimates are absent, exclude it from the primary region/laterality quantitative meta-analysis even when group n/percent values can be reconstructed.",
+  "For otherwise relevant composite-outcome papers, choose include_narrative_support or record primary-analysis exclusion with secondary/narrative inclusion. Extract reconstructable group n/total values as secondary evidence only.",
+  "When exposure groups combine instrument type with posture, arm elevation, or playing time, keep the original group label and do not reinterpret the result as a pure asymmetry effect. Do not split pooled violin/viola or similar pooled instruments unless separate values are reported.",
+  "Nyman et al. 2007 calibration: Work Postures and Neck-Shoulder Pain Among Orchestra Musicians has useful orchestra/posture groups and reconstructable Table II cases, but the outcome is current composite neck, shoulder, or interscapular pain with no separate anatomical or left/right estimates. Primary region/laterality meta-analysis should be excluded; retain for narrative or secondary composite-outcome synthesis.",
+  "Narrative/support inclusion is appropriate when the article is topically relevant but quantitative n/total or effect-size extraction is incomplete, or when numeric data exist but the outcome/grouping is incompatible with the primary region/laterality meta-analysis.",
   "Exclusion can be accepted only when confidence>=80 and at least one fixed exclusion reason is clearly supported by the full text.",
   "Use uncertain/human verification when confidence<70, score<65, grade is low/unsafe, model drafts disagree, critical fields are missing, or numeric source evidence is absent.",
 ];

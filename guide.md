@@ -1,6 +1,6 @@
 # Wiregene Meta 사용 가이드
 
-문서 버전: Ver 2.32
+문서 버전: Ver 2.33
 최종 업데이트: 2026-06-22
 적용 사이트: `https://meta.wiregene.com`  
 소스 저장소: `rhhyun/wiregene-meta-analysis`
@@ -122,6 +122,20 @@ Zuhdi et al. 2020, `Occupational Health Problems of Classical Guitarists`는 AI 
 - Table 5가 상위 22개 부위만 보고한 경우, 보고되지 않은 부위는 `0`이 아니라 `NR`로 둡니다.
 - Classical guitar는 현재 predefined asymmetry group에 넣지 않고 `unclassified/other`로 둡니다.
 - Outcome은 strict PRMD가 아니라 `12-month playing-related musculoskeletal pain`으로 코딩합니다.
+
+### Nyman 2007 calibration rule
+
+Nyman et al. 2007, `Work Postures and Neck-Shoulder Pain Among Orchestra Musicians`는 반대 방향의 AI 판정 보정 예시입니다. 이 논문은 12개 스웨덴 전문 오케스트라 연주자를 대상으로 한 관련성 높은 횡단면 연구이고 Table II의 백분율로 사례 수를 복원할 수 있지만, primary region/laterality meta-analysis에는 넣지 않습니다.
+
+운영 규칙은 다음과 같습니다.
+
+- 최종 상태는 `Primary quantitative meta-analysis: 제외`, `Narrative/secondary composite-outcome synthesis: 포함`입니다.
+- Outcome이 neck, shoulder, between the shoulder blades 중 하나라도 해당하면 `neck-shoulder complaint`로 처리한 복합 outcome이므로 `neck pain`, `shoulder pain`, `left shoulder pain`, `right shoulder pain` row로 변환하지 않습니다.
+- 좌우별 shoulder outcome이 없으면 laterality-specific primary dataset에는 넣지 않습니다.
+- Table II의 9.3%, 19.0%, 29.7%, 35.3%, 25.5%는 각각 `5/54`, `8/42`, `11/37`, `36/102`, `60/235`로 복원 가능하고 OR와도 일치하므로 secondary evidence로 기록할 수 있습니다.
+- `Elevated arm, >3 h/day`는 pooled violin/viola group입니다. 논문이 분리값을 보고하지 않으면 violin과 viola를 임의로 나누지 않습니다.
+- 노출군은 instrument, arm elevation/posture, playing time이 결합된 군입니다. 이를 순수한 asymmetry effect로 해석하지 않습니다.
+- `현재 통증`이고 strict playing-related PRMD 정의가 아니므로 outcome definition을 그대로 기록합니다.
 
 Ver 2.29부터 `Run selected AI review (x/y)`의 숫자는 선택 논문 AI review run의 실제 진행률입니다. `y`는 Article list에서 선택한 전체 논문 수이고, `x`는 현재 선택 run에서 완료된 논문 수입니다. 버튼을 누르는 순간 선택된 논문 ID와 full-text source가 저장된 논문 ID를 고정한 뒤 그 run의 batch queue만 세므로, 분석이 끝나는 논문마다 `1/y`, `2/y`처럼 증가합니다. full-text source가 없는 논문은 분모에는 남아 연구자가 빠진 논문을 인지할 수 있고, 분석 queue에서는 source가 저장된 논문만 순차 실행됩니다. run 전에는 현재 선택 run이 아직 시작되지 않았으므로 `0/y`에서 시작합니다. 기존처럼 AI-ready saved source 수를 분자로 쓰지 않습니다.
 

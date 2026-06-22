@@ -71,6 +71,32 @@ AI performance rule derived from this case:
 - Not being a core orchestral comparative study must not downgrade an otherwise eligible instrument-specific quantitative article.
 - The AI must actively search for table labels, appendix references, body-site names, left/right terms, and common denominator statements before concluding that n/total values are unavailable.
 
+## 2026-06-22 Nyman 2007 composite-outcome calibration rule
+
+Nyman et al. 2007, `Work Postures and Neck-Shoulder Pain Among Orchestra Musicians`, is a calibration example for the opposite failure mode: the article is highly relevant and has reconstructable quantitative data, but the outcome cannot be mapped into the primary region- and laterality-specific meta-analysis.
+
+Locked adjudication for this calibration case:
+
+| Item | Rule |
+| --- | --- |
+| Primary quantitative meta-analysis | Exclude |
+| Narrative or secondary synthesis | Include |
+| Study class | Cross-sectional professional orchestra musician study |
+| Useful exposure data | Four posture/playing-time groups; the elevated-arm >3 h/day group is pooled violin/viola |
+| Quantitative source | Table II percentages can reconstruct cases: 5/54, 8/42, 11/37, 36/102, and total 60/235 |
+| Core exclusion reason | Outcome is a current composite neck-shoulder complaint: neck, shoulder, or between-shoulder-blades pain combined |
+| Laterality issue | No left/right shoulder or side-specific estimates |
+| Instrument pooling issue | Violin and viola are pooled in the high-exposure group and must not be split |
+| Exposure interpretation | Groups combine arm elevation/posture and estimated playing time; do not treat the contrast as a pure asymmetry effect |
+| Outcome definition | Present composite pain, not strict playing-related PRMD |
+
+AI performance rule derived from this case:
+
+- Numeric extractability alone is not sufficient for `include_quantitative`. The outcome must map to the protocol's primary body-region and laterality rows.
+- If the only available outcome is a composite such as neck-shoulder complaint, neck/shoulder/interscapular pain combined, or any-region upper-body pain without separate anatomical or left/right estimates, the article should be excluded from the primary quantitative region/laterality meta-analysis.
+- If the article is otherwise relevant, keep it as `include_narrative_support` or as a secondary composite-outcome source, and record the exact composite outcome and exposure-group definitions.
+- Reconstructed n values from percentages can be retained as secondary evidence when they reproduce the article's reported ORs, but they must not be converted into neck pain, shoulder pain, left shoulder pain, or right shoulder pain rows.
+
 > 최초 작성: 2026-06-18 | 담당: JK Hyun
 
 ---
