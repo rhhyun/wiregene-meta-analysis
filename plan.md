@@ -1,5 +1,16 @@
 # Wiregene Meta — 개발 작업 계획 (plan.md)
 
+## 2026-06-23 Musician PRMD protocol/process lock checkpoint
+
+- Active version after this checkpoint: `Ver 2.39`, package `0.1.104`.
+- Aligned the Musician PRMD pain project title/population from a narrow `Orchestral Musicians` label to `Instrumental Musicians`; orchestral musicians remain an eligible subgroup.
+- Locked the current status wording: this is AI full-text triage/extraction drafting, not completed screening, until reviewer 1/2 decisions, conflict resolution, and PI final adjudication are locked.
+- Kept the current 5-database PRISMA search as the active corpus for now; no re-search is required unless eligibility/search scope materially changes.
+- Added the required audit checkpoint for `1652 -> 259 -> 253 -> 82 -> 72/71`, including explicit resolution of the 71/72 saved-record mismatch before Excel extraction.
+- Preserved AI-only and human-reviewed pipelines in parallel and added model/prompt/source traceability metadata for new AI full-text reviews.
+- Clarified that treatment-effect RCTs are excluded from the primary prevalence meta-analysis, but extractable baseline epidemiologic denominator/outcome data can be retained as secondary evidence if prespecified.
+- Locked primary RoB tooling to prevalence/cross-sectional observational tools such as JBI prevalence, Hoy, AXIS, or JBI analytical cross-sectional; RoB 2/ROBINS-I are not default tools for this primary dataset.
+
 ## 2026-06-23 extraction dataset reviewer-agreement fallback checkpoint
 
 - Active version after this checkpoint: `Ver 2.38`, package `0.1.103`.
@@ -204,8 +215,8 @@
 - [ ] 추출 결과 버전 관리
 
 #### 2.3.3 품질 평가 (Risk of Bias)
-- [ ] RoB 2.0 도구 UI 구현
-- [ ] ROBINS-I 도구 UI 구현
+- [ ] JBI prevalence / Hoy / AXIS / JBI analytical cross-sectional RoB UI for the Musician PRMD prevalence dataset
+- [ ] Keep RoB 2.0 / ROBINS-I only as optional tools for separately prespecified intervention or nonrandomized-intervention analyses
 - [ ] AI 보조 RoB 평가 초안 생성
 
 ### 2.4 분석 단계 (Analysis) (우선순위: MEDIUM)

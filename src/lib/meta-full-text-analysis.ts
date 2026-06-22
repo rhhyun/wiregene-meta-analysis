@@ -47,6 +47,14 @@ export type MetaFullTextReviewEvaluation = {
   modelName: string | null;
 };
 
+export type MetaFullTextPromptMetadata = {
+  protocolVersion: string;
+  promptVersion: string;
+  promptSha256: string;
+  researcherGuidanceSha256: string;
+  extractionSchemaSha256: string;
+};
+
 export type MetaFullTextModelReview = {
   reviewerId: string;
   label: string;
@@ -54,6 +62,7 @@ export type MetaFullTextModelReview = {
   modelName: string;
   baseUrl: string | null;
   analysisSchemaVersion: string;
+  promptMetadata: MetaFullTextPromptMetadata;
   analyzedAt: string;
   sourceFileSha256: string;
   inputTextLength: number;
@@ -84,6 +93,7 @@ export type MetaFullTextAnalysis = {
   truncated: boolean;
   analysisSchemaVersion: string;
   sourceFileSha256: string;
+  promptMetadata: MetaFullTextPromptMetadata;
   analyzedAt: string;
   aiUsed: boolean;
   model: string | null;
@@ -158,7 +168,42 @@ type AiMetaFullTextAnalysis = Partial<
 
 const primitiveCellSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
 const metaFullTextAnalysisSchemaVersion = "2026-06-18-multi-ai-v1";
+const musicianPrmdProtocolVersion = "musician-prmd-v1.0-2026-06-23";
+const metaFullTextPromptVersion = "2026-06-23-musician-prmd-process-v1";
 const recommendedGeminiReviewerModelName = "gemini-3.1-flash-lite";
+
+function sha256Text(value: string) {
+  return crypto.createHash("sha256").update(value).digest("hex");
+}
+
+function extractionSchemaHash(columns: string[]) {
+  return sha256Text(JSON.stringify(columns));
+}
+
+function fallbackPromptMetadata(guidance: string | null | undefined, extractionColumns: string[]): MetaFullTextPromptMetadata {
+  const normalizedGuidance = normalizeMetaFullTextResearcherGuidance(guidance);
+  return {
+    protocolVersion: musicianPrmdProtocolVersion,
+    promptVersion: metaFullTextPromptVersion,
+    promptSha256: "",
+    researcherGuidanceSha256: sha256Text(normalizedGuidance),
+    extractionSchemaSha256: extractionSchemaHash(extractionColumns),
+  };
+}
+
+function promptMetadata(
+  prompt: string,
+  guidance: string,
+  extractionColumns: string[],
+): MetaFullTextPromptMetadata {
+  return {
+    protocolVersion: musicianPrmdProtocolVersion,
+    promptVersion: metaFullTextPromptVersion,
+    promptSha256: sha256Text(prompt),
+    researcherGuidanceSha256: sha256Text(guidance),
+    extractionSchemaSha256: extractionSchemaHash(extractionColumns),
+  };
+}
 const aiReviewCriterionSchema = z
   .object({
     score: z.coerce.number().optional(),
@@ -566,6 +611,11 @@ const metaReviewEvaluationCriteria = {
 };
 
 const metaFullTextScoringRules = [
+  "These scoring and selection rules are scoped to the current Musician PRMD pain prevalence project, not to unrelated reviews.",
+  "Current status should be treated as AI full-text triage/extraction drafting. Screening is not complete until reviewer 1, reviewer 2, and PI adjudication are locked.",
+  "Preserve AI-only model drafts and human-reviewed adjudications as parallel evidence streams for later model-performance comparison.",
+  "Treatment-effect RCTs are excluded from the primary prevalence meta-analysis, but independently extractable baseline epidemiologic denominators/outcomes can be retained as secondary evidence if explicitly reported.",
+  "Use prevalence/cross-sectional RoB tools for this project, such as JBI prevalence checklist, Hoy risk-of-bias tool, AXIS, or JBI analytical cross-sectional checklist. Do not default to RoB 2 or ROBINS-I for the primary prevalence dataset.",
   "eligibility.confidence is a 0-100 percentage for the AI eligibility decision, not a 0-1 probability. Return 96 for 96% confidence; do not return 0.96.",
   "reviewEvaluation.score and each criterion score are 0-100 quality scores for the AI screening/extraction output, not a 1-5 score. Convert 4/5 to 80 before returning JSON.",
   "Grade mapping: high=85-100 with no major unresolved issue; moderate=65-84 or usable with limited missing fields; low=40-64 or major manual checks needed; unsafe=0-39, fallback, failed, or not usable for decisions.",
@@ -833,7 +883,7 @@ export async function analyzeMetaFullTextUpload(input: AnalyzeMetaFullTextInput)
       reviewer,
       researcherGuidance: input.researcherGuidance ?? null,
     });
-    modelReviews.push(createModelReviewSummary(reviewer, ai.analysis, ai.warning, fallback));
+    modelReviews.push(createModelReviewSummary(reviewer, ai.analysis, ai.warning, fallback, ai.promptMetadata));
     if (ai.analysis && !primaryAi) primaryAi = { analysis: ai.analysis, reviewer };
   }
 
@@ -879,6 +929,8 @@ export async function analyzeMetaFullTextUpload(input: AnalyzeMetaFullTextInput)
     model: primaryAi.reviewer.modelName,
     aiConfigSource: primaryAi.reviewer.apiKeySource,
     aiWarning: null,
+    promptMetadata:
+      modelReviews.find((review) => review.reviewerId === primaryAi.reviewer.id)?.promptMetadata ?? fallback.promptMetadata,
     researcherGuidance: normalizeMetaFullTextResearcherGuidance(input.researcherGuidance),
     modelReviews,
   });
@@ -1075,6 +1127,7 @@ function fallbackAnalyzeFullText({
     truncated: extractionWarnings.length > 0,
     analysisSchemaVersion: metaFullTextAnalysisSchemaVersion,
     sourceFileSha256,
+    promptMetadata: fallbackPromptMetadata(researcherGuidance, extractionColumns),
     analyzedAt: new Date().toISOString(),
     aiUsed: false,
     model: null,
@@ -1175,7 +1228,7 @@ async function analyzeWithAiReviewer({
   fallback: MetaFullTextAnalysis;
   reviewer: MetaAiReviewerConfig;
   researcherGuidance: string | null;
-}): Promise<{ analysis: AiMetaFullTextAnalysis | null; warning: string | null }> {
+}): Promise<{ analysis: AiMetaFullTextAnalysis | null; warning: string | null; promptMetadata: MetaFullTextPromptMetadata }> {
   const openai = new OpenAI({
     apiKey: reviewer.apiKey,
     baseURL: reviewer.baseUrl ?? undefined,
@@ -1187,7 +1240,7 @@ async function analyzeWithAiReviewer({
     const prompt = `You are a meticulous systematic-review and meta-analysis extraction assistant.
 
 Task:
-Analyze the uploaded full-text article for a systematic review/meta-analysis on instrument-imposed postural asymmetry and region/laterality-specific playing-related musculoskeletal pain (PRMD) in instrumental/orchestral musicians.
+Analyze the uploaded full-text article for a systematic review/meta-analysis on instrument-imposed postural asymmetry and region/laterality-specific playing-related musculoskeletal pain (PRMD) in instrumental musicians.
 
 Important rules:
 ${guidance}
@@ -1348,6 +1401,7 @@ File type: ${fileType}
 Full-text:
 ${text}`;
 
+    const metadata = promptMetadata(prompt, guidance, extractionColumns);
     const outputText =
       reviewer.providerType === "OPENAI"
         ? await analyzeWithOpenAiResponses(openai, reviewer.modelName, extractionColumns, prompt)
@@ -1369,11 +1423,12 @@ ${text}`;
       });
       return {
         analysis: null,
+        promptMetadata: metadata,
         warning:
           `Structured AI response did not match the meta-analysis schema after compatibility normalization. Details: ${summarizeSchemaErrors(flattened.fieldErrors)}`,
       };
     }
-    return { analysis: validated.data as AiMetaFullTextAnalysis, warning: null };
+    return { analysis: validated.data as AiMetaFullTextAnalysis, warning: null, promptMetadata: metadata };
   } catch (error) {
     console.error("Meta full-text AI reviewer analysis failed; using fallback.", {
       reviewerId: reviewer.id,
@@ -1384,6 +1439,7 @@ ${text}`;
     });
     return {
       analysis: null,
+      promptMetadata: fallbackPromptMetadata(researcherGuidance, extractionColumns),
       warning: `${reviewer.label} (${reviewer.modelName}) request failed. Details: ${formatAiReviewerRequestError(error, reviewer)}`,
     };
   }
@@ -1420,6 +1476,7 @@ function createModelReviewSummary(
   analysis: AiMetaFullTextAnalysis | null,
   warning: string | null,
   fallback: MetaFullTextAnalysis,
+  metadata: MetaFullTextPromptMetadata = fallback.promptMetadata,
 ): MetaFullTextModelReview {
   const eligibility = {
     ...fallback.eligibility,
@@ -1438,6 +1495,7 @@ function createModelReviewSummary(
     modelName: reviewer.modelName,
     baseUrl: reviewer.baseUrl,
     analysisSchemaVersion: fallback.analysisSchemaVersion,
+    promptMetadata: metadata,
     analyzedAt: new Date().toISOString(),
     sourceFileSha256: fallback.sourceFileSha256,
     inputTextLength: fallback.extractedTextLength,
@@ -1536,6 +1594,10 @@ function normalizeAnalysis(analysis: MetaFullTextAnalysis): MetaFullTextAnalysis
     ...analysis,
     analysisSchemaVersion: analysis.analysisSchemaVersion || metaFullTextAnalysisSchemaVersion,
     sourceFileSha256: analysis.sourceFileSha256 || "",
+    promptMetadata: normalizePromptMetadata(
+      analysis.promptMetadata,
+      fallbackPromptMetadata(analysis.researcherGuidance, analysis.extraction.columns),
+    ),
     eligibility: safety.eligibility,
     study: {
       ...analysis.study,
@@ -1565,6 +1627,23 @@ const allowedMetaFullTextDecisions: MetaFullTextDecision[] = [
   "uncertain",
 ];
 
+function normalizePromptMetadata(
+  value: MetaFullTextPromptMetadata | undefined,
+  fallback: MetaFullTextPromptMetadata,
+): MetaFullTextPromptMetadata {
+  const source = (value && typeof value === "object" ? value : {}) as Partial<MetaFullTextPromptMetadata>;
+  return {
+    protocolVersion: conciseReviewText(source.protocolVersion || fallback.protocolVersion || musicianPrmdProtocolVersion, 120),
+    promptVersion: conciseReviewText(source.promptVersion || fallback.promptVersion || metaFullTextPromptVersion, 120),
+    promptSha256: conciseReviewText(source.promptSha256 || fallback.promptSha256 || "", 80),
+    researcherGuidanceSha256: conciseReviewText(
+      source.researcherGuidanceSha256 || fallback.researcherGuidanceSha256 || "",
+      80,
+    ),
+    extractionSchemaSha256: conciseReviewText(source.extractionSchemaSha256 || fallback.extractionSchemaSha256 || "", 80),
+  };
+}
+
 function normalizeModelReview(review: MetaFullTextModelReview): MetaFullTextModelReview {
   const decision = allowedMetaFullTextDecisions.includes(review.decision) ? review.decision : "uncertain";
   return {
@@ -1574,6 +1653,7 @@ function normalizeModelReview(review: MetaFullTextModelReview): MetaFullTextMode
     modelName: String(review.modelName || "unknown-model").replace(/\s+/g, "").trim().slice(0, 120),
     baseUrl: typeof review.baseUrl === "string" && review.baseUrl.trim() ? review.baseUrl.trim() : null,
     analysisSchemaVersion: conciseReviewText(review.analysisSchemaVersion || metaFullTextAnalysisSchemaVersion, 80),
+    promptMetadata: normalizePromptMetadata(review.promptMetadata, fallbackPromptMetadata("", [])),
     analyzedAt: conciseReviewText(review.analyzedAt || new Date().toISOString(), 80),
     sourceFileSha256: conciseReviewText(review.sourceFileSha256 || "", 80),
     inputTextLength: Math.max(0, Number(review.inputTextLength) || 0),

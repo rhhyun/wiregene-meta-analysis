@@ -6,7 +6,7 @@ import {
   readTextFileFromGoogleDrive,
   writeTextFileToGoogleDrive,
 } from "./google-drive-storage";
-import type { MetaFullTextAnalysis } from "./meta-full-text-analysis";
+import type { MetaFullTextAnalysis, MetaFullTextPromptMetadata } from "./meta-full-text-analysis";
 import { normalizeMetaFullTextResearcherGuidance } from "./meta-full-text-prompt-guidance";
 import {
   deleteMetaFullTextSourceFile,
@@ -1025,10 +1025,22 @@ function normalizeStoredAnalysis(analysis: Partial<MetaFullTextAnalysis>): MetaF
     ...(analysis as MetaFullTextAnalysis),
     analysisSchemaVersion: cleanString(analysis.analysisSchemaVersion) || "legacy",
     sourceFileSha256: cleanString(analysis.sourceFileSha256),
+    promptMetadata: normalizeStoredPromptMetadata(analysis.promptMetadata),
     researcherGuidance: rawResearcherGuidance.trim()
       ? normalizeMetaFullTextResearcherGuidance(rawResearcherGuidance)
       : null,
     modelReviews: Array.isArray(analysis.modelReviews) ? analysis.modelReviews : [],
+  };
+}
+
+function normalizeStoredPromptMetadata(value: unknown): MetaFullTextPromptMetadata {
+  const record = value && typeof value === "object" ? (value as Partial<MetaFullTextPromptMetadata>) : {};
+  return {
+    protocolVersion: cleanString(record.protocolVersion) || "legacy-or-unknown",
+    promptVersion: cleanString(record.promptVersion) || "legacy-or-unknown",
+    promptSha256: cleanString(record.promptSha256),
+    researcherGuidanceSha256: cleanString(record.researcherGuidanceSha256),
+    extractionSchemaSha256: cleanString(record.extractionSchemaSha256),
   };
 }
 

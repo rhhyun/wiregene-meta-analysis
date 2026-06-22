@@ -9,6 +9,46 @@
 - The Included-paper Excel dataset is the primary quantitative analysis dataset. Records may enter it when `PI final decision = include_quantitative`, or when PI final is still pending but reviewer 1 and reviewer 2 have an `agreement`/`resolved` quantitative include decision. If PI final is `include_narrative_support` or `exclude`, that PI decision overrides reviewer agreement and the record must not appear in the primary Excel dataset verification table or exported workbook.
 - Current public Meta deployment URL is `https://search.wiregene.com`; the app must enter Meta mode on that host.
 
+## 2026-06-23 Musician PRMD protocol/process lock
+
+The current Musician PRMD pain project must not be described as `screening completed`. The accurate status is: AI full-text triage and extraction drafting are completed or nearly completed, but reviewer 1/reviewer 2 adjudication, PI final decision, PRISMA audit lock, and evidence-backed extraction lock are still pending.
+
+Scope and search rules:
+
+- The review title/population should use `Instrumental Musicians`. Orchestral musicians remain eligible and important, but they are a subgroup/source population rather than the full title scope.
+- No new PRISMA search is required now if the change is limited to protocol wording, extraction rules, adjudication rules, or AI calibration. A new search is required only if eligibility, population, outcome, or database/search terms materially change.
+- Existing search counts must be audit-locked before extraction: PubMed `221`, Embase `343`, Scopus `561`, Web of Science `413`, Cochrane `114`, total `1652`; deduplicated/screening master `259`; abstract text `253`; full-text plan `82`; active Excel PDFs `72`; saved AI-reviewed records currently need `71/72` reconciliation.
+
+Pipeline preservation rules:
+
+- Preserve the AI-only pipeline and the human-reviewed pipeline in parallel. Human corrections must not overwrite the original AI-only snapshot.
+- Each AI model draft should retain model/profile traceability: model name, provider/base URL, protocol version, prompt version/hash, extraction schema version/hash, source-file checksum, and analysis schema version.
+- The AI-only snapshot can later be compared with human/PI final decisions using sensitivity, specificity, false-exclusion rate, kappa/agreement, McNemar test, time/cost, pooled-estimate change, and conclusion stability.
+
+Eligibility and extraction clarifications:
+
+- Treatment-effect RCTs are excluded from the primary prevalence meta-analysis, but independently extractable baseline epidemiologic denominator/outcome data can be retained as secondary evidence if prespecified.
+- The primary Included-paper Excel dataset contains only quantitative-included records: `PI final decision = include_quantitative`, or reviewer 1/2 quantitative agreement while PI final is still pending. PI final narrative/support or exclude always overrides reviewer agreement.
+- Narrative/support, secondary composite-outcome, risk-factor-only, continuous-outcome-only, and broad-region supplementary records stay in full-text history but do not enter the primary Excel extraction dataset.
+
+Risk-of-bias lock:
+
+- The primary RoB frame must match prevalence/cross-sectional observational evidence: JBI prevalence checklist, Hoy risk-of-bias tool, AXIS, or JBI analytical cross-sectional checklist.
+- RoB 2 and ROBINS-I are not default tools for the primary prevalence dataset. Use them only for a separately prespecified intervention or nonrandomized-intervention question.
+
+Required checkpoints before full Excel extraction:
+
+1. Protocol v1.0 lock: title, population, outcomes, RCT baseline rule.
+2. Search/PRISMA audit lock: `1652 -> 259 -> 253 -> 82 -> 72/71`.
+3. Resolve the 71/72 saved-record mismatch.
+4. Freeze AI-only snapshot for the same corpus.
+5. Reviewer 1 and reviewer 2 independent decisions.
+6. Conflict resolution.
+7. PI final adjudication.
+8. Fixed exclusion reason coding.
+9. Extraction schema lock.
+10. Evidence-backed field validation, starting with a 5-paper quantitative pilot.
+
 ## 2026-06-22 Screening AI score interpretation lock
 
 Screening page AI numbers are triage and extraction-quality signals. They are not final study-selection authority. Reviewer 1, Reviewer 2, and PI adjudication remain the final decision path.

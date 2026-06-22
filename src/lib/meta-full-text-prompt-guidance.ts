@@ -1,4 +1,8 @@
 export const defaultMetaFullTextResearcherGuidanceLines = [
+  "These rules are scoped to the current Musician PRMD pain prevalence project. Do not apply them globally to unrelated meta-analysis topics.",
+  "The current project status is AI full-text triage plus extraction drafting, not completed screening. Human reviewer 1, reviewer 2, and PI adjudication remain required before final study selection.",
+  "Preserve AI-only model drafts separately from human-reviewed decisions. Human corrections must not overwrite the original AI-only snapshot used for model-performance comparison.",
+  "Record model/profile traceability when available: model name, provider/base URL, protocol version, prompt version/hash, extraction schema version/hash, and source-file checksum.",
   "Do not invent values. Use null or an empty string when a value is not explicitly supported.",
   "Eligibility is only a draft for human verification; never present an AI decision as final inclusion.",
   "Prefer quantitative inclusion only when original observational data, instrument/instrument-group data, region-specific pain outcomes, and extractable denominator/numerator or prevalence are present.",
@@ -43,6 +47,7 @@ export const defaultMetaFullTextResearcherGuidanceLines = [
   "For risk-of-bias fields, extract only article-supported facts needed for observational-study RoB judgment: sampling/recruitment, measurement/outcome definition, confounding/adjustment, missing data, selective reporting, response rate, funding, and conflict-of-interest statements.",
   "For publication-bias fields, collect only study-level inputs that later funnel/small-study-effect checks need: outcome group, effect size/prevalence input, standard error or data needed to compute it, and whether the row is eligible for funnel/small-study assessment. Do not claim publication bias from a single article.",
   "Use rob_supporting_quote and rob_page_table for short evidence excerpts or page/table/supplement hints. If the full text lacks evidence, leave the field empty and list it in manual_required_fields.",
+  "For this prevalence/cross-sectional review, prefer a prevalence-appropriate RoB frame such as JBI prevalence checklist, Hoy risk-of-bias tool, AXIS, or JBI analytical cross-sectional checklist. RoB 2 and ROBINS-I are not the primary RoB tools for the primary prevalence dataset; reserve them only for intervention/nonrandomized-intervention questions if separately analyzed.",
   "Keep evidence excerpts short.",
   "Use eligibility.confidence as a 0-100 percentage, not a 0-1 probability. Return 96 for 96% confidence; do not return 0.96.",
   "Use reviewEvaluation.score and criterion scores as 0-100 quality scores, not 1-5 scores. Convert 4/5 to 80 before returning JSON.",

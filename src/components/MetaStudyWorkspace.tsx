@@ -71,6 +71,9 @@ const newTopicLocks = [
 ];
 
 const screeningRules = [
+  ["Current status", "This project is in AI full-text triage and extraction drafting, not completed screening. Reviewer 1/2 and PI adjudication must still be locked."],
+  ["AI-only snapshot", "Keep the original AI model decisions, prompt/profile metadata, and source checksum separate from human-reviewed corrections."],
+  ["PRISMA audit lock", "Before Excel extraction, reconcile 1652 -> 259 -> 253 -> 82 -> 72/71 and document the reason for any missing full-text record."],
   ["AI priority ranking", "title/abstract relevance를 빠르게 정렬하지만 최종 포함 판단은 하지 않습니다."],
   ["Two independent reviewers", "include, exclude, maybe를 독립 입력하고 conflict는 PI 또는 senior reviewer가 해결합니다."],
   ["Reason-coded exclusion", "population, exposure, outcome, design, duplicate, no full text 등 고정 사유로 PRISMA count를 누적합니다."],
@@ -78,6 +81,9 @@ const screeningRules = [
 ];
 
 const analysisSafeguards = [
+  ["Protocol v1.0 lock", "Use Instrumental Musicians as the review population. Orchestral musicians are an eligible subgroup, not the full title scope."],
+  ["Included dataset lock", "Only quantitative-included records enter the primary Included-paper Excel dataset; narrative/support records remain outside it."],
+  ["RoB tool lock", "Primary prevalence/cross-sectional RoB uses JBI prevalence, Hoy, AXIS, or JBI analytical cross-sectional framing, not RoB 2/ROBINS-I by default."],
   ["Primary claim", "arm-based random-effects prevalence meta-analysis로 single-arm instrument study까지 살립니다."],
   ["Comparative layer", "동일 논문 내 2개 이상 group이 있을 때만 contrast/network meta-regression에 넣습니다."],
   ["Region separation", "neck, shoulder, wrist/hand, back, TMJ/jaw outcome을 합치지 않고 각각 분석합니다."],
@@ -326,6 +332,11 @@ function humanReadableProjectStoragePath(path: string, fileName: string) {
 }
 
 const analysisReadinessRows = [
+  ["Protocol v1.0", "Title/population/outcome/RCT-baseline rule locked", "Required before extraction"],
+  ["PRISMA reconciliation", "1652 total hits, 259 master, 253 abstract text, 82 full-text plan, 72 active PDFs, 71/72 AI-reviewed mismatch", "Audit required"],
+  ["AI-only snapshot", "Model decisions, prompt hashes, source checksums, and extraction drafts preserved before human corrections", "Required before human adjudication"],
+  ["Reviewer/PI lock", "Reviewer 1/2 independent decisions, conflict resolution, PI final decision, and coded exclusion reasons", "Required before final dataset"],
+  ["Evidence-backed extraction pilot", "Five quantitative included papers checked for field coverage, source quotes, RoB fields, and R-ready columns", "Required before full Excel extraction"],
   ["Overall PRMD prevalence", "현재 61-column template에는 없음; 필요 시 overall_PRMD_n/total 추가", "Template extension candidate"],
   ["Neck prevalence", "neck_n + neck_total by mapped_asymmetry_group", "Primary region outcome"],
   ["Left/right shoulder laterality", "left_shoulder_n/total and right_shoulder_n/total", "Novelty-critical"],
@@ -336,6 +347,9 @@ const analysisReadinessRows = [
 ];
 
 const methodSentences = [
+  "The AI-only pipeline and the human-reviewed pipeline were preserved as parallel datasets to evaluate model sensitivity, specificity, false exclusions, agreement, time/cost, and stability of pooled conclusions.",
+  "Treatment-effect RCTs were excluded from the primary prevalence synthesis; independently extractable baseline epidemiologic denominators were retained only as secondary evidence when prespecified.",
+  "Risk of bias for the primary prevalence dataset was assessed with prevalence/cross-sectional study tools rather than intervention-effect tools.",
   "Single-arm instrument-specific studies contributed to arm-based prevalence estimates, whereas comparative studies including two or more asymmetry groups contributed to contrast-based network meta-regression.",
   "We performed an arm-based random-effects meta-analysis of region-specific pain prevalence and an exploratory Bayesian network meta-regression to compare prespecified biomechanical asymmetry groups when studies reported two or more instrument groups.",
   "Feature-based exploratory clustering was performed to examine whether the prespecified groups showed internally coherent biomechanical profiles.",
@@ -888,16 +902,16 @@ function createNewTopicProject(draft: NewTopicDraft, sourceText: string, reviewI
 function initialProtocolDraft(project: MetaStudyProject) {
   if (project.id === "orchestral-prmd-asymmetry") {
     return {
-      population: "orchestral musicians, instrumentalists, music students/professionals",
+      population: "instrumental musicians, orchestral musicians, music students/professionals, and instrument-specific classical performers",
       exposure: "instrument-imposed postural asymmetry",
       comparator: "low or mixed asymmetry instruments",
       outcomes: "region-specific and laterality-specific pain prevalence",
       eligibility:
         "Observational full-text studies with extractable instrument-specific or group-specific PRMD/pain data.",
       exclusion:
-        "Wrong population, no region-specific pain outcome, no instrument-specific data, no extractable denominator, review/editorial/conference abstract, intervention-only treatment effect study.",
+        "Wrong population, no region-specific pain outcome, no instrument-specific data, no extractable denominator, review/editorial/conference abstract, treatment-effect RCT without independently extractable baseline epidemiologic denominator/outcome.",
       synthesis:
-        "Arm-based random-effects prevalence meta-analysis; comparative layer only when studies report two or more prespecified asymmetry groups; exploratory ML as pattern validation.",
+        "Arm-based random-effects prevalence meta-analysis; comparative layer only when studies report two or more prespecified asymmetry groups; AI-only versus human-reviewed performance comparison; exploratory ML as pattern validation.",
     };
   }
 

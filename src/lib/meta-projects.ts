@@ -519,10 +519,10 @@ export const orchestralPainWorkbookSheets: MetaWorkbookSheet[] = [
 
 export const orchestralPainProject: MetaStudyProject = {
   id: "orchestral-prmd-asymmetry",
-  shortTitle: "Orchestral PRMD asymmetry",
+  shortTitle: "Instrumental PRMD asymmetry",
   title:
-    "Postural Asymmetry and Region-Specific Playing-Related Musculoskeletal Pain in Orchestral Musicians: A Systematic Review, Meta-analysis, and Machine-Learning-Based Pattern Analysis",
-  status: "Protocol and PRISMA search design",
+    "Postural Asymmetry and Region-Specific Playing-Related Musculoskeletal Pain in Instrumental Musicians: A Systematic Review, Meta-analysis, and Machine-Learning-Based Pattern Analysis",
+  status: "AI full-text triage before reviewer/PI adjudication",
   progress: 34,
   sourcePath:
     "E:\\1_Thesis\\Review_Pain Violin\\Thesis\\New Thesis\\270607 새 논문의 핵심 주제.txt",
@@ -537,6 +537,8 @@ export const orchestralPainProject: MetaStudyProject = {
     "Occupational Medicine",
   ],
   immediateImprovement: [
+    "Scope lock: title, population, and protocol wording now use Instrumental Musicians; orchestral studies remain a subgroup/source population, not the entire review scope.",
+    "Do not run a new PRISMA search unless protocol or eligibility criteria materially change; first audit and lock the existing 5-database PRISMA counts.",
     "기존 violin/viola/upper-string 중심 검색식을 전체 orchestral instrument 검색식으로 확장합니다.",
     "악기를 먼저 분류하지 않고 exposure definition을 먼저 고정해 post hoc grouping 공격을 줄입니다.",
     "Primary는 arm-based region-specific prevalence meta-analysis로 두고, comparative evidence만 secondary network meta-regression에 사용합니다.",
@@ -544,6 +546,12 @@ export const orchestralPainProject: MetaStudyProject = {
     "Region별 outcome을 합치지 않고 neck, shoulder, wrist/hand, back, TMJ/jaw를 따로 분석합니다.",
   ],
   nextActions: [
+    "Protocol v1.0 lock: align title/population to Instrumental Musicians and freeze outcome hierarchy.",
+    "Search/PRISMA audit lock: reconcile 1652 -> 259 -> 253 -> 82 -> 72/71 before extraction.",
+    "AI-only snapshot lock: preserve model decisions, prompt/profile metadata, source checksum, and extraction drafts before human correction.",
+    "Reviewer 1/2 independent adjudication followed by PI final decision and coded exclusion reasons.",
+    "Included-paper Excel dataset only after quantitative include status; narrative/support records stay outside the primary dataset.",
+    "Pilot 5 quantitative papers for field coverage, source evidence, RoB fields, and R analysis skeleton readiness.",
     "PRISMA protocol lock: PICO/PEO, inclusion/exclusion, exposure criteria, outcome hierarchy를 먼저 고정",
     "PubMed final query count 확인 후 Scopus, Web of Science, Embase, Cochrane 변환 검색식 작성",
     "Instrument biomechanical evidence table 작성: criteria, reference, confidence, mixed-class 처리",

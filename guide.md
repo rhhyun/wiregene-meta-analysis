@@ -1,9 +1,11 @@
 # Wiregene Meta 사용 가이드
 
-문서 버전: Ver 2.38
-최종 업데이트: 2026-06-22
-적용 사이트: `https://meta.wiregene.com`  
+문서 버전: Ver 2.39
+최종 업데이트: 2026-06-23
+적용 사이트: `https://search.wiregene.com`
 소스 저장소: `rhhyun/wiregene-meta-analysis`
+
+빠른 현재 기준: Ver 2.39부터 Musician PRMD pain 프로젝트는 `screening 완료`가 아니라 `AI full-text triage/extraction draft 후 reviewer/PI adjudication 전 단계`로 봅니다. Title/population은 `Instrumental Musicians`로 정합화하고, Excel extraction 전 `1652 -> 259 -> 253 -> 82 -> 72/71` audit lock을 먼저 완료합니다.
 
 ## 2026-06-21 Ver 2.30 업데이트: full-text 업로드 기본값은 새 article 저장
 
@@ -587,3 +589,16 @@ Synology/local Docker는 자체 writable volume이 있기 때문에 local-json/l
 4. 타입체크, lint, build 확인
 5. GitHub push
 6. Synology 운영 시 pull/restart 안내
+# 2026-06-23 Ver 2.39 update: Musician PRMD protocol/process lock
+
+Musician PRMD pain 프로젝트의 현재 상태는 `screening 완료`가 아니라 `AI full-text triage/extraction draft 완료 또는 거의 완료, human reviewer/PI adjudication 전 단계`입니다.
+
+이번 기준에서 title/population은 `Instrumental Musicians`로 정합화합니다. Orchestral musicians는 중요한 subgroup/source population으로 남지만, guitarist, pianist, music students/professionals 등 현재 corpus를 설명하기에는 title 전체를 orchestral로 제한하면 안 됩니다.
+
+새 PRISMA 검색은 지금 바로 하지 않습니다. 기존 5개 DB 검색과 broad corpus를 유지하고, 먼저 `1652 -> 259 -> 253 -> 82 -> 72/71` audit lock을 완료합니다.
+
+AI-only 결과와 human-reviewed 결과는 병렬로 보존합니다. AI-only snapshot에는 model name, provider/base URL, protocol version, prompt version/hash, extraction schema version/hash, source checksum, analysis schema version이 남아야 하며, human correction이 원본 AI-only 판정을 덮어쓰면 안 됩니다.
+
+Included-paper Excel dataset은 primary quantitative dataset입니다. `PI final decision = include_quantitative` 또는 PI final 전 reviewer 1/2 정량 포함 합의 record만 들어갑니다. `include_narrative_support`, secondary synthesis, risk-factor-only, continuous-outcome-only, broad-region supplementary record는 full-text history에 남지만 primary Excel dataset에는 들어가지 않습니다.
+
+Risk of bias는 prevalence/cross-sectional observational evidence에 맞춰 JBI prevalence checklist, Hoy tool, AXIS, JBI analytical cross-sectional checklist를 우선 사용합니다. RoB 2/ROBINS-I는 이 primary prevalence dataset의 기본 도구가 아니며, 별도 intervention/nonrandomized-intervention 분석이 있을 때만 선택적으로 사용합니다.

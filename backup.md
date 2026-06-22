@@ -1,3 +1,33 @@
+# 2026-06-23 Musician PRMD protocol/process lock
+
+User issue:
+
+- A ChatGPT-generated improvement note clarified that the Musician PRMD project should not be treated as screening-complete.
+- The project needs protocol/process corrections before Excel extraction: title/population alignment, PRISMA count audit, 71/72 mismatch reconciliation, AI-only snapshot preservation, reviewer/PI adjudication, RoB tool correction, and included-only extraction.
+
+Implemented:
+
+- Updated the project title/short title from a narrow orchestral label to `Instrumental Musicians` while keeping the legacy project id for storage compatibility.
+- Added visible process locks to screening/analysis guidance: current status is AI full-text triage/extraction draft, not completed screening.
+- Added required PRISMA/full-text audit checkpoints: `1652 -> 259 -> 253 -> 82 -> 72/71`.
+- Preserved AI-only and human-reviewed pipelines as parallel methods evidence.
+- Added new AI full-text traceability metadata for future runs: protocol version, prompt version/hash, researcher guidance hash, extraction schema hash, source checksum, model/profile data, and analysis schema version.
+- Clarified that treatment-effect RCTs are excluded from primary prevalence synthesis, while extractable baseline epidemiologic data can be secondary evidence if prespecified.
+- Replaced primary RoB planning with prevalence/cross-sectional tools: JBI prevalence, Hoy, AXIS, or JBI analytical cross-sectional; RoB 2/ROBINS-I are optional only for separate intervention questions.
+- Updated `research.md`, `plan.md`, `guide.md`, and handoff research notes.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.104`
+  - UI label: `Ver 2.39 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed.
+npm.cmd run lint: passed.
+npm.cmd run build: passed.
+git diff --check: passed.
+```
+
 # 2026-06-23 extraction dataset reviewer-agreement fallback
 
 User issue:

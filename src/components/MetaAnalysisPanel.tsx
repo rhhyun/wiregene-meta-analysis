@@ -482,11 +482,11 @@ function ProjectStage() {
     <div className="grid gap-5">
       <StageHeader
         eyebrow="Project"
-        title="Postural Asymmetry and Region-Specific PRMD in Orchestral Musicians"
+        title="Postural Asymmetry and Region-Specific PRMD in Instrumental Musicians"
         detail="이번 논문은 악기 자체가 강제하는 자세 비대칭이 통증의 전체 burden뿐 아니라 부위별·좌우별 분포를 결정하는지 평가합니다."
       />
       <div className="grid gap-3 lg:grid-cols-4">
-        <InfoCard label="Population" value="orchestral musicians and instrumentalists" />
+        <InfoCard label="Population" value="instrumental musicians, orchestral musicians, music students/professionals" />
         <InfoCard label="Exposure" value="instrument-imposed postural asymmetry" />
         <InfoCard label="Comparator" value="low or mixed asymmetry instrument groups" />
         <InfoCard label="Outcome" value="region-specific and laterality-specific pain prevalence" />
