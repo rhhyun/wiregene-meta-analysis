@@ -1,5 +1,12 @@
 # Wiregene Meta — 개발 작업 계획 (plan.md)
 
+## 2026-06-22 primary quantitative extraction dataset filter checkpoint
+
+- Active version after this checkpoint: `Ver 2.36`, package `0.1.101`.
+- Changed Included-paper Excel dataset generation so only records with `PI final decision = include_quantitative` are included.
+- `include_narrative_support`, narrative/support, supplementary quantitative, secondary synthesis, and excluded records remain in full-text history but are excluded from the primary Excel dataset verification table and XLSX/CSV exports.
+- Updated the extraction dataset panel wording to say `Primary quantitative included-paper Excel dataset verification`.
+
 ## 2026-06-22 Brusky 2010 graph-reconstructed broad-region calibration checkpoint
 
 - Active version after this checkpoint: `Ver 2.35`, package `0.1.100`.

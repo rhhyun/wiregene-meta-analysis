@@ -291,22 +291,16 @@ function coverageCountsFor(fieldCoverage: Record<string, MetaExtractionFieldCove
 }
 
 function isIncludedRecord(record: MetaFullTextHistoryRecord) {
-  if (record.verification.verificationMode === "ai_only") {
-    return record.verification.piFinalDecision === "include_quantitative" || record.verification.piFinalDecision === "include_narrative_support";
-  }
-
-  const decisions = [record.verification.reviewerOneDecision, record.verification.reviewerTwoDecision];
-  return (
-    ["agreement", "resolved"].includes(record.verification.conflictStatus) &&
-    decisions.every((decision) => decision === "include_quantitative" || decision === "include_narrative_support")
-  );
+  return record.verification.piFinalDecision === "include_quantitative";
 }
 
 function finalDecision(record: MetaFullTextHistoryRecord) {
+  if (record.verification.piFinalDecision !== "pending") {
+    return record.verification.piFinalDecision;
+  }
+
   if (record.verification.verificationMode === "ai_only") {
-    return record.verification.piFinalDecision !== "pending"
-      ? record.verification.piFinalDecision
-      : `ai_only_pending:${record.analysis.eligibility.decision}`;
+    return `ai_only_pending:${record.analysis.eligibility.decision}`;
   }
 
   if (record.verification.reviewerOneDecision === record.verification.reviewerTwoDecision) {

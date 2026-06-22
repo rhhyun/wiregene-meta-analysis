@@ -1,3 +1,33 @@
+# 2026-06-22 primary quantitative extraction dataset filter
+
+User issue:
+
+- The Included-paper Excel dataset verification panel was showing records adjudicated as narrative/support or supplementary synthesis.
+- User clarified that only quantitative-included papers should enter the Included-paper Excel dataset verification workflow.
+
+Implemented:
+
+- Changed `src/lib/meta-extraction-dataset.ts` so the primary Excel extraction dataset includes only records with `PI final decision = include_quantitative`.
+- `include_narrative_support`, narrative/support, supplementary quantitative, secondary synthesis, and excluded records remain in full-text history but are excluded from:
+  - Included-paper Excel dataset verification table;
+  - Excel dataset preview;
+  - CSV copy/export;
+  - downloaded XLSX workbook;
+  - field coverage metrics.
+- Updated the panel title and explanatory copy to `Primary quantitative included-paper Excel dataset verification`.
+- Updated `research.md`, `guide.md`, `plan.md`, and the handoff workspace `research.md`.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.101`
+  - UI label: `Ver 2.36 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed.
+npm.cmd run lint: passed.
+npm.cmd run build: passed.
+```
+
 # 2026-06-22 Brusky 2010 graph-reconstructed broad-region AI calibration guidance
 
 User issue:

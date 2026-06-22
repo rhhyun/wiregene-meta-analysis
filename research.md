@@ -6,6 +6,7 @@
 - The published Hyun lab Acta Biomaterialia NMA paper is the reference model for required outputs: PRISMA flow, descriptive included-study charts, NMA network diagrams, network forest plots, SUCRA/rank plots, pairwise forest plots, study/result tables, risk-of-bias tables, NMA/pairwise summary tables, and final raw extraction workbook.
 - R/Rscript support is required for true meta-analysis/NMA graph generation. RStudio GUI is optional; the app should call reproducible R scripts or export analysis-ready data for R.
 - Full-text history, source files, reviewer decisions, PI adjudication, and extraction datasets must be scoped by `projectId`; no research topic should share a global full-text or Excel dataset store with another topic.
+- The Included-paper Excel dataset is the primary quantitative analysis dataset. Only records with `PI final decision = include_quantitative` may enter it. Narrative/support, supplementary quantitative, secondary synthesis, and excluded records remain in full-text history but must not appear in the primary Excel dataset verification table or exported workbook.
 - Current public Meta deployment URL is `https://search.wiregene.com`; the app must enter Meta mode on that host.
 
 ## 2026-06-22 Screening AI score interpretation lock

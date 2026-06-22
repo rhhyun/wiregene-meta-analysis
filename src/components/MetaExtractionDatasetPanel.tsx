@@ -346,11 +346,12 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
     <section className="rounded-md border border-emerald-200 bg-emerald-50 p-4">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
         <div>
-          <p className="text-sm font-semibold text-emerald-900">Included-paper Excel dataset verification</p>
+          <p className="text-sm font-semibold text-emerald-900">Primary quantitative included-paper Excel dataset verification</p>
           <h3 className="mt-1 text-lg font-semibold text-zinc-950">AI가 채운 extraction field를 검증하고 실제 Excel workbook으로 생성합니다</h3>
           <p className="mt-2 max-w-4xl text-sm leading-6 text-zinc-700">
-            Included로 확정된 full-text 기록에서 AI extraction row를 모으고, 근거가 붙은 field, AI가 자동 입력한 field,
-            수동 확인이 필요한 field, 빈 field를 나누어 보여줍니다. 검증 후에는 CSV 복사 없이 바로 .xlsx 파일로 내려받을 수 있습니다.
+            PI final decision이 정량 포함으로 확정된 full-text 기록만 AI extraction row로 모읍니다.
+            서술/근거 후보와 보조합성 논문은 이 primary Excel dataset에서 제외됩니다. 근거가 붙은 field, AI가 자동 입력한 field,
+            수동 확인이 필요한 field, 빈 field를 나누어 보여주며, 검증 후에는 CSV 복사 없이 바로 .xlsx 파일로 내려받을 수 있습니다.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -394,7 +395,7 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
       </div>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Metric label="Included records" value={loading ? "..." : String(overview?.stats.includedRecordCount ?? 0)} />
+        <Metric label="Quantitative records" value={loading ? "..." : String(overview?.stats.includedRecordCount ?? 0)} />
         <Metric label="Excel rows" value={loading ? "..." : String(overview?.stats.excelRowCount ?? 0)} />
         <Metric label="Verified rows" value={loading ? "..." : String(overview?.stats.verifiedRowCount ?? 0)} />
         <Metric label="Evidence-backed fields" value={loading ? "..." : String(overview?.stats.evidenceBackedFieldCount ?? 0)} />
@@ -451,7 +452,7 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
           <div className="border-b border-emerald-100 p-3">
             <p className="text-sm font-semibold text-zinc-950">Excel field coverage map</p>
             <p className="mt-1 text-xs leading-5 text-zinc-500">
-              Each Excel column is classified across included rows so the extractor can see what AI filled, what has source evidence, and what still needs manual work.
+              Each Excel column is classified across primary quantitative included rows so the extractor can see what AI filled, what has source evidence, and what still needs manual work.
             </p>
           </div>
           <div className="max-h-[28rem] overflow-auto">
@@ -489,8 +490,8 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
       <div className="mt-4 grid gap-4 xl:grid-cols-[22rem_1fr]">
         <section className="rounded-md border border-emerald-200 bg-white">
           <div className="border-b border-emerald-100 p-3">
-            <p className="text-sm font-semibold text-zinc-950">Included full-text records</p>
-            <p className="mt-1 text-xs leading-5 text-zinc-500">검증된 include 논문만 Excel row 후보로 표시합니다.</p>
+            <p className="text-sm font-semibold text-zinc-950">Primary quantitative full-text records</p>
+            <p className="mt-1 text-xs leading-5 text-zinc-500">정량 포함으로 판정된 논문만 Excel row 후보로 표시합니다.</p>
           </div>
           <div className="max-h-[34rem] overflow-y-auto p-2">
             {overview?.records.length ? (
@@ -518,7 +519,7 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
               ))
             ) : (
               <p className="rounded-md border border-dashed border-zinc-200 bg-zinc-50 p-3 text-sm font-semibold text-zinc-500">
-                아직 include로 검증된 full-text 기록이 없습니다.
+                아직 정량 포함으로 검증된 full-text 기록이 없습니다.
               </p>
             )}
           </div>

@@ -1,6 +1,6 @@
 # Wiregene Meta 사용 가이드
 
-문서 버전: Ver 2.35
+문서 버전: Ver 2.36
 최종 업데이트: 2026-06-22
 적용 사이트: `https://meta.wiregene.com`  
 소스 저장소: `rhhyun/wiregene-meta-analysis`
@@ -188,7 +188,9 @@ Reviewer 1, Reviewer 2가 독립적으로 include/exclude를 확인합니다.
 
 ### Included-paper Excel Dataset Verification
 
-포함 판정된 논문에서 엑셀 데이터셋에 들어갈 값을 검증합니다.
+PI final decision이 `include_quantitative`인 논문에서만 primary 정량 메타분석 Excel 데이터셋에 들어갈 값을 검증합니다.
+
+`include_narrative_support`, 서술근거 후보, 보조 정량/보조 합성, 제외 논문은 full-text history와 reviewer/PI 판정 기록에는 남지만, 이 primary Excel dataset verification 화면과 XLSX/CSV workbook에는 들어가지 않습니다.
 
 AI가 자동 입력한 값도 근거 문장과 함께 검증해야 합니다. 수동 입력이 필요한 항목은 `manual-required`로 표시됩니다. 검증이 끝난 행은 저장하고, 이후 XLSX/CSV로 다운로드합니다.
 
@@ -220,7 +222,7 @@ Wiregene Meta의 저장소는 한 곳이 아니라 역할별로 나뉩니다. �
 | AI 설정 | AI reviewer slot, model, encrypted saved API keys | `download/_system/meta-ai-settings.json` | `meta-ai-settings.json` | redacted summary만 |
 | full-text 분석 history | AI 판정, model 비교, reviewer 검증, PI 판정, extraction review | `download/{project}/full-text-history.json` | `meta-projects__{project}__full-text-history.json` | 예 |
 | full-text 원문 파일 | PDF/Word/TXT/MD binary 원문 | `download/{project}/full-text-files/{sha}-{filename}` | Google Drive file id로 저장 | 원문 자체는 제외 |
-| extraction dataset | included 논문 엑셀 데이터셋 | full-text history에서 생성/검증 내용 저장 | full-text history에서 생성/검증 내용 저장 | JSON/CSV 포함 |
+| extraction dataset | PI final 정량 포함 논문 엑셀 데이터셋 | full-text history에서 생성/검증 내용 저장 | full-text history에서 생성/검증 내용 저장 | JSON/CSV 포함 |
 | Google OAuth token | Drive online 저장용 refresh token | Synology `.env` 또는 Vercel env | Google Drive 파일이 아님 | 절대 포함 안 함 |
 | OpenAI/Gemini/DeepSeek API key | AI reviewer 실행용 key | encrypted settings 또는 env | encrypted settings 또는 env | 절대 원문 포함 안 함 |
 
@@ -408,7 +410,9 @@ AI only를 선택해도 PI 최종 판정과 사유는 반드시 남겨야 합니
 
 ## 9. Included-paper Excel dataset
 
-Included-paper dataset은 full-text history에서 포함 판정된 논문만 대상으로 생성됩니다.
+Included-paper dataset은 primary 정량 메타분석용 데이터셋입니다. full-text history에서 `PI final decision = include_quantitative`로 확정된 논문만 대상으로 생성됩니다.
+
+서술근거 후보, 보조 정량 합성, narrative/support 포함 논문은 이 데이터셋에 포함하지 않습니다. 해당 논문들은 full-text history와 PI 판정 기록에 남기고, 별도 secondary/narrative synthesis 표에서 다룹니다.
 
 데이터셋에는 다음 유형의 field가 있습니다.
 
