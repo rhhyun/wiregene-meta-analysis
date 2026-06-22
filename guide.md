@@ -1,6 +1,6 @@
 # Wiregene Meta 사용 가이드
 
-문서 버전: Ver 2.34
+문서 버전: Ver 2.35
 최종 업데이트: 2026-06-22
 적용 사이트: `https://meta.wiregene.com`  
 소스 저장소: `rhhyun/wiregene-meta-analysis`
@@ -151,6 +151,22 @@ Piatkowska et al. 2016, `Cervical Pain in Young Professional Musicians - Quality
 - 악기군별 탈락자 수와 각 시점 분석 표본수가 명확하지 않으면 stage-specific sample size uncertainty로 표시합니다.
 - Cervical pain이 악기 연주 때문에 발생했거나 연주를 방해했다는 명시적 playing-related PRMD 정의가 아니므로 outcome definition을 그대로 기록합니다.
 - 초록의 `moderate disability`와 Table 3/본문의 mild/slight disability 해석 불일치는 reporting inconsistency로 표시합니다.
+
+### Brusky 2010 calibration rule
+
+Brusky 2010, `The High Prevalence of Injury Among Female Bassoonists`는 그래프 역산 정량자료 보정 예시입니다. Figure 1에서 성별 광역 신체영역 PRMD 분자는 일부 복원할 수 있지만, primary site/laterality prevalence meta-analysis에는 넣지 않습니다.
+
+운영 규칙은 다음과 같습니다.
+
+- 최종 상태는 `서술근거 후보`, `Primary site/laterality meta-analysis: 제외`, `Supplementary sex-stratified broad-region PRMD synthesis: 제한적 포함`입니다.
+- Figure 1의 `Head or neck`, `Back, chest, or shoulders`, `Arms or wrists`, `Legs or hips`는 복합 광역 부위입니다. 이를 neck, shoulder, back, arm, wrist, hip 등 표준 부위 row로 쪼개지 않습니다.
+- `Hands` 외에는 표준 단일 해부학적 부위가 아니며, 좌우별 n/N도 없습니다.
+- 유병기간이 point, 7-day, 12-month, lifetime 중 무엇인지 고정되어 있지 않으면 주 유병률 메타분석에 통합하지 않습니다.
+- PRMD/injury 정의가 diagnosed injury, self-reported symptom, location-only response를 섞는 경우 pain-only prevalence로 코딩하지 않습니다.
+- 그래프 역산값은 Yates 보정 카이제곱 등으로 내부 검증되는 경우 보조 정량 근거로 남길 수 있지만 primary dataset row로 쓰지 않습니다.
+- 남성에서 증상/진단 보고와 location 응답 간 누락 차이가 있으면 differential outcome missingness로 표시합니다.
+- 전체 88% PRMD는 성별 추정치와 완전히 맞지 않으므로 확정 n/N로 쓰지 않습니다.
+- Brusky 2009와 동일 IBQ 표본의 2차 분석 가능성이 있으므로 중복 코호트 여부를 확인하고 독립 표본처럼 중복 투입하지 않습니다.
 
 Ver 2.29부터 `Run selected AI review (x/y)`의 숫자는 선택 논문 AI review run의 실제 진행률입니다. `y`는 Article list에서 선택한 전체 논문 수이고, `x`는 현재 선택 run에서 완료된 논문 수입니다. 버튼을 누르는 순간 선택된 논문 ID와 full-text source가 저장된 논문 ID를 고정한 뒤 그 run의 batch queue만 세므로, 분석이 끝나는 논문마다 `1/y`, `2/y`처럼 증가합니다. full-text source가 없는 논문은 분모에는 남아 연구자가 빠진 논문을 인지할 수 있고, 분석 queue에서는 source가 저장된 논문만 순차 실행됩니다. run 전에는 현재 선택 run이 아직 시작되지 않았으므로 `0/y`에서 시작합니다. 기존처럼 AI-ready saved source 수를 분자로 쓰지 않습니다.
 

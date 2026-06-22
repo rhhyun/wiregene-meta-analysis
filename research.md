@@ -124,6 +124,34 @@ AI performance rule derived from this case:
 - The AI must distinguish actual recruited population from title language; music students should be coded as students/trainees even when a title says professional musicians.
 - Attrition, unclear instrument-specific dropouts, and stage-specific sample-size uncertainty should be flagged as risk/limitations, not silently ignored.
 
+## 2026-06-22 Brusky 2010 graph-reconstructed broad-region calibration rule
+
+Brusky 2010, `The High Prevalence of Injury Among Female Bassoonists`, is a calibration example for studies where some subgroup n/N values can be reconstructed, but the outcome/timeframe/body-site structure is incompatible with the primary site- and laterality-specific prevalence meta-analysis.
+
+Locked adjudication for this calibration case:
+
+| Item | Rule |
+| --- | --- |
+| Final screening classification | Narrative/support candidate |
+| Primary site/laterality meta-analysis | Exclude |
+| Supplementary quantitative synthesis | Limited include for sex-stratified broad-region PRMD evidence |
+| Study class | Nonprobability online cross-sectional survey |
+| Instrument group | Bassoon single-instrument sample |
+| Analyzed sample | Total 166: male 96, female 70 |
+| Primary exclusion reason | Broad composite body regions, absent laterality n/N, and unclear recall period |
+| Body-region issue | `Head or neck`, `Back, chest, or shoulders`, `Arms or wrists`, and `Legs or hips` must not be split into standard site rows |
+| Supplementary extraction | Figure 1 sex-stratified broad-region counts may be reconstructed and kept as secondary evidence when internally checked |
+| Missingness issue | Male body-location missingness differs from symptom/diagnosis reporting and may bias sex-specific location results |
+| Overall prevalence issue | Overall 88% PRMD is not fully reconcilable with sex-specific estimates; do not use as a confirmed n/N without caveat |
+| Cohort overlap issue | Check possible overlap or secondary analysis relationship with Brusky 2009 before pooling |
+
+AI performance rule derived from this case:
+
+- Quantitative reconstruction from a figure does not by itself justify primary inclusion.
+- Broad `or`-joined body regions must not be split into standard anatomical outcomes, and missing laterality n/N prevents laterality-specific extraction.
+- Unclear recall period or mixed case definitions such as diagnosed injury, self-reported PRMD symptom, and PRMD location should block pooling with point, 7-day, 12-month, or lifetime pain prevalence.
+- Differential subgroup missingness and possible duplicate/overlapping cohorts must be surfaced as review risks.
+
 > 최초 작성: 2026-06-18 | 담당: JK Hyun
 
 ---

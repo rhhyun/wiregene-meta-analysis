@@ -1,3 +1,34 @@
+# 2026-06-22 Brusky 2010 graph-reconstructed broad-region AI calibration guidance
+
+User issue:
+
+- Article 132 (`Brusky, 2010, The High Prevalence of Injury Among Female Bassoonists`) was pending.
+- Human PI verification showed it should be finalized as narrative/support: exclude from the primary site/laterality prevalence meta-analysis, but retain for limited supplementary quantitative or narrative synthesis of sex-stratified broad-region PRMDs among bassoonists.
+
+Implemented:
+
+- Added a server-side calibration rule that graph-reconstructed n/N values do not justify primary inclusion when the outcome/timeframe/body-site structure is incompatible.
+- Added broad-region and timeframe restrictions:
+  - `Head or neck`, `Back, chest, or shoulders`, `Arms or wrists`, and `Legs or hips` must not be split into standard anatomical site rows;
+  - broad-region graph counts without laterality and fixed recall window are supplementary evidence only;
+  - PRMD/injury definitions mixing diagnosed injury, self-reported symptoms, and location-only responses must not be coded as pain-only prevalence;
+  - differential location missingness by sex must be flagged;
+  - possible overlap with Brusky 2009 must be checked before pooling.
+- Added the explicit Brusky 2010 calibration example to default AI judgment guidance and always-injected scoring/selection rules.
+- Added text retention keywords for bassoon, injury, broad body-region labels, sex/gender terms, missing location data, Yates/chi-square, and cohort overlap.
+- Added the calibration rule to `research.md`, `guide.md`, and the handoff workspace `research.md`.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.100`
+  - UI label: `Ver 2.35 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed.
+npm.cmd run lint: passed.
+npm.cmd run build: passed.
+```
+
 # 2026-06-22 Piatkowska 2016 symptomatic-cohort AI calibration guidance
 
 User issue:

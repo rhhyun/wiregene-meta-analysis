@@ -1,5 +1,16 @@
 # Wiregene Meta — 개발 작업 계획 (plan.md)
 
+## 2026-06-22 Brusky 2010 graph-reconstructed broad-region calibration checkpoint
+
+- Active version after this checkpoint: `Ver 2.35`, package `0.1.100`.
+- Added a calibration rule from article 132 / Brusky 2010:
+  - graph-reconstructed n/N values do not justify primary inclusion by themselves;
+  - broad `or`-joined body regions must not be split into standard site rows;
+  - missing laterality n/N and unclear recall period block primary site/laterality prevalence extraction;
+  - mixed PRMD/injury definitions should not be coded as pain-only prevalence;
+  - differential location missingness and possible overlap with Brusky 2009 must be flagged.
+- The rule is injected into the server prompt and default AI judgment guide, and documented in `research.md` and `guide.md`.
+
 ## 2026-06-22 Piatkowska 2016 symptomatic-cohort calibration checkpoint
 
 - Active version after this checkpoint: `Ver 2.34`, package `0.1.99`.
