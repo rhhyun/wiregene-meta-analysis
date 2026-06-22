@@ -1,3 +1,31 @@
+# 2026-06-23 extraction dataset reviewer-agreement fallback
+
+User issue:
+
+- After the primary Excel dataset was limited to PI quantitative includes, newly included quantitative papers were not appearing in Included-paper Excel dataset verification.
+- The strict `PI final decision = include_quantitative` filter blocked records that had reviewer 1/2 quantitative agreement but PI final was still pending.
+
+Implemented:
+
+- Kept PI final as the highest authority:
+  - `PI final decision = include_quantitative` enters the primary Excel dataset;
+  - `PI final decision = include_narrative_support` or `exclude` is excluded from the primary Excel dataset.
+- Added a reviewer-agreement fallback only when PI final is pending:
+  - dual-reviewer records enter the primary Excel dataset if reviewer 1 and reviewer 2 both selected `include_quantitative` and conflict status is `agreement` or `resolved`;
+  - AI-only records still require PI final `include_quantitative`.
+- Updated the panel and documentation wording.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.103`
+  - UI label: `Ver 2.38 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed.
+npm.cmd run lint: passed.
+npm.cmd run build: passed.
+```
+
 # 2026-06-22 Yoshimura 2006 overall-pain risk-factor calibration guidance
 
 User issue:

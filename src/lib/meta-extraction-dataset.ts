@@ -291,7 +291,15 @@ function coverageCountsFor(fieldCoverage: Record<string, MetaExtractionFieldCove
 }
 
 function isIncludedRecord(record: MetaFullTextHistoryRecord) {
-  return record.verification.piFinalDecision === "include_quantitative";
+  const { verification } = record;
+  if (verification.piFinalDecision === "include_quantitative") return true;
+  if (verification.piFinalDecision !== "pending") return false;
+  if (verification.verificationMode === "ai_only") return false;
+  return (
+    ["agreement", "resolved"].includes(verification.conflictStatus) &&
+    verification.reviewerOneDecision === "include_quantitative" &&
+    verification.reviewerTwoDecision === "include_quantitative"
+  );
 }
 
 function finalDecision(record: MetaFullTextHistoryRecord) {

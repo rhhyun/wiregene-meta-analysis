@@ -349,7 +349,7 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
           <p className="text-sm font-semibold text-emerald-900">Primary quantitative included-paper Excel dataset verification</p>
           <h3 className="mt-1 text-lg font-semibold text-zinc-950">AI가 채운 extraction field를 검증하고 실제 Excel workbook으로 생성합니다</h3>
           <p className="mt-2 max-w-4xl text-sm leading-6 text-zinc-700">
-            PI final decision이 정량 포함으로 확정된 full-text 기록만 AI extraction row로 모읍니다.
+            PI final이 정량 포함인 full-text 기록을 우선 포함하고, PI final이 아직 pending이면 reviewer 1/2가 정량 포함으로 합의한 기록만 AI extraction row로 모읍니다.
             서술/근거 후보와 보조합성 논문은 이 primary Excel dataset에서 제외됩니다. 근거가 붙은 field, AI가 자동 입력한 field,
             수동 확인이 필요한 field, 빈 field를 나누어 보여주며, 검증 후에는 CSV 복사 없이 바로 .xlsx 파일로 내려받을 수 있습니다.
           </p>

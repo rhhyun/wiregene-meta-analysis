@@ -1,5 +1,12 @@
 # Wiregene Meta — 개발 작업 계획 (plan.md)
 
+## 2026-06-23 extraction dataset reviewer-agreement fallback checkpoint
+
+- Active version after this checkpoint: `Ver 2.38`, package `0.1.103`.
+- Fixed the primary Excel extraction dataset filter so quantitative included papers can appear before PI final adjudication when both reviewer 1 and reviewer 2 agree on `include_quantitative` and conflict status is `agreement` or `resolved`.
+- PI final still overrides reviewer agreement: if PI final is `include_narrative_support` or `exclude`, the record is excluded from the primary Excel dataset.
+- AI-only records still require PI final `include_quantitative` before entering the primary Excel dataset.
+
 ## 2026-06-22 Yoshimura 2006 overall-pain risk-factor calibration checkpoint
 
 - Active version after this checkpoint: `Ver 2.37`, package `0.1.102`.

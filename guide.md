@@ -1,6 +1,6 @@
 # Wiregene Meta 사용 가이드
 
-문서 버전: Ver 2.37
+문서 버전: Ver 2.38
 최종 업데이트: 2026-06-22
 적용 사이트: `https://meta.wiregene.com`  
 소스 저장소: `rhhyun/wiregene-meta-analysis`
@@ -202,9 +202,9 @@ Reviewer 1, Reviewer 2가 독립적으로 include/exclude를 확인합니다.
 
 ### Included-paper Excel Dataset Verification
 
-PI final decision이 `include_quantitative`인 논문에서만 primary 정량 메타분석 Excel 데이터셋에 들어갈 값을 검증합니다.
+Primary 정량 메타분석 Excel 데이터셋에는 `PI final decision = include_quantitative`인 논문이 들어갑니다. PI final이 아직 pending인 경우에는 reviewer 1과 reviewer 2가 `include_quantitative`로 합의했고 conflict status가 `agreement` 또는 `resolved`인 논문만 임시 정량 dataset 후보로 표시합니다.
 
-`include_narrative_support`, 서술근거 후보, 보조 정량/보조 합성, 제외 논문은 full-text history와 reviewer/PI 판정 기록에는 남지만, 이 primary Excel dataset verification 화면과 XLSX/CSV workbook에는 들어가지 않습니다.
+PI final이 `include_narrative_support` 또는 `exclude`이면 reviewer 합의보다 PI final이 우선합니다. 서술근거 후보, 보조 정량/보조 합성, 제외 논문은 full-text history와 reviewer/PI 판정 기록에는 남지만, 이 primary Excel dataset verification 화면과 XLSX/CSV workbook에는 들어가지 않습니다.
 
 AI가 자동 입력한 값도 근거 문장과 함께 검증해야 합니다. 수동 입력이 필요한 항목은 `manual-required`로 표시됩니다. 검증이 끝난 행은 저장하고, 이후 XLSX/CSV로 다운로드합니다.
 
@@ -424,9 +424,9 @@ AI only를 선택해도 PI 최종 판정과 사유는 반드시 남겨야 합니
 
 ## 9. Included-paper Excel dataset
 
-Included-paper dataset은 primary 정량 메타분석용 데이터셋입니다. full-text history에서 `PI final decision = include_quantitative`로 확정된 논문만 대상으로 생성됩니다.
+Included-paper dataset은 primary 정량 메타분석용 데이터셋입니다. full-text history에서 `PI final decision = include_quantitative`로 확정된 논문을 대상으로 생성합니다. PI final이 아직 pending이면 reviewer 1/2가 정량 포함으로 합의한 논문만 임시 정량 dataset 후보로 표시합니다.
 
-서술근거 후보, 보조 정량 합성, narrative/support 포함 논문은 이 데이터셋에 포함하지 않습니다. 해당 논문들은 full-text history와 PI 판정 기록에 남기고, 별도 secondary/narrative synthesis 표에서 다룹니다.
+서술근거 후보, 보조 정량 합성, narrative/support 포함 논문은 이 데이터셋에 포함하지 않습니다. PI final이 narrative/support 또는 exclude로 확정되면 reviewer 단계에서 정량 포함이었더라도 이 데이터셋에서 제외합니다. 해당 논문들은 full-text history와 PI 판정 기록에 남기고, 별도 secondary/narrative synthesis 표에서 다룹니다.
 
 데이터셋에는 다음 유형의 field가 있습니다.
 
