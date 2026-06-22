@@ -55,9 +55,7 @@ export async function POST(request: Request, context: RouteContext) {
       fileName: record.sourceFile.fileName || record.fileName,
       mimeType: record.sourceFile.mimeType,
       referenceRecord: record.referenceRecord,
-      extractionColumns: record.analysis.extraction.columns.length
-        ? record.analysis.extraction.columns
-        : orchestralPainProject.extractionColumns,
+      extractionColumns: mergeExtractionColumns(record.analysis.extraction.columns, orchestralPainProject.extractionColumns),
       reviewerIds: reanalyzeRequest.reviewerIds,
       researcherGuidance: reanalyzeRequest.researcherGuidance,
     });
@@ -113,6 +111,16 @@ function normalizeReviewerIds(value: unknown) {
         .filter(Boolean),
     ),
   ).slice(0, 3);
+}
+
+function mergeExtractionColumns(current: string[], project: string[]) {
+  return Array.from(
+    new Set(
+      [...current, ...project]
+        .map((column) => String(column).trim())
+        .filter(Boolean),
+    ),
+  );
 }
 
 function mergeSelectedModelReviewsIntoPrimary(current: MetaFullTextAnalysis, selected: MetaFullTextAnalysis): MetaFullTextAnalysis {

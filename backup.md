@@ -1,3 +1,37 @@
+# 2026-06-23 JBI prevalence RoB rerun workflow
+
+User issue:
+
+- The Musician PRMD primary quantitative papers now need risk-of-bias assessment.
+- The RoB tool must be searched/confirmed, then the three configured AI reviewers should rerun included quantitative papers under that method.
+
+Implemented:
+
+- Searched prevalence/cross-sectional RoB options and locked the primary dataset to the JBI Critical Appraisal Checklist for Studies Reporting Prevalence Data.
+- Kept AXIS and JBI analytical cross-sectional appraisal as secondary/narrative options for analytical risk-factor-only evidence.
+- Added JBI prevalence Q1-Q9 fields to the extraction schema:
+  - `rob_jbi_q1_sample_frame` through `rob_jbi_q9_response_rate`;
+  - `rob_jbi_yes_count`, `rob_jbi_no_unclear_count`, `rob_jbi_overall_risk`, and `rob_jbi_notes`.
+- Added server prompt guidance so the AI reviewers apply JBI prevalence, treat Q6/Q7 as critical pain/PRMD measurement items, and keep RoB 2/ROBINS-I out of the primary prevalence workflow.
+- Updated saved-source reanalysis so old records merge the newest project extraction columns before rerun.
+- Added screening UI controls:
+  - `Prepare JBI RoB rerun` selects source-saved primary quantitative included records;
+  - the panel shows primary quantitative included/source-saved/upload-needed counts;
+  - a `Quantitative included` filter isolates the correct RoB target records.
+- Clarified that legacy/no-source quantitative included records need PDF/Word full-text upload before AI RoB rerun.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.106`
+  - UI label: `Ver 2.41 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed.
+npm.cmd run lint: passed.
+npm.cmd run build: passed.
+git diff --check: passed.
+```
+
 # 2026-06-23 Santos 2024 inconsistent-denominator risk-factor calibration guidance
 
 User issue:

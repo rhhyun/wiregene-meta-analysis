@@ -1,5 +1,18 @@
 # Wiregene Meta — 개발 작업 계획 (plan.md)
 
+## 2026-06-23 JBI prevalence RoB rerun checkpoint
+
+- Active version after this checkpoint: `Ver 2.41`, package `0.1.106`.
+- Searched and locked the primary risk-of-bias method for the Musician PRMD primary quantitative dataset:
+  - primary tool: JBI Critical Appraisal Checklist for Studies Reporting Prevalence Data;
+  - Q1-Q9 are stored as detailed extraction fields;
+  - Q6 valid condition identification and Q7 standard/reliable measurement are critical downgrade items;
+  - overall JBI RoB is stored as `low`, `moderate`, `high`, or `unclear`.
+- AXIS and JBI analytical cross-sectional appraisal remain secondary/narrative options for analytical risk-factor-only evidence.
+- RoB 2 and ROBINS-I are not the default tools for this prevalence dataset.
+- Added a screening UI button, `Prepare JBI RoB rerun`, that selects only primary quantitative included records with saved full-text sources and applies the JBI guide to the configured AI reviewers.
+- Legacy/no-source quantitative included records are counted as upload-needed until their PDF/Word full text is attached.
+
 ## 2026-06-23 Santos 2024 inconsistent-denominator risk-factor calibration checkpoint
 
 - Active version after this checkpoint: `Ver 2.40`, package `0.1.105`.

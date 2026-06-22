@@ -1,5 +1,54 @@
 # Wiregene Meta — 연구 목적 및 프레임워크
 
+## 2026-06-23 JBI prevalence risk-of-bias method lock
+
+Primary RoB method for the Musician PRMD primary quantitative dataset is now fixed as the JBI Critical Appraisal Checklist for Studies Reporting Prevalence Data.
+
+Why this is the primary tool:
+
+- The primary extraction target is denominator-based pain/PRMD prevalence in instrumental musicians, mostly cross-sectional prevalence surveys.
+- JBI's critical appraisal tools are intended to assess the trustworthiness, relevance, and results of published papers; the JBI prevalence checklist provides a 9-item prevalence-specific frame.
+- Hoy et al.'s prevalence RoB tool remains a relevant sensitivity/reference option, but the app will operationalize JBI prevalence because it maps cleanly to the Excel extraction and reviewer workflow.
+- AXIS and JBI Analytical Cross Sectional are retained only for secondary/narrative analytical or risk-factor-only evidence, not as the primary prevalence dataset tool.
+- RoB 2 and ROBINS-I are not default tools for this primary prevalence dataset.
+
+Locked JBI prevalence items:
+
+| Item | App field |
+| --- | --- |
+| Q1 sample frame appropriate | `rob_jbi_q1_sample_frame` |
+| Q2 sampling/recruitment appropriate | `rob_jbi_q2_sampling` |
+| Q3 sample size adequate | `rob_jbi_q3_sample_size` |
+| Q4 subjects/setting described | `rob_jbi_q4_subjects_setting` |
+| Q5 sufficient sample coverage | `rob_jbi_q5_sample_coverage` |
+| Q6 valid method for identifying pain/PRMD condition | `rob_jbi_q6_condition_identification` |
+| Q7 standard/reliable measurement for all participants | `rob_jbi_q7_standard_measurement` |
+| Q8 appropriate statistical analysis | `rob_jbi_q8_statistical_analysis` |
+| Q9 adequate response rate or response-rate handling | `rob_jbi_q9_response_rate` |
+
+Overall rule:
+
+- `low`: generally at least 7 yes answers and yes for both Q6 and Q7.
+- `moderate`: generally 5-6 yes answers, or one critical measurement concern.
+- `high`: generally 0-4 yes answers, unresolved denominator/case-definition problems, or no/unclear for both Q6 and Q7.
+- `unclear`: full text is insufficient for stable judgement.
+
+Algorithm lock:
+
+1. Use only primary quantitative included records for RoB rerun: PI final `include_quantitative`, or reviewer 1 and reviewer 2 both `include_quantitative` with `agreement`/`resolved` while PI final is pending.
+2. Exclude narrative/support, secondary composite-outcome, continuous-outcome-only, and risk-factor-only papers from the primary included-paper Excel dataset.
+3. For source-saved quantitative included records, run the three configured AI reviewer models with the JBI RoB rerun guide.
+4. For legacy/no-source quantitative included records, require PDF/Word full-text upload and source matching before RoB rerun.
+5. Preserve the inclusion decision unless RoB reveals a source-evidence problem that invalidates primary quantitative use; then flag manual verification rather than silently excluding.
+
+Sources used for this lock:
+
+- JBI Critical Appraisal Tools: https://jbi.global/critical-appraisal-tools
+- JBI Checklist for Prevalence Studies: https://jbi.global/sites/default/files/2020-08/Checklist_for_Prevalence_Studies.pdf
+- JBI Checklist for Analytical Cross Sectional Studies: https://jbi.global/sites/default/files/2020-08/Checklist_for_Analytical_Cross_Sectional_Studies.pdf
+- Hoy et al. prevalence RoB tool summary: https://pubmed.ncbi.nlm.nih.gov/22742910/
+- AXIS cross-sectional tool: https://bmjopen.bmj.com/content/6/12/e011458
+
 ## 2026-06-19 workflow lock
 
 - The program must support the complete meta-analysis path: AI-assisted topic/protocol generation -> search string generation -> database search/RIS import -> PRISMA screening -> full-text acquisition -> AI full-text eligibility/extraction -> two human reviewers plus PI final adjudication -> verified Excel extraction dataset -> R-based meta-analysis/NMA figures and tables -> manuscript discussion.

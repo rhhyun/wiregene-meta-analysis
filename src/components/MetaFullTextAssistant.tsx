@@ -19,6 +19,7 @@ import { apiErrorMessage } from "@/components/grant-error-message";
 import type { MetaFullTextAnalysis } from "@/lib/meta-full-text-analysis";
 import {
   defaultMetaFullTextResearcherGuidance,
+  musicianPrmdRiskOfBiasGuidance,
   normalizeMetaFullTextResearcherGuidance,
 } from "@/lib/meta-full-text-prompt-guidance";
 
@@ -48,6 +49,7 @@ type PiFinalDecision = "pending" | "include_quantitative" | "include_narrative_s
 type HistoryFilter =
   | "all"
   | "legacy_source"
+  | "primary_quantitative_included"
   | "verification_pending"
   | "verification_complete"
   | MetaFullTextAnalysis["eligibility"]["decision"];
@@ -866,6 +868,17 @@ function humanDecisionBucket(item: MetaFullTextHistorySummary) {
   return "conflict";
 }
 
+function isPrimaryQuantitativeIncludedSummary(item: MetaFullTextHistorySummary) {
+  if (item.piFinalDecision === "include_quantitative") return true;
+  if (item.piFinalDecision !== "pending") return false;
+  if (item.verificationMode === "ai_only") return false;
+  return (
+    ["agreement", "resolved"].includes(item.conflictStatus) &&
+    item.reviewerOneDecision === "include_quantitative" &&
+    item.reviewerTwoDecision === "include_quantitative"
+  );
+}
+
 function stripGeneratedReferenceContext(value: string | null | undefined) {
   return (value ?? "")
     .split(/\r?\n/)
@@ -1136,6 +1149,19 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
         ? "This will attach the selected full-text file to this legacy record, automatically run the selected AI reviewers, and replace the AI analysis in this same record. It does not create a duplicate."
         : "Legacy/no source means the previous AI result exists, but the original full-text file is not stored. Select exactly one matching full-text file to update this record.";
   const aiOnlyVerificationMode = verificationMode === "ai_only";
+  const riskOfBiasResearcherGuidance = useMemo(
+    () =>
+      normalizeMetaFullTextResearcherGuidance(
+        [
+          "# JBI RoB rerun lock",
+          musicianPrmdRiskOfBiasGuidance,
+          "",
+          "# Default Musician PRMD full-text guide",
+          defaultMetaFullTextResearcherGuidance,
+        ].join("\n"),
+      ),
+    [],
+  );
   const aiComparisonTargetCount = useMemo(() => {
     const enabledSlotCount = aiReviewerSlots.filter((slot) => slot.enabled).length;
     const storedReviewerTarget = historyItems.reduce(
@@ -1168,10 +1194,29 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
       exclude: historyItems.filter((item) => item.decision === "exclude").length,
       include_narrative_support: historyItems.filter((item) => item.decision === "include_narrative_support").length,
       legacy_source: historyItems.filter((item) => !item.sourceFileSaved).length,
+      primary_quantitative_included: historyItems.filter(isPrimaryQuantitativeIncludedSummary).length,
+      primary_quantitative_source_saved: historyItems.filter(
+        (item) => isPrimaryQuantitativeIncludedSummary(item) && item.sourceFileSaved,
+      ).length,
+      primary_quantitative_missing_source: historyItems.filter(
+        (item) => isPrimaryQuantitativeIncludedSummary(item) && !item.sourceFileSaved,
+      ).length,
       verification_pending: historyItems.filter((item) => !item.verificationComplete).length,
       verification_complete: historyItems.filter((item) => item.verificationComplete).length,
     }),
     [historyItems],
+  );
+  const primaryQuantitativeIncludedHistoryItems = useMemo(
+    () => historyItems.filter(isPrimaryQuantitativeIncludedSummary),
+    [historyItems],
+  );
+  const primaryQuantitativeIncludedSourceSavedHistoryItems = useMemo(
+    () => primaryQuantitativeIncludedHistoryItems.filter((item) => item.sourceFileSaved),
+    [primaryQuantitativeIncludedHistoryItems],
+  );
+  const primaryQuantitativeIncludedLegacyHistoryItems = useMemo(
+    () => primaryQuantitativeIncludedHistoryItems.filter((item) => !item.sourceFileSaved),
+    [primaryQuantitativeIncludedHistoryItems],
   );
   const historySheetProgress = useMemo(() => {
     const rows = new Map<
@@ -1213,6 +1258,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
       historyItems.filter((item) => {
         if (historyFilter === "all") return true;
         if (historyFilter === "legacy_source") return !item.sourceFileSaved;
+        if (historyFilter === "primary_quantitative_included") return isPrimaryQuantitativeIncludedSummary(item);
         if (historyFilter === "verification_pending") return !item.verificationComplete;
         if (historyFilter === "verification_complete") return item.verificationComplete;
         return item.decision === historyFilter;
@@ -1639,6 +1685,42 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
 
   function clearHistoryDeleteSelection() {
     setSelectedHistoryIdsForDelete([]);
+  }
+
+  function prepareRiskOfBiasReanalysisSelection() {
+    if (primaryQuantitativeIncludedSourceSavedHistoryItems.length === 0) {
+      setError(
+        "No primary quantitative included record has a saved full-text source yet. Upload and match the full-text PDF/Word files first.",
+      );
+      return;
+    }
+
+    const readyReviewerIds = runnableAiReviewerSlots.map((slot) => slot.id).slice(0, 3);
+    const legacyArticleNumbers = primaryQuantitativeIncludedLegacyHistoryItems.map((item, index) =>
+      historyArticleNumber(item, historyOriginalIndexById.get(item.id) ?? index),
+    );
+
+    setHistoryFilter("primary_quantitative_included");
+    setSelectedHistoryIdsForDelete(primaryQuantitativeIncludedSourceSavedHistoryItems.map((item) => item.id));
+    setResearcherAiGuidance(riskOfBiasResearcherGuidance);
+    setSelectedAiReviewerIds(readyReviewerIds);
+    setError("");
+    setNotice(
+      [
+        `JBI RoB rerun prepared: ${primaryQuantitativeIncludedSourceSavedHistoryItems.length.toLocaleString(
+          "ko-KR",
+        )} primary quantitative included record(s) with saved full text selected.`,
+        `${primaryQuantitativeIncludedLegacyHistoryItems.length.toLocaleString(
+          "ko-KR",
+        )} primary quantitative included legacy/no-source record(s) need full-text upload before RoB rerun.`,
+        legacyArticleNumbers.length ? `Upload-needed article numbers: ${compactArticleNumberList(legacyArticleNumbers)}.` : "",
+        readyReviewerIds.length
+          ? `Selected AI reviewers: ${readyReviewerIds.length.toLocaleString("ko-KR")} ready model(s).`
+          : "No ready AI reviewer is selected yet; refresh AI slots or set API keys before running.",
+      ]
+        .filter(Boolean)
+        .join(" "),
+    );
   }
 
   function updateHistorySort(nextKey: HistorySortKey) {
@@ -3295,6 +3377,11 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                 {selectedLegacyHistoryItemsForAction.length.toLocaleString("ko-KR")} · completed {selectedArticleAiReviewProgressLabel} · reviewers:{" "}
                 {selectedAiReviewerLabel}
               </p>
+              <p className="text-xs font-semibold leading-5 text-emerald-800">
+                JBI RoB target: primary quantitative included {historyDecisionCounts.primary_quantitative_included.toLocaleString("ko-KR")} ·
+                source saved {historyDecisionCounts.primary_quantitative_source_saved.toLocaleString("ko-KR")} · upload needed{" "}
+                {historyDecisionCounts.primary_quantitative_missing_source.toLocaleString("ko-KR")}
+              </p>
               {selectedLegacyArticleNumberText ? (
                 <p className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold leading-5 text-amber-950">
                   선택 항목 중 full-text 없음: {selectedLegacyArticleNumberText}. 이 번호는 PDF/Word source 업로드 후 AI review를 실행합니다.
@@ -3309,6 +3396,15 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                 className="inline-flex h-8 items-center justify-center rounded-md border border-zinc-300 bg-white px-3 text-xs font-semibold text-zinc-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Select all ready
+              </button>
+              <button
+                type="button"
+                onClick={prepareRiskOfBiasReanalysisSelection}
+                disabled={primaryQuantitativeIncludedSourceSavedHistoryItems.length === 0 || isAnalyzing}
+                className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-emerald-300 bg-white px-3 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:border-zinc-200 disabled:text-zinc-400"
+              >
+                <SearchCheck className="h-3.5 w-3.5" aria-hidden />
+                Prepare JBI RoB rerun
               </button>
               <button
                 type="button"
@@ -3390,6 +3486,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
         <div className="mt-2 flex flex-wrap gap-2">
           {([
             ["all", `All saved ${historyDecisionCounts.all}`],
+            ["primary_quantitative_included", `Quantitative included ${historyDecisionCounts.primary_quantitative_included}`],
             ["legacy_source", `Full-text missing ${historyDecisionCounts.legacy_source}`],
             ["verification_pending", `Verification pending ${historyDecisionCounts.verification_pending}`],
             ["verification_complete", `Verified ${historyDecisionCounts.verification_complete}`],

@@ -94,6 +94,7 @@ const requiredManualReviewFields = [
   "recall_window",
   "risk_of_bias_tool",
   "rob_overall_judgement",
+  "rob_jbi_overall_risk",
   "rob_supporting_quote",
   "publication_bias_eligible_for_funnel",
 ];
@@ -125,7 +126,7 @@ export async function getMetaExtractionDatasetOverview(
   scope: MetaExtractionDatasetScope = {},
 ): Promise<MetaExtractionDatasetOverview> {
   const historyRecords = await getMetaFullTextHistoryRecords({ projectId: scope.projectId });
-  const includedRecords = historyRecords.filter(isIncludedRecord);
+  const includedRecords = historyRecords.filter(isPrimaryQuantitativeIncludedRecord);
   const columns = metaExtractionDatasetColumns(scope.extractionColumns);
   const records = includedRecords.flatMap((record) => datasetRecordsForHistoryRecord(record, columns));
   return {
@@ -290,7 +291,7 @@ function coverageCountsFor(fieldCoverage: Record<string, MetaExtractionFieldCove
   return counts;
 }
 
-function isIncludedRecord(record: MetaFullTextHistoryRecord) {
+export function isPrimaryQuantitativeIncludedRecord(record: MetaFullTextHistoryRecord) {
   const { verification } = record;
   if (verification.piFinalDecision === "include_quantitative") return true;
   if (verification.piFinalDecision !== "pending") return false;

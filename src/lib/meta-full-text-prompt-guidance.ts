@@ -1,3 +1,20 @@
+export const musicianPrmdRiskOfBiasGuidanceLines = [
+  "Risk-of-bias method lock for the Musician PRMD primary quantitative dataset: use the JBI Critical Appraisal Checklist for Studies Reporting Prevalence Data as the primary RoB tool.",
+  "Apply JBI prevalence Q1 sample frame, Q2 sampling/recruitment, Q3 sample size, Q4 subject/setting description, Q5 coverage of identified sample, Q6 valid condition identification, Q7 standard/reliable measurement for all participants, Q8 appropriate statistical analysis, and Q9 response rate/nonresponse handling.",
+  "Answer every JBI prevalence item as yes, no, unclear, or not applicable. Do not invent a yes when the article does not report enough information; use unclear and cite the missing source evidence.",
+  "Treat Q6 valid case definition and Q7 standard/reliable measurement as critical items for pain/PRMD prevalence. If either is no/unclear, quantitative interpretation should be downgraded even when n/total values are extractable.",
+  "Map JBI prevalence domains into Excel fields: risk_of_bias_tool='JBI Critical Appraisal Checklist for Studies Reporting Prevalence Data'; rob_selection_recruitment=Q1-Q3 and Q9; rob_measurement_outcome=Q6-Q7; rob_missing_data=Q5 and Q9; rob_selective_reporting=Q8 plus outcome/reporting consistency; rob_overall_judgement=low/moderate/high/unclear.",
+  "Fill detailed JBI fields when present in the extraction schema: rob_jbi_q1_sample_frame through rob_jbi_q9_response_rate, rob_jbi_yes_count, rob_jbi_no_unclear_count, rob_jbi_overall_risk, and rob_jbi_notes.",
+  "Overall JBI prevalence RoB rule: low risk generally requires at least 7 yes answers and yes for both Q6 and Q7; moderate risk generally has 5-6 yes answers or one critical measurement concern; high risk generally has 0-4 yes answers, unresolved denominator/case-definition problems, or no/unclear Q6 and Q7. Use unclear when the article cannot be judged from the full text.",
+  "Use JBI Analytical Cross Sectional or AXIS only as secondary/narrative appraisal for risk-factor-only or analytical cross-sectional evidence; do not use RoB 2 or ROBINS-I for the primary prevalence dataset.",
+  "Every RoB judgement must include short supporting evidence in rob_supporting_quote and a page/table/figure/supplement hint in rob_page_table when available.",
+  "For RoB reruns on already quantitative-included papers, preserve the inclusion decision unless the RoB assessment reveals an internal numerator/denominator, case-definition, or source-evidence problem that invalidates primary quantitative use; in that case flag manual verification rather than silently excluding.",
+];
+
+export const musicianPrmdRiskOfBiasGuidance = musicianPrmdRiskOfBiasGuidanceLines
+  .map((line) => `- ${line}`)
+  .join("\n");
+
 export const defaultMetaFullTextResearcherGuidanceLines = [
   "These rules are scoped to the current Musician PRMD pain prevalence project. Do not apply them globally to unrelated meta-analysis topics.",
   "The current project status is AI full-text triage plus extraction drafting, not completed screening. Human reviewer 1, reviewer 2, and PI adjudication remain required before final study selection.",
@@ -51,7 +68,7 @@ export const defaultMetaFullTextResearcherGuidanceLines = [
   "For risk-of-bias fields, extract only article-supported facts needed for observational-study RoB judgment: sampling/recruitment, measurement/outcome definition, confounding/adjustment, missing data, selective reporting, response rate, funding, and conflict-of-interest statements.",
   "For publication-bias fields, collect only study-level inputs that later funnel/small-study-effect checks need: outcome group, effect size/prevalence input, standard error or data needed to compute it, and whether the row is eligible for funnel/small-study assessment. Do not claim publication bias from a single article.",
   "Use rob_supporting_quote and rob_page_table for short evidence excerpts or page/table/supplement hints. If the full text lacks evidence, leave the field empty and list it in manual_required_fields.",
-  "For this prevalence/cross-sectional review, prefer a prevalence-appropriate RoB frame such as JBI prevalence checklist, Hoy risk-of-bias tool, AXIS, or JBI analytical cross-sectional checklist. RoB 2 and ROBINS-I are not the primary RoB tools for the primary prevalence dataset; reserve them only for intervention/nonrandomized-intervention questions if separately analyzed.",
+  ...musicianPrmdRiskOfBiasGuidanceLines,
   "Keep evidence excerpts short.",
   "Use eligibility.confidence as a 0-100 percentage, not a 0-1 probability. Return 96 for 96% confidence; do not return 0.96.",
   "Use reviewEvaluation.score and criterion scores as 0-100 quality scores, not 1-5 scores. Convert 4/5 to 80 before returning JSON.",
@@ -75,5 +92,5 @@ export function normalizeMetaFullTextResearcherGuidance(value: string | null | u
     .map((line) => line.trimEnd())
     .join("\n")
     .trim();
-  return (normalized || defaultMetaFullTextResearcherGuidance).slice(0, 12_000);
+  return (normalized || defaultMetaFullTextResearcherGuidance).slice(0, 20_000);
 }
