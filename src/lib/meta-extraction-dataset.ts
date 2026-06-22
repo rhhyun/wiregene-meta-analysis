@@ -93,10 +93,21 @@ const requiredManualReviewFields = [
   "pain_definition",
   "recall_window",
   "risk_of_bias_tool",
-  "rob_overall_judgement",
-  "rob_jbi_overall_risk",
-  "rob_supporting_quote",
-  "publication_bias_eligible_for_funnel",
+];
+
+const defaultRiskOfBiasTool = "JBI Critical Appraisal Checklist for Studies Reporting Prevalence Data";
+const defaultRiskOfBiasToolVersion = "JBI prevalence checklist 2020-08";
+
+const jbiRiskOfBiasItemFields = [
+  "rob_jbi_q1_sample_frame",
+  "rob_jbi_q2_sampling",
+  "rob_jbi_q3_sample_size",
+  "rob_jbi_q4_subjects_setting",
+  "rob_jbi_q5_sample_coverage",
+  "rob_jbi_q6_condition_identification",
+  "rob_jbi_q7_standard_measurement",
+  "rob_jbi_q8_statistical_analysis",
+  "rob_jbi_q9_response_rate",
 ];
 
 const outcomePairs = [
@@ -195,7 +206,7 @@ function datasetRecordsForHistoryRecord(record: MetaFullTextHistoryRecord, colum
       : [{}];
 
   return sourceRows.map((sourceRow, rowIndex) => {
-    const normalizedSourceRow = normalizeRow(sourceRow);
+    const normalizedSourceRow = normalizeDatasetRowDefaults(normalizeRow(sourceRow));
     const manualRequiredFields = manualRequiredFieldsFor(record, normalizedSourceRow);
     const manualRequiredFieldSet = new Set(manualRequiredFields);
     const evidenceFieldSet = new Set(
@@ -319,18 +330,90 @@ function finalDecision(record: MetaFullTextHistoryRecord) {
 }
 
 function manualRequiredFieldsFor(record: MetaFullTextHistoryRecord, row: Record<string, string>) {
+  if (record.extractionReview.verified) return [];
+
   const fields = new Set<string>();
   for (const field of requiredManualReviewFields) {
     if (!row[field]) fields.add(field);
   }
+  if (!hasRiskOfBiasOverallJudgement(row)) fields.add("rob_overall_judgement_or_rob_jbi_overall_risk");
+  if (!hasRiskOfBiasEvidenceLocation(row)) fields.add("rob_evidence_location");
   if (!hasOutcomePair(row)) fields.add("at_least_one_region_n_total_pair");
-  if (!row.rob_supporting_quote && !row.rob_page_table) fields.add("rob_evidence_location");
-  if (!row.publication_bias_standard_error && !row.publication_bias_small_study_notes) {
-    fields.add("publication_bias_input_or_note");
+  if (publicationBiasMarkedEligible(row) && !row.publication_bias_standard_error && !row.publication_bias_small_study_notes) {
+    fields.add("publication_bias_standard_error_or_note");
   }
-  for (const field of record.analysis.extraction.missingCriticalFields) fields.add(field);
+  if ((row.publication_bias_effect_size || row.publication_bias_standard_error) && !row.publication_bias_outcome_group) {
+    fields.add("publication_bias_outcome_group");
+  }
+  for (const field of record.analysis.extraction.missingCriticalFields) {
+    addUnresolvedMissingCriticalField(fields, field, row);
+  }
   if (record.analysis.extraction.validationIssues.length > 0) fields.add("resolve_validation_issues");
   return [...fields];
+}
+
+function normalizeDatasetRowDefaults(row: Record<string, string>) {
+  const next = { ...row };
+  if (!next.risk_of_bias_tool) next.risk_of_bias_tool = defaultRiskOfBiasTool;
+  if (!next.rob_jbi_tool_version && riskOfBiasToolIsJbi(next.risk_of_bias_tool)) {
+    next.rob_jbi_tool_version = defaultRiskOfBiasToolVersion;
+  }
+  if (!next.rob_jbi_overall_risk && next.rob_overall_judgement) {
+    next.rob_jbi_overall_risk = next.rob_overall_judgement;
+  }
+  if (!next.rob_overall_judgement && next.rob_jbi_overall_risk) {
+    next.rob_overall_judgement = next.rob_jbi_overall_risk;
+  }
+  return next;
+}
+
+function addUnresolvedMissingCriticalField(fields: Set<string>, field: string, row: Record<string, string>) {
+  const cleaned = field.trim();
+  if (!cleaned) return;
+  if (cleaned === "at_least_one_region_n_total_pair") {
+    if (!hasOutcomePair(row)) fields.add(cleaned);
+    return;
+  }
+  if (cleaned === "rob_evidence_location") {
+    if (!hasRiskOfBiasEvidenceLocation(row)) fields.add(cleaned);
+    return;
+  }
+  if (cleaned === "publication_bias_input_or_note") {
+    if (publicationBiasMarkedEligible(row) && !row.publication_bias_standard_error && !row.publication_bias_small_study_notes) {
+      fields.add("publication_bias_standard_error_or_note");
+    }
+    return;
+  }
+  if (cleaned === "rob_overall_judgement" || cleaned === "rob_jbi_overall_risk") {
+    if (!hasRiskOfBiasOverallJudgement(row)) fields.add("rob_overall_judgement_or_rob_jbi_overall_risk");
+    return;
+  }
+  if (row[cleaned]) return;
+  fields.add(cleaned);
+}
+
+function hasRiskOfBiasOverallJudgement(row: Record<string, string>) {
+  return Boolean(row.rob_overall_judgement || row.rob_jbi_overall_risk);
+}
+
+function hasRiskOfBiasEvidenceLocation(row: Record<string, string>) {
+  return Boolean(
+    row.rob_supporting_quote ||
+      row.rob_page_table ||
+      row.rob_jbi_notes ||
+      jbiRiskOfBiasItemFields.some((field) => row[field]),
+  );
+}
+
+function publicationBiasMarkedEligible(row: Record<string, string>) {
+  const value = row.publication_bias_eligible_for_funnel?.trim().toLowerCase() ?? "";
+  if (!value) return false;
+  if (/\b(no|not eligible|ineligible|n\/a|na|not applicable|unclear|pending)\b/.test(value)) return false;
+  return /^(yes|y|true|eligible|include|included|1)\b/.test(value);
+}
+
+function riskOfBiasToolIsJbi(value: string) {
+  return /\bjbi\b/i.test(value) || /joanna\s+briggs/i.test(value);
 }
 
 function hasOutcomePair(row: Record<string, string>) {

@@ -1,3 +1,38 @@
+# 2026-06-23 Excel dataset coverage/manual-required calibration
+
+User issue:
+
+- The Primary quantitative included-paper Excel dataset verification panel needed a clear distinction between `Evidence-backed`, `AI auto-filled`, and `Manual required`.
+- The user asked for a deeper way to reduce manual-required burden without weakening scientific verification.
+
+Implemented:
+
+- Added visible dataset-status definitions:
+  - `Evidence-backed`: AI value plus row/field-level source evidence;
+  - `AI auto-filled`: value present without cell-level source evidence;
+  - `Manual required`: unresolved blocker before row verification;
+  - `Blank`: empty but not blocking the current row.
+- Reduced false-positive manual flags:
+  - verified rows no longer count as unresolved manual-required blockers;
+  - `risk_of_bias_tool` and JBI tool version default to the locked JBI prevalence method;
+  - `rob_overall_judgement` and `rob_jbi_overall_risk` mirror each other for blocker detection/export;
+  - JBI notes or populated Q1-Q9 items can satisfy RoB evidence-location when quote/page fields are absent;
+  - publication-bias standard error is required only when funnel eligibility is explicitly yes/eligible;
+  - stale AI `missingCriticalFields` no longer remain as manual flags once the edited row contains that field.
+- Added the rule to `research.md`, `plan.md`, and `guide.md`.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.107`
+  - UI label: `Ver 2.42 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed.
+npm.cmd run lint: passed.
+npm.cmd run build: passed.
+git diff --check: passed.
+```
+
 # 2026-06-23 JBI prevalence RoB rerun workflow
 
 User issue:

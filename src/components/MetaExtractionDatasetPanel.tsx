@@ -122,6 +122,29 @@ const readOnlyFields = new Set([
   "validation_issue_count",
 ]);
 
+const coverageDefinitions: { status: FieldCoverageStatus; title: string; description: string }[] = [
+  {
+    status: "evidence-backed",
+    title: "Evidence-backed",
+    description: "AI value plus row/field source evidence. Verify the cited page, table, figure, or excerpt before locking.",
+  },
+  {
+    status: "auto-filled",
+    title: "AI auto-filled",
+    description: "AI value is present but cell-level source evidence is not attached. Spot-check important numeric and RoB cells.",
+  },
+  {
+    status: "manual-required",
+    title: "Manual required",
+    description: "An unresolved blocker remains: a critical value, outcome n/total pair, RoB judgement/evidence, or validation issue.",
+  },
+  {
+    status: "blank",
+    title: "Blank",
+    description: "No value is stored and the field is not currently blocking this primary Excel row.",
+  },
+];
+
 const projectFileSavedEventName = "wiregene-meta-project-file-saved";
 
 export function MetaExtractionDatasetPanel({ extractionSections, projectId }: MetaExtractionDatasetPanelProps) {
@@ -403,6 +426,19 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
         <Metric label="Manual-required flags" value={loading ? "..." : String(overview?.stats.manualRequiredFieldCount ?? 0)} />
         <Metric label="Blank editable fields" value={loading ? "..." : String(overview?.stats.blankFieldCount ?? 0)} />
         <Metric label="Editable field cells" value={loading ? "..." : String(overview?.stats.editableFieldCount ?? 0)} />
+      </div>
+
+      <div className="mt-3 grid gap-2 lg:grid-cols-4">
+        {coverageDefinitions.map((item) => (
+          <div key={item.status} className="rounded-md border border-emerald-200 bg-white p-3">
+            <div className="flex items-center gap-2">
+              <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${coverageStatusStyle(item.status)}`}>
+                {item.title}
+              </span>
+            </div>
+            <p className="mt-2 text-xs font-semibold leading-5 text-zinc-600">{item.description}</p>
+          </div>
+        ))}
       </div>
 
       {overview?.records.length ? (
@@ -692,9 +728,9 @@ function FieldEditor({
 }
 
 function coverageStatusLabel(status: FieldCoverageStatus) {
-  if (status === "evidence-backed") return "AI filled + evidence";
-  if (status === "auto-filled") return "AI filled";
-  if (status === "manual-required") return "manual check";
+  if (status === "evidence-backed") return "evidence-backed";
+  if (status === "auto-filled") return "AI auto-filled";
+  if (status === "manual-required") return "manual required";
   if (status === "audit") return "audit";
   return "blank";
 }

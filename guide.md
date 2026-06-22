@@ -1,9 +1,26 @@
 # Wiregene Meta 사용 가이드
 
-문서 버전: Ver 2.41
+문서 버전: Ver 2.42
 최종 업데이트: 2026-06-23
 적용 사이트: `https://search.wiregene.com`
 소스 저장소: `rhhyun/wiregene-meta-analysis`
+
+### Excel dataset coverage/manual-required labels
+
+Ver 2.42 clarifies the Primary quantitative included-paper Excel dataset verification labels.
+
+- `Evidence-backed`: AI value plus row/field source evidence for that exact cell.
+- `AI auto-filled`: AI value exists, but no cell-level evidence is attached yet.
+- `Manual required`: unresolved blocker remains before verification, such as missing critical descriptors, no outcome n/total pair, missing RoB judgement/evidence, eligible funnel input, or validation issue.
+- `Blank`: empty and not currently blocking the primary Excel row.
+
+Manual-required flags should fall after real review work:
+
+- A row marked verified is treated as having no unresolved manual blockers.
+- JBI RoB tool/version is defaulted for this locked primary dataset.
+- `rob_overall_judgement` and `rob_jbi_overall_risk` can fill each other.
+- Publication-bias SE is required only for rows explicitly marked funnel-eligible.
+- If the extractor fills a field that AI previously listed as missing, that stale missing-field flag is cleared from the manual-required list.
 
 ### JBI prevalence RoB rerun
 
@@ -29,7 +46,7 @@ Santos et al. 2024, `Odds ratio of occurrence of pain, postural changes, and dis
 - VAS/DASH는 SD, denominator, group definition, extractable summary가 부족하면 narrative only로 둡니다.
 - 보고된 posture/practice OR는 CI, SE, exact p value, 안정적인 model definition이 없으면 pooled risk-factor estimate로 쓰지 않고 탐색적 서술 근거로만 유지합니다.
 
-빠른 현재 기준: Ver 2.41부터 Musician PRMD pain 프로젝트는 `screening 완료`가 아니라 `AI full-text triage/extraction draft 후 reviewer/PI adjudication 전 단계`로 봅니다. Title/population은 `Instrumental Musicians`로 정합화하고, Excel extraction 전 `1652 -> 259 -> 253 -> 82 -> 72/71` audit lock을 먼저 완료합니다. Primary quantitative RoB는 JBI prevalence Q1-Q9로 재평가합니다.
+빠른 현재 기준: Ver 2.42부터 Musician PRMD pain 프로젝트는 `screening 완료`가 아니라 `AI full-text triage/extraction draft 후 reviewer/PI adjudication 전 단계`로 봅니다. Title/population은 `Instrumental Musicians`로 정합화하고, Excel extraction 전 `1652 -> 259 -> 253 -> 82 -> 72/71` audit lock을 먼저 완료합니다. Primary quantitative RoB는 JBI prevalence Q1-Q9로 재평가하고, Excel dataset의 `Manual required`는 unresolved blocker만 의미합니다.
 
 ## 2026-06-21 Ver 2.30 업데이트: full-text 업로드 기본값은 새 article 저장
 

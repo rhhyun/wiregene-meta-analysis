@@ -1,5 +1,25 @@
 # Wiregene Meta — 연구 목적 및 프레임워크
 
+## 2026-06-23 Excel dataset field-coverage interpretation lock
+
+Primary quantitative included-paper Excel dataset verification uses four field states:
+
+| State | Meaning | Action |
+| --- | --- | --- |
+| `Evidence-backed` | A value is present and the AI supplied row/field-level source evidence for that exact cell. | Verify the cited page/table/figure/excerpt before final lock. |
+| `AI auto-filled` | A value is present, but cell-level source evidence is not attached. | Spot-check important numeric, eligibility, and RoB cells; do not treat as final evidence by label alone. |
+| `Manual required` | An unresolved blocker remains for the row: critical descriptive value, at least one outcome n/total pair, RoB overall/evidence location, eligible publication-bias input, missing critical field, or validation issue. | Resolve before marking the row verified. |
+| `Blank` | No value is stored and the field is not currently blocking this primary row. | Leave blank when truly not reported/not applicable, or fill `NR`/notes when checked. |
+
+Manual-required reduction rule:
+
+- A row marked verified by the extractor is treated as having no unresolved manual-required blockers.
+- `risk_of_bias_tool` can be defaulted to the locked JBI prevalence tool for this primary dataset.
+- `rob_overall_judgement` and `rob_jbi_overall_risk` are equivalent for blocker detection; one can populate the other.
+- `rob_supporting_quote`, `rob_page_table`, `rob_jbi_notes`, or populated JBI Q1-Q9 fields can satisfy the RoB evidence-location requirement.
+- Publication-bias standard error is required only when `publication_bias_eligible_for_funnel` is explicitly yes/eligible. It should not create a manual blocker for every individual paper before the outcome group has enough studies.
+- AI-reported `missingCriticalFields` are rechecked against the current edited row so flags disappear after the extractor fills the value.
+
 ## 2026-06-23 JBI prevalence risk-of-bias method lock
 
 Primary RoB method for the Musician PRMD primary quantitative dataset is now fixed as the JBI Critical Appraisal Checklist for Studies Reporting Prevalence Data.

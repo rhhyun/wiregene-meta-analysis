@@ -1,5 +1,21 @@
 # Wiregene Meta — 개발 작업 계획 (plan.md)
 
+## 2026-06-23 Excel dataset coverage/manual-required checkpoint
+
+- Active version after this checkpoint: `Ver 2.42`, package `0.1.107`.
+- Clarified the primary included-paper Excel dataset status labels:
+  - `Evidence-backed`: value plus row/field-level source evidence;
+  - `AI auto-filled`: value present without cell-level source evidence;
+  - `Manual required`: unresolved blocker before row verification;
+  - `Blank`: empty but not currently blocking the row.
+- Reduced false manual-required burden:
+  - verified rows no longer contribute unresolved manual blockers;
+  - locked JBI prevalence RoB tool/version can be defaulted in the primary dataset;
+  - `rob_overall_judgement` and `rob_jbi_overall_risk` mirror each other for blocker detection;
+  - JBI Q1-Q9 notes can satisfy RoB evidence-location when quote/page fields are absent;
+  - publication-bias SE is requested only when funnel eligibility is explicitly yes/eligible;
+  - stale AI `missingCriticalFields` are ignored after the edited row has the field filled.
+
 ## 2026-06-23 JBI prevalence RoB rerun checkpoint
 
 - Active version after this checkpoint: `Ver 2.41`, package `0.1.106`.
