@@ -1,11 +1,23 @@
 # Wiregene Meta 사용 가이드
 
-문서 버전: Ver 2.39
+문서 버전: Ver 2.40
 최종 업데이트: 2026-06-23
 적용 사이트: `https://search.wiregene.com`
 소스 저장소: `rhhyun/wiregene-meta-analysis`
 
-빠른 현재 기준: Ver 2.39부터 Musician PRMD pain 프로젝트는 `screening 완료`가 아니라 `AI full-text triage/extraction draft 후 reviewer/PI adjudication 전 단계`로 봅니다. Title/population은 `Instrumental Musicians`로 정합화하고, Excel extraction 전 `1652 -> 259 -> 253 -> 82 -> 72/71` audit lock을 먼저 완료합니다.
+### Santos 2024 calibration rule
+
+Santos et al. 2024, `Odds ratio of occurrence of pain, postural changes, and disabilities of violinists`는 violin-specific risk-factor 논문처럼 보이지만 primary prevalence meta-analysis에는 넣지 않는 보정 예시입니다.
+
+- 최종 상태는 `서술적 위험요인 근거만 제한적으로 유지`, `Primary anatomical-region/laterality prevalence meta-analysis: 제외`, `Overall pain-prevalence pooling: 제외`입니다.
+- 공식 분석 표본은 `38`명인데 pain figure, k-means, figure 설명, confusion matrix가 `39` observations를 사용하므로 `26/38`, `26/39`, `13/38`, `13/39` 중 하나를 임의 선택하지 않습니다.
+- pain/no-pain 방향이 figure와 model output 사이에서 모순되면 overall pain prevalence도 pooling하지 않습니다.
+- recall period, playing-related attribution, strict PRMD case definition이 명확하지 않으면 instrument-specific sample이라도 primary prevalence에 넣지 않습니다.
+- 부위별 또는 좌우별 pain n/N이 없으면 violin laterality/asymmetry pain pattern 분석에는 사용할 수 없습니다.
+- VAS/DASH는 SD, denominator, group definition, extractable summary가 부족하면 narrative only로 둡니다.
+- 보고된 posture/practice OR는 CI, SE, exact p value, 안정적인 model definition이 없으면 pooled risk-factor estimate로 쓰지 않고 탐색적 서술 근거로만 유지합니다.
+
+빠른 현재 기준: Ver 2.40부터 Musician PRMD pain 프로젝트는 `screening 완료`가 아니라 `AI full-text triage/extraction draft 후 reviewer/PI adjudication 전 단계`로 봅니다. Title/population은 `Instrumental Musicians`로 정합화하고, Excel extraction 전 `1652 -> 259 -> 253 -> 82 -> 72/71` audit lock을 먼저 완료합니다.
 
 ## 2026-06-21 Ver 2.30 업데이트: full-text 업로드 기본값은 새 article 저장
 

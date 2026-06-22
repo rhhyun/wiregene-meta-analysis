@@ -49,6 +49,40 @@ Required checkpoints before full Excel extraction:
 9. Extraction schema lock.
 10. Evidence-backed field validation, starting with a 5-paper quantitative pilot.
 
+## 2026-06-23 Santos 2024 inconsistent-denominator risk-factor calibration rule
+
+Santos et al. 2024, `Odds ratio of occurrence of pain, postural changes, and disabilities of violinists`, is a calibration example for small cross-sectional risk-factor papers where a binary pain outcome and posture-related odds ratios are reported, but the underlying denominator, pain/no-pain coding, and model reporting are too inconsistent for pooling.
+
+Locked adjudication for this calibration case:
+
+| Item | Rule |
+| --- | --- |
+| Final screening classification | Narrative/risk-factor support only |
+| Primary anatomical-region/laterality meta-analysis | Exclude |
+| Overall pain-prevalence pooling | Exclude |
+| Narrative risk-factor synthesis | Limited include as exploratory evidence |
+| Study class | Cross-sectional convenience sample |
+| Instrument group | Violin |
+| Population | College students and professionals mixed |
+| Official analyzed sample | 38 |
+| Conflicting denominator | Pain figure, k-means analysis, figure explanation, and confusion matrix use 39 observations |
+| Pain numerator/denominator | NR; internally inconsistent |
+| Recall period | Not reported |
+| Playing-related attribution | Unclear |
+| Strict PRMD definition | No |
+| Anatomical-site prevalence | Not extractable |
+| Laterality-specific prevalence | Not extractable |
+| VAS/DASH | Narrative only; denominator/SD or extractable summary is insufficient |
+| Reported ORs | Narrative only; do not pool without CI/SE and stable model definition |
+
+AI performance rule derived from this case:
+
+- If official sample size conflicts with pain figures, cluster/confusion matrices, or regression denominators, the AI must not choose among `26/38`, `26/39`, `13/38`, or `13/39`. Code prevalence numerator/denominator as `NR` or `internally inconsistent`.
+- If pain/no-pain category direction is contradictory across figures, model tables, or text, do not use the article for overall pain-prevalence pooling.
+- Absence of a fixed recall period and explicit playing-related pain case definition blocks primary prevalence synthesis, even if the sample is instrument-specific.
+- Posture/practice odds ratios from a very small cross-sectional model must not be pooled when confidence intervals, standard errors, exact p values, or stable variable-selection rules are absent.
+- VAS and DASH values can be narrative-only when SD, denominator, group definition, or extractable summary statistics are missing.
+
 ## 2026-06-22 Screening AI score interpretation lock
 
 Screening page AI numbers are triage and extraction-quality signals. They are not final study-selection authority. Reviewer 1, Reviewer 2, and PI adjudication remain the final decision path.

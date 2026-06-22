@@ -1,5 +1,16 @@
 # Wiregene Meta — 개발 작업 계획 (plan.md)
 
+## 2026-06-23 Santos 2024 inconsistent-denominator risk-factor calibration checkpoint
+
+- Active version after this checkpoint: `Ver 2.40`, package `0.1.105`.
+- Added a calibration rule from article 622 / Santos et al. 2024:
+  - official analyzed sample size `38` conflicts with pain/model outputs using `39` observations;
+  - contradictory pain/no-pain direction blocks overall pain-prevalence pooling;
+  - no fixed recall period, explicit playing-related case definition, site-specific n/N, or laterality-specific n/N is available;
+  - VAS/DASH are narrative only when denominator/SD/extractable summaries are missing;
+  - reported posture/practice ORs must not be pooled without CI/SE/exact p values and stable model definitions.
+- The rule is injected into the server prompt and default AI judgment guide, and documented in `research.md` and `guide.md`.
+
 ## 2026-06-23 Musician PRMD protocol/process lock checkpoint
 
 - Active version after this checkpoint: `Ver 2.39`, package `0.1.104`.

@@ -1,3 +1,35 @@
+# 2026-06-23 Santos 2024 inconsistent-denominator risk-factor calibration guidance
+
+User issue:
+
+- Article 622 (`Santos et al., 2024, Odds ratio of occurrence of pain, postural changes, and disabilities of violinists`) was submitted with PI/ChatGPT final verification.
+- Human verification showed it should be finalized as primary quantitative exclusion with limited narrative risk-factor support only.
+
+Implemented:
+
+- Added a server-side calibration rule for small cross-sectional risk-factor studies with internally inconsistent pain denominators.
+- Added restrictions:
+  - official sample size `38` conflicts with pain figure, k-means, figure explanation, and confusion-matrix outputs using `39` observations;
+  - contradictory pain/no-pain category direction blocks `26/38`, `26/39`, `13/38`, or `13/39` from being selected;
+  - missing recall period and playing-related case definition block primary prevalence synthesis;
+  - missing anatomical-site and laterality-specific n/N blocks region/laterality extraction;
+  - VAS/DASH remain narrative only when denominator/SD/extractable summaries are absent;
+  - posture/practice ORs are narrative only unless CI/SE/exact p values and stable model definitions are available.
+- Added the explicit Santos 2024 calibration example to default AI judgment guidance and always-injected scoring/selection rules.
+- Added the calibration rule to `research.md`, `guide.md`, `plan.md`, and the handoff workspace `research.md`.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.105`
+  - UI label: `Ver 2.40 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed.
+npm.cmd run lint: passed.
+npm.cmd run build: passed.
+git diff --check: passed.
+```
+
 # 2026-06-23 Musician PRMD protocol/process lock
 
 User issue:
