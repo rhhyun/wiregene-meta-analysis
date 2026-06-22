@@ -1,5 +1,18 @@
 # Wiregene Meta — 개발 작업 계획 (plan.md)
 
+## 2026-06-23 analysis-ready Excel schema checkpoint
+
+- Active version after this checkpoint: `Ver 2.44`, package `0.1.109`.
+- Inspected the reference workbook `250803 NMA, MA 결과 정리_YK.xlsx`: it separates study-level sheets (`List`, `Risk of bias`) from result-level NMA/MA sheets and uses numeric category coding for analysis covariates.
+- Extended the Musician PRMD extraction schema:
+  - age fields now include SD, SE, CI, and age-effect OR/CI/p fields;
+  - playing-hours fields preserve the original value/unit and add `playing_hours_per_week` plus conversion rule;
+  - professional status, instrument, instrument category, asymmetry group, and result parameter fields have numeric code and code-definition columns;
+  - result-level comparison fields support same-paper group/outcome/effect rows without duplicating study-level facts.
+- Added AI guidance and server scoring rules so the three model reviewers extract analysis-ready weekly playing hours, categorical codes, and study-level vs result-level fields.
+- Added dataset normalization so refreshed existing rows can auto-fill code definitions, infer conservative category codes, convert clear playing-hours values to weekly units, and flag `mean_age_sd_se_ci_or_effect` when only mean age is available.
+- XLSX export now includes `Dataset`, `Study_Level`, `Result_Level`, `Risk_PubBias`, `Parameter_Codebook`, and `Field_Coverage` sheets.
+
 ## 2026-06-23 Excel dataset coverage/manual-required checkpoint
 
 - Active version after this checkpoint: `Ver 2.43`, package `0.1.108`.

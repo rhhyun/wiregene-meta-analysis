@@ -1,5 +1,25 @@
 # Wiregene Meta — 연구 목적 및 프레임워크
 
+## 2026-06-23 analysis-ready Excel schema lock
+
+The Primary quantitative included-paper Excel dataset must follow a two-level analysis structure:
+
+- `Study_Level`: one row per paper for article-level characteristics, RoB, publication-bias eligibility, funding, conflict of interest, recruitment, and reviewer verification.
+- `Result_Level`: one row per outcome/result/comparison for pain n/N, mean/SD, OR/SMD, subgroup comparison, instrument comparison, asymmetry comparison, and effect-size inputs.
+- `Risk_PubBias`: one row per paper because RoB and publication-bias eligibility are paper-level judgements and must not be duplicated as if they were independent result rows.
+- `Parameter_Codebook`: numeric definitions for categorical variables. These definitions must travel with the workbook so R/meta-analysis scripts can decode categories reproducibly.
+- `Dataset`: legacy flat export kept for compatibility only.
+
+Analysis-ready field rules:
+
+- `mean_age` alone is not sufficient for age-based quantitative analysis. Extract `mean_age_sd`, `mean_age_se`, `mean_age_ci_low/high`, or age effect fields such as `mean_age_effect_or/CI/p` when the article reports them. If only mean age is available, keep the value but flag `mean_age_sd_se_ci_or_effect` for manual review.
+- `playing_hours` must preserve the original wording and unit, then normalize to `playing_hours_per_week`. Conversion rule: daily x 7, weekly unchanged, monthly x 12/52, yearly / 52. Unclear units stay blank with a conversion note.
+- `professional_status` must be coded numerically for analysis: `0=student/trainee`, `1=professional`, `2=mixed`, `9=unclear/not reported`.
+- Non-numeric analysis categories must have numeric code fields plus definitions, including instrument, instrument category, asymmetry group, and result parameter codes.
+- Default instrument code: violin=0, viola=1, flute=2, oboe=3, cello=4, double bass=5, clarinet=6, bassoon=7, horn/brass=8, piano=9, guitar=10, other=98, mixed/unclear=99.
+- Same-paper comparisons should not duplicate study-level rows just to encode a group comparison. Use result-level fields such as `result_id`, `result_group_1_label/code`, `result_group_2_label/code`, `result_parameter_name/code`, `result_outcome_group`, and `result_effect_*`.
+- Primary included-paper Excel verification remains restricted to primary quantitative included records. Narrative/support papers and secondary-only evidence do not enter the primary verification dataset.
+
 ## 2026-06-23 Excel dataset field-coverage interpretation lock
 
 Primary quantitative included-paper Excel dataset verification uses four field states:

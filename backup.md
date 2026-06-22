@@ -1,3 +1,41 @@
+# 2026-06-23 analysis-ready Excel schema and workbook split
+
+User issue:
+
+- The reference NMA/MA workbook uses separate study-level and result-level sheets, numeric category coding, and analysis-ready continuous/effect fields.
+- The Musician PRMD extraction dataset needed the same structure:
+  - `mean_age` requires SD/SE/CI or effect fields for analysis;
+  - playing hours must be normalized to weekly units;
+  - professional status and other categories must be numeric with code definitions;
+  - same-paper comparisons should use result-level parameters instead of duplicating paper-level rows;
+  - RoB/publication bias remains paper-level.
+
+Implemented:
+
+- Added analysis-ready extraction columns for age uncertainty/effects, weekly playing-hours conversion, professional/instrument/asymmetry codes, result-level groups, result parameters, and effect-size fields.
+- Added AI reviewer guidance and always-injected server scoring rules for weekly playing-hours normalization, category coding, and study-level vs result-level separation.
+- Added dataset normalization defaults:
+  - JBI RoB defaults remain intact;
+  - code-definition fields are auto-filled;
+  - professional status, instrument, instrument category, and asymmetry codes are conservatively inferred when possible;
+  - clear daily/weekly/monthly/yearly playing hours are converted to `playing_hours_per_week`;
+  - rows with `mean_age` but no SD/SE/CI/effect support are flagged with `mean_age_sd_se_ci_or_effect`.
+- XLSX export now creates six sheets: `Dataset`, `Study_Level`, `Result_Level`, `Risk_PubBias`, `Parameter_Codebook`, and `Field_Coverage`.
+- Documented the lock in `research.md`, `plan.md`, and `guide.md`.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.109`
+  - UI label: `Ver 2.44 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed.
+npm.cmd run lint: passed.
+npm.cmd run build: passed.
+sample XLSX export worksheet check: passed; six worksheet XML files generated.
+git diff --check: passed.
+```
+
 # 2026-06-23 Excel dataset verification count guard
 
 User issue:

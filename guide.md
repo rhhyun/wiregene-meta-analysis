@@ -1,9 +1,27 @@
 # Wiregene Meta 사용 가이드
 
-문서 버전: Ver 2.43
+문서 버전: Ver 2.44
 최종 업데이트: 2026-06-23
 적용 사이트: `https://search.wiregene.com`
 소스 저장소: `rhhyun/wiregene-meta-analysis`
+
+### Analysis-ready Excel export
+
+Ver 2.44 changes the Included-paper Excel export from a single analysis table into a workbook with separated roles.
+
+- `Dataset`: full flat compatibility sheet.
+- `Study_Level`: one row per paper for article characteristics and study-level covariates.
+- `Result_Level`: one row per outcome/result/comparison for n/N, mean/SD, OR/SMD, subgroup, instrument, asymmetry, and result effect fields.
+- `Risk_PubBias`: one row per paper for RoB and publication-bias inputs.
+- `Parameter_Codebook`: numeric definitions for professional status, instrument, instrument category, asymmetry group, and playing-hours conversion rules.
+- `Field_Coverage`: audit trail for evidence-backed, AI auto-filled, manual-required, and blank fields.
+
+Important extraction rules:
+
+- `mean_age` needs SD, SE, CI, or age-effect OR/CI/p to be analysis-ready. If only mean age is reported, the row keeps the value but flags `mean_age_sd_se_ci_or_effect`.
+- `playing_hours` is normalized to `playing_hours_per_week` while preserving the original article value/unit and conversion rule.
+- `professional_status_code`: `0=student/trainee`, `1=professional`, `2=mixed`, `9=unclear/not reported`.
+- Same-paper comparisons should use `result_*` columns rather than duplicating paper-level RoB/funding/recruitment data.
 
 ### Excel dataset coverage/manual-required labels
 
@@ -49,7 +67,7 @@ Santos et al. 2024, `Odds ratio of occurrence of pain, postural changes, and dis
 - VAS/DASH는 SD, denominator, group definition, extractable summary가 부족하면 narrative only로 둡니다.
 - 보고된 posture/practice OR는 CI, SE, exact p value, 안정적인 model definition이 없으면 pooled risk-factor estimate로 쓰지 않고 탐색적 서술 근거로만 유지합니다.
 
-빠른 현재 기준: Ver 2.43부터 Musician PRMD pain 프로젝트는 `screening 완료`가 아니라 `AI full-text triage/extraction draft 후 reviewer/PI adjudication 전 단계`로 봅니다. Title/population은 `Instrumental Musicians`로 정합화하고, Excel extraction 전 `1652 -> 259 -> 253 -> 82 -> 72/71` audit lock을 먼저 완료합니다. Primary quantitative RoB는 JBI prevalence Q1-Q9로 재평가하고, Excel dataset의 `Manual required`는 unresolved blocker만 의미합니다.
+빠른 현재 기준: Ver 2.44부터 Musician PRMD pain 프로젝트는 `screening 완료`가 아니라 `AI full-text triage/extraction draft 후 reviewer/PI adjudication 전 단계`로 봅니다. Title/population은 `Instrumental Musicians`로 정합화하고, Excel extraction 전 `1652 -> 259 -> 253 -> 82 -> 72/71` audit lock을 먼저 완료합니다. Primary quantitative RoB는 JBI prevalence Q1-Q9로 재평가하고, Excel dataset은 study-level/result-level/RoB-codebook sheet로 분리하며 `Manual required`는 unresolved blocker만 의미합니다.
 
 ## 2026-06-21 Ver 2.30 업데이트: full-text 업로드 기본값은 새 article 저장
 

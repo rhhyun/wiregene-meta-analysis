@@ -58,6 +58,13 @@ export type MetaExtractionDatasetScope = MetaProjectScope & {
   extractionColumns?: string[] | null;
 };
 
+export type MetaExtractionParameterCode = {
+  parameter: string;
+  code: string;
+  label: string;
+  definition: string;
+};
+
 const auditColumns = [
   "history_id",
   "file_name",
@@ -99,6 +106,49 @@ const requiredManualReviewFields = [
 const defaultRiskOfBiasTool = "JBI Critical Appraisal Checklist for Studies Reporting Prevalence Data";
 const defaultRiskOfBiasToolVersion = "JBI prevalence checklist 2020-08";
 const datasetRowIndexPayloadField = "__dataset_row_index";
+
+const professionalStatusCodeDefinition = "0=student/trainee; 1=professional; 2=mixed professional/student or mixed career status; 9=unclear/not reported";
+const specificInstrumentCodeDefinition =
+  "0=violin; 1=viola; 2=flute; 3=oboe; 4=cello; 5=double bass; 6=clarinet; 7=bassoon; 8=horn/brass; 9=piano; 10=guitar; 98=other; 99=mixed/unclear";
+const instrumentCategoryCodeDefinition =
+  "0=upper strings; 1=lower strings; 2=woodwind; 3=brass; 4=keyboard; 5=plucked strings; 6=percussion; 9=mixed/unclear";
+const asymmetryGroupCodeDefinition = "0=low/mixed/orofacial/not classifiable; 1=moderate/seated axial-load; 2=high asymmetry; 9=unclear";
+
+export const metaExtractionParameterCodebook: MetaExtractionParameterCode[] = [
+  { parameter: "professional_status_code", code: "0", label: "student/trainee", definition: "Music student, trainee, college/university musician, or nonprofessional training population." },
+  { parameter: "professional_status_code", code: "1", label: "professional", definition: "Professional, paid, employed, orchestra, or career musician sample." },
+  { parameter: "professional_status_code", code: "2", label: "mixed", definition: "Mixed student/professional or mixed career-status sample that cannot be separated by outcome row." },
+  { parameter: "professional_status_code", code: "9", label: "unclear/not reported", definition: "Professional status is absent or cannot be inferred from source evidence." },
+  { parameter: "specific_instrument_code", code: "0", label: "violin", definition: "Violin." },
+  { parameter: "specific_instrument_code", code: "1", label: "viola", definition: "Viola." },
+  { parameter: "specific_instrument_code", code: "2", label: "flute", definition: "Flute." },
+  { parameter: "specific_instrument_code", code: "3", label: "oboe", definition: "Oboe." },
+  { parameter: "specific_instrument_code", code: "4", label: "cello", definition: "Cello." },
+  { parameter: "specific_instrument_code", code: "5", label: "double bass", definition: "Double bass, contrabass, or upright bass." },
+  { parameter: "specific_instrument_code", code: "6", label: "clarinet", definition: "Clarinet." },
+  { parameter: "specific_instrument_code", code: "7", label: "bassoon", definition: "Bassoon." },
+  { parameter: "specific_instrument_code", code: "8", label: "horn/brass", definition: "Horn, trumpet, trombone, tuba, or brass group when not separable." },
+  { parameter: "specific_instrument_code", code: "9", label: "piano", definition: "Piano or keyboard piano group." },
+  { parameter: "specific_instrument_code", code: "10", label: "guitar", definition: "Guitar, including classical guitar unless separately coded by a study-specific parameter." },
+  { parameter: "specific_instrument_code", code: "98", label: "other", definition: "Other single instrument not covered by the default codebook." },
+  { parameter: "specific_instrument_code", code: "99", label: "mixed/unclear", definition: "Multiple pooled instruments or unclear instrument information; preserve details in the label/notes fields." },
+  { parameter: "instrument_category_code", code: "0", label: "upper strings", definition: "Violin/viola or comparable upper-string group." },
+  { parameter: "instrument_category_code", code: "1", label: "lower strings", definition: "Cello/double bass or comparable lower-string group." },
+  { parameter: "instrument_category_code", code: "2", label: "woodwind", definition: "Flute, oboe, clarinet, bassoon, or woodwind group." },
+  { parameter: "instrument_category_code", code: "3", label: "brass", definition: "Horn, trumpet, trombone, tuba, or brass group." },
+  { parameter: "instrument_category_code", code: "4", label: "keyboard", definition: "Piano or keyboard group." },
+  { parameter: "instrument_category_code", code: "5", label: "plucked strings", definition: "Guitar, harp, mandolin, or comparable plucked-string group." },
+  { parameter: "instrument_category_code", code: "6", label: "percussion", definition: "Percussion group." },
+  { parameter: "instrument_category_code", code: "9", label: "mixed/unclear", definition: "Mixed, pooled, or unclear instrument category." },
+  { parameter: "asymmetry_group_code", code: "0", label: "low/mixed/orofacial", definition: "Low asymmetry, mixed/unclassified, or primarily orofacial/TMJ load." },
+  { parameter: "asymmetry_group_code", code: "1", label: "moderate", definition: "Moderate or seated axial-load asymmetry by the protocol mapping." },
+  { parameter: "asymmetry_group_code", code: "2", label: "high", definition: "High asymmetry by the protocol mapping." },
+  { parameter: "asymmetry_group_code", code: "9", label: "unclear", definition: "The asymmetry category is unclear from source evidence." },
+  { parameter: "playing_hours_per_week", code: "daily x7", label: "daily-to-weekly", definition: "Reported daily practice/playing hours multiplied by 7." },
+  { parameter: "playing_hours_per_week", code: "weekly", label: "weekly unchanged", definition: "Reported weekly hours used without conversion." },
+  { parameter: "playing_hours_per_week", code: "monthly x12/52", label: "monthly-to-weekly", definition: "Reported monthly hours multiplied by 12/52." },
+  { parameter: "playing_hours_per_week", code: "yearly /52", label: "yearly-to-weekly", definition: "Reported yearly hours divided by 52." },
+];
 
 const jbiRiskOfBiasItemFields = [
   "rob_jbi_q1_sample_frame",
@@ -367,6 +417,10 @@ function manualRequiredFieldsFor(record: MetaFullTextHistoryRecord, row: Record<
   if (!hasRiskOfBiasOverallJudgement(row)) fields.add("rob_overall_judgement_or_rob_jbi_overall_risk");
   if (!hasRiskOfBiasEvidenceLocation(row)) fields.add("rob_evidence_location");
   if (!hasOutcomePair(row)) fields.add("at_least_one_region_n_total_pair");
+  if (row.mean_age && !hasMeanAgeAnalysisSupport(row)) fields.add("mean_age_sd_se_ci_or_effect");
+  if ((row.playing_hours || row.playing_hours_original) && !row.playing_hours_per_week && !row.playing_hours_conversion_rule) {
+    fields.add("playing_hours_per_week_or_conversion_rule");
+  }
   if (publicationBiasMarkedEligible(row) && !row.publication_bias_standard_error && !row.publication_bias_small_study_notes) {
     fields.add("publication_bias_standard_error_or_note");
   }
@@ -392,7 +446,153 @@ function normalizeDatasetRowDefaults(row: Record<string, string>) {
   if (!next.rob_overall_judgement && next.rob_jbi_overall_risk) {
     next.rob_overall_judgement = next.rob_jbi_overall_risk;
   }
+  if (!next.professional_status_code_definition) next.professional_status_code_definition = professionalStatusCodeDefinition;
+  if (!next.specific_instrument_code_definition) next.specific_instrument_code_definition = specificInstrumentCodeDefinition;
+  if (!next.instrument_category_code_definition) next.instrument_category_code_definition = instrumentCategoryCodeDefinition;
+  if (!next.asymmetry_group_code_definition) next.asymmetry_group_code_definition = asymmetryGroupCodeDefinition;
+  if (!next.professional_status_code) next.professional_status_code = inferProfessionalStatusCode(next.professional_status);
+  if (!next.playing_hours_original && next.playing_hours) next.playing_hours_original = next.playing_hours;
+  if (!next.playing_hours_original_unit) next.playing_hours_original_unit = inferPlayingHoursUnit(next.playing_hours_original || next.playing_hours);
+  const playingHoursConversion = normalizePlayingHoursPerWeek(next.playing_hours_original || next.playing_hours, next.playing_hours_original_unit);
+  if (!next.playing_hours_per_week && playingHoursConversion.value) next.playing_hours_per_week = playingHoursConversion.value;
+  if (!next.playing_hours_conversion_rule && playingHoursConversion.rule) next.playing_hours_conversion_rule = playingHoursConversion.rule;
+  if (!next.specific_instrument_code) next.specific_instrument_code = inferSpecificInstrumentCode(next.specific_instrument || next.instrument_group_reported);
+  if (!next.instrument_category_code) next.instrument_category_code = inferInstrumentCategoryCode(next.specific_instrument || next.instrument_group_reported);
+  if (!next.asymmetry_group_code) next.asymmetry_group_code = inferAsymmetryGroupCode(next.mapped_asymmetry_group);
+  if (!next.mean_age_source_unit && next.mean_age) next.mean_age_source_unit = "years";
   return next;
+}
+
+function hasMeanAgeAnalysisSupport(row: Record<string, string>) {
+  return Boolean(
+    row.mean_age_sd ||
+      row.mean_age_se ||
+      row.mean_age_ci_low ||
+      row.mean_age_ci_high ||
+      row.mean_age_effect_or ||
+      row.mean_age_effect_ci_low ||
+      row.mean_age_effect_ci_high ||
+      row.mean_age_effect_p_value,
+  );
+}
+
+function inferProfessionalStatusCode(value: string | undefined) {
+  const normalized = normalizeLooseText(value);
+  if (!normalized) return "";
+  const hasStudent = /\b(student|students|trainee|trainees|college|university|conservatory|undergraduate|graduate)\b/.test(normalized);
+  const hasProfessional = /\b(professional|professionals|orchestra|orchestral|employed|career|working musician|paid musician)\b/.test(normalized);
+  if (hasStudent && hasProfessional) return "2";
+  if (/\b(mixed|both|combined|various)\b/.test(normalized)) return "2";
+  if (hasStudent) return "0";
+  if (hasProfessional) return "1";
+  return "9";
+}
+
+function inferPlayingHoursUnit(value: string | undefined) {
+  const normalized = normalizeLooseText(value);
+  if (!normalized) return "";
+  if (/\b(per day|daily|day|days|h\/day|hr\/day|hrs\/day|hours\/day)\b/.test(normalized) || /\uC2DC\uAC04\/\uC77C/.test(normalized)) {
+    return "per day";
+  }
+  if (/\b(per week|weekly|week|weeks|h\/week|hr\/week|hrs\/week|hours\/week)\b/.test(normalized) || /\uC2DC\uAC04\/\uC8FC/.test(normalized)) {
+    return "per week";
+  }
+  if (/\b(per month|monthly|month|months|h\/month|hr\/month|hrs\/month|hours\/month)\b/.test(normalized)) {
+    return "per month";
+  }
+  if (/\b(per year|yearly|annual|annually|year|years|h\/year|hr\/year|hrs\/year|hours\/year)\b/.test(normalized)) {
+    return "per year";
+  }
+  return "unclear";
+}
+
+function normalizePlayingHoursPerWeek(rawValue: string | undefined, rawUnit: string | undefined) {
+  const numericValue = parseHoursValue(rawValue);
+  if (numericValue == null) return { value: "", rule: rawValue ? "numeric playing-hours value not safely extractable" : "" };
+
+  const unit = inferPlayingHoursUnit(rawUnit && rawUnit !== "unclear" ? rawUnit : rawValue);
+  if (unit === "per day") return { value: formatNumericCell(numericValue * 7), rule: "daily x7" };
+  if (unit === "per week") return { value: formatNumericCell(numericValue), rule: "weekly unchanged" };
+  if (unit === "per month") return { value: formatNumericCell((numericValue * 12) / 52), rule: "monthly x12/52" };
+  if (unit === "per year") return { value: formatNumericCell(numericValue / 52), rule: "yearly /52" };
+  return { value: "", rule: "playing-hours unit unclear; weekly conversion not performed" };
+}
+
+function parseHoursValue(value: string | undefined) {
+  if (!value) return null;
+  const normalized = value.replace(/,/g, "");
+  const rangeMatch = normalized.match(/(\d+(?:\.\d+)?)\s*(?:-|to|~|\u2013|\u2014)\s*(\d+(?:\.\d+)?)/i);
+  if (rangeMatch) {
+    const low = Number.parseFloat(rangeMatch[1] ?? "");
+    const high = Number.parseFloat(rangeMatch[2] ?? "");
+    if (Number.isFinite(low) && Number.isFinite(high)) return (low + high) / 2;
+  }
+  const match = normalized.match(/(\d+(?:\.\d+)?)/);
+  if (!match) return null;
+  const parsed = Number.parseFloat(match[1] ?? "");
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function inferSpecificInstrumentCode(value: string | undefined) {
+  const normalized = normalizeLooseText(value);
+  if (!normalized) return "";
+  const matches = instrumentCodeMatches(normalized);
+  if (matches.length === 1) return matches[0].code;
+  if (matches.length > 1) return "99";
+  if (/\b(mixed|multiple|various|orchestra|ensemble|all instruments)\b/.test(normalized)) return "99";
+  return "98";
+}
+
+function inferInstrumentCategoryCode(value: string | undefined) {
+  const normalized = normalizeLooseText(value);
+  if (!normalized) return "";
+  const instrumentMatches = instrumentCodeMatches(normalized).map((match) => match.categoryCode);
+  const unique = Array.from(new Set(instrumentMatches));
+  if (unique.length === 1) return unique[0] ?? "";
+  if (unique.length > 1) return "9";
+  if (/\b(upper strings|violin|viola)\b/.test(normalized)) return "0";
+  if (/\b(lower strings|cello|double bass|contrabass|upright bass)\b/.test(normalized)) return "1";
+  if (/\b(woodwind|flute|oboe|clarinet|bassoon)\b/.test(normalized)) return "2";
+  if (/\b(brass|horn|trumpet|trombone|tuba)\b/.test(normalized)) return "3";
+  if (/\b(keyboard|piano)\b/.test(normalized)) return "4";
+  if (/\b(plucked|guitar|harp|mandolin)\b/.test(normalized)) return "5";
+  if (/\b(percussion|drum)\b/.test(normalized)) return "6";
+  return "9";
+}
+
+function instrumentCodeMatches(value: string) {
+  const instrumentCodes = [
+    { pattern: /\bviolin(s|ists)?\b/, code: "0", categoryCode: "0" },
+    { pattern: /\bviola(s|ists)?\b/, code: "1", categoryCode: "0" },
+    { pattern: /\bflute(s|ists)?\b/, code: "2", categoryCode: "2" },
+    { pattern: /\boboe(s|ists)?\b/, code: "3", categoryCode: "2" },
+    { pattern: /\bcello(s|ists)?\b/, code: "4", categoryCode: "1" },
+    { pattern: /\b(double bass|contrabass|upright bass)(es|ists)?\b/, code: "5", categoryCode: "1" },
+    { pattern: /\bclarinet(s|ists)?\b/, code: "6", categoryCode: "2" },
+    { pattern: /\bbassoon(s|ists)?\b/, code: "7", categoryCode: "2" },
+    { pattern: /\b(horn|trumpet|trombone|tuba|brass)(s|ists)?\b/, code: "8", categoryCode: "3" },
+    { pattern: /\bpiano(s|ists)?\b|\bkeyboard(s|ists)?\b/, code: "9", categoryCode: "4" },
+    { pattern: /\bguitar(s|ists)?\b/, code: "10", categoryCode: "5" },
+  ];
+  return instrumentCodes.filter((item) => item.pattern.test(value));
+}
+
+function inferAsymmetryGroupCode(value: string | undefined) {
+  const normalized = normalizeLooseText(value);
+  if (!normalized) return "";
+  if (/\b(high|upper string|violin|viola|asymmetric)\b/.test(normalized)) return "2";
+  if (/\b(moderate|seated|axial|cello|piano)\b/.test(normalized)) return "1";
+  if (/\b(low|mixed|orofacial|tmj|unclassified|other|not classifiable|unclear)\b/.test(normalized)) return "0";
+  return "9";
+}
+
+function normalizeLooseText(value: string | undefined) {
+  return (value ?? "").trim().toLowerCase();
+}
+
+function formatNumericCell(value: number) {
+  if (!Number.isFinite(value)) return "";
+  return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(3)));
 }
 
 function addUnresolvedMissingCriticalField(fields: Set<string>, field: string, row: Record<string, string>) {
