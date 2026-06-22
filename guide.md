@@ -1,6 +1,6 @@
 # Wiregene Meta 사용 가이드
 
-문서 버전: Ver 2.31
+문서 버전: Ver 2.32
 최종 업데이트: 2026-06-22
 적용 사이트: `https://meta.wiregene.com`  
 소스 저장소: `rhhyun/wiregene-meta-analysis`
@@ -108,6 +108,20 @@ AI 모델이 `confidence 0.96`, `confidence 1`, `score 4`처럼 0-1 또는 1-5 �
 | 서술/근거 후보 | 연구질문에는 맞지만 n/total 또는 effect size 추출이 불완전 | 정량 dataset에는 넣지 않고 narrative/background/discussion 용도로 분류합니다. |
 | 제외 | `decision=제외`, `confidence>=80`, 고정 제외사유가 full text에서 명확 | reviewer가 제외사유를 확인한 뒤 제외할 수 있습니다. |
 | 보류/manual 확인 | `confidence<70`, `score<65`, `grade=low/unsafe`, critical field 누락, numeric evidence 없음, OCR/table limitation, non-English uncertainty, AI reviewer disagreement | pending/conflict로 두고 사람이 full text를 직접 확인합니다. |
+
+### Zuhdi 2020 calibration rule
+
+Zuhdi et al. 2020, `Occupational Health Problems of Classical Guitarists`는 AI 판정 보정 예시입니다. 이 논문은 core orchestral comparative study는 아니지만, classical guitar라는 특정 악기군의 original observational study이며 Table 5에 denominator `n=190` 기준의 site/laterality-specific 12-month pain count와 percentage가 있습니다. 따라서 Table 5가 확인되면 `Include - 정량 추출 후보`로 다룹니다.
+
+운영 규칙은 다음과 같습니다.
+
+- `Core comparative`가 아니어도 instrument-specific quantitative article이면 정량 후보에서 제외하지 않습니다.
+- Table 5처럼 부위/좌우별 n과 %가 있으면 eligibility 보류가 아니라 extraction completeness 보완 문제로 기록합니다.
+- 전체 유병률 `168/190`과 `88.9%`의 불일치는 `numerator-percentage discrepancy`로 표시하고, 그 전체 유병률은 확정값으로 쓰지 않습니다.
+- Table 5의 부위별 n/190 값이 내부적으로 일치하면 부위별 row는 사용합니다.
+- Table 5가 상위 22개 부위만 보고한 경우, 보고되지 않은 부위는 `0`이 아니라 `NR`로 둡니다.
+- Classical guitar는 현재 predefined asymmetry group에 넣지 않고 `unclassified/other`로 둡니다.
+- Outcome은 strict PRMD가 아니라 `12-month playing-related musculoskeletal pain`으로 코딩합니다.
 
 Ver 2.29부터 `Run selected AI review (x/y)`의 숫자는 선택 논문 AI review run의 실제 진행률입니다. `y`는 Article list에서 선택한 전체 논문 수이고, `x`는 현재 선택 run에서 완료된 논문 수입니다. 버튼을 누르는 순간 선택된 논문 ID와 full-text source가 저장된 논문 ID를 고정한 뒤 그 run의 batch queue만 세므로, 분석이 끝나는 논문마다 `1/y`, `2/y`처럼 증가합니다. full-text source가 없는 논문은 분모에는 남아 연구자가 빠진 논문을 인지할 수 있고, 분석 queue에서는 source가 저장된 논문만 순차 실행됩니다. run 전에는 현재 선택 run이 아직 시작되지 않았으므로 `0/y`에서 시작합니다. 기존처럼 AI-ready saved source 수를 분자로 쓰지 않습니다.
 

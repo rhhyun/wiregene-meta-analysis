@@ -1,5 +1,16 @@
 # Wiregene Meta — 개발 작업 계획 (plan.md)
 
+## 2026-06-22 Zuhdi 2020 calibration checkpoint
+
+- Active version after this checkpoint: `Ver 2.32`, package `0.1.97`.
+- Added a calibration rule from article 18 / Zuhdi et al. 2020:
+  - instrument-specific observational studies can remain quantitative candidates even when not core orchestral comparative;
+  - table/appendix n/total extraction failure is an extraction completeness problem, not an eligibility exclusion;
+  - top-prevalence-only site tables require `NR` for unreported sites, never `0`;
+  - numerator-percentage discrepancy should be flagged without discarding internally consistent site rows;
+  - classical guitar stays `unclassified/other` for asymmetry group unless the protocol defines a class.
+- The rule is injected into the server prompt and default AI judgment guide, and documented in `research.md` and `guide.md`.
+
 ## 2026-06-22 screening score criteria checkpoint
 
 - Active version after this checkpoint: `Ver 2.31`, package `0.1.96`.

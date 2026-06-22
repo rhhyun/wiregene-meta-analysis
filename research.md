@@ -47,6 +47,30 @@ Selection rules:
 
 Practical rule for the screenshot-type case: a result that displays old-scale `confidence 1` and `score 4` must not be interpreted literally as 1/100 and 4/100. It should be normalized as approximately `confidence 100` and `score 80` only if the stored AI draft clearly used 0-1 and 1-5 scales. After Ver 2.31 the app should store the normalized 0-100 values.
 
+## 2026-06-22 Zuhdi 2020 calibration rule
+
+The Zuhdi et al. 2020 classical-guitar paper is a calibration example for AI full-text screening. The correct interpretation is not "uncertain because body-site n values need to be checked"; the paper should be treated as an instrument-specific observational quantitative extraction candidate when Table 5 is available.
+
+Locked adjudication for this calibration case:
+
+| Item | Rule |
+| --- | --- |
+| Final screening direction | Include - quantitative extraction candidate after human source check |
+| Study class | Instrument-specific observational study |
+| Core orchestral comparative | No |
+| Instrument/asymmetry mapping | Keep `asymmetry_group=unclassified/other` unless a future protocol defines a guitar class |
+| Outcome definition | 12-month classical guitar-related musculoskeletal pain, not strict performance-limiting PRMD |
+| Quantitative source | Table 5 site- and laterality-specific pain counts/percentages with denominator n=190 |
+| Reported-site handling | Extract reported top-prevalence sites only; unreported contralateral or lower-prevalence sites are `NR`, never 0 |
+| Overall prevalence issue | Flag `168/190` vs `88.9%` as a numerator-percentage discrepancy; do not use both as a final confirmed value |
+| Site-specific rows | If each site n/190 percentage is internally consistent, use those rows even when the overall prevalence line has a discrepancy |
+
+AI performance rule derived from this case:
+
+- If a full-text article is an original observational instrument-specific study and a table/appendix reports site-specific or laterality-specific pain counts with a common denominator, the AI should keep the article as `include_quantitative` and treat missing extracted cells as an extraction-completeness problem, not an eligibility failure.
+- Not being a core orchestral comparative study must not downgrade an otherwise eligible instrument-specific quantitative article.
+- The AI must actively search for table labels, appendix references, body-site names, left/right terms, and common denominator statements before concluding that n/total values are unavailable.
+
 > 최초 작성: 2026-06-18 | 담당: JK Hyun
 
 ---

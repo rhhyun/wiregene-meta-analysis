@@ -1,3 +1,33 @@
+# 2026-06-22 Zuhdi 2020 AI calibration guidance
+
+User issue:
+
+- Article 18 (`Zuhdi et al., 2020, Occupational Health Problems of Classical Guitarists`) was shown as pending/uncertain because the AI treated missing body-site n extraction as an eligibility problem.
+- Human PI verification showed it should be included as an instrument-specific observational quantitative extraction candidate: Table 5 has site/laterality-specific 12-month pain counts with denominator n=190.
+
+Implemented:
+
+- Added a server-side calibration rule so the AI distinguishes eligibility from extraction completeness:
+  - Instrument-specific observational studies can be quantitative candidates even when they are not core orchestral comparative studies.
+  - If a table/appendix has site/laterality n/total values, incomplete extraction is a quality issue, not an eligibility exclusion.
+  - Top-prevalence-only site reporting means unreported sites are `NR`, not `0`.
+  - Overall numerator-percent inconsistency is flagged but does not invalidate internally consistent site-level rows.
+  - Classical guitar remains `unclassified/other` for asymmetry group unless the protocol later defines a guitar class.
+- Added the explicit Zuhdi 2020 calibration example to the default AI judgment guide and always-injected scoring/selection rules.
+- Added text retention keywords for `classical guitar`, `thenar`, `posterior neck`, `lower back`, `appendix`, and related table terms so relevant table text is less likely to be dropped before model review.
+- Added the calibration rule to `research.md`, `guide.md`, and the handoff workspace `research.md`.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.97`
+  - UI label: `Ver 2.32 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed.
+npm.cmd run lint: passed.
+npm.cmd run build: passed.
+```
+
 # 2026-06-22 Screening score criteria and normalization
 
 User issue:
