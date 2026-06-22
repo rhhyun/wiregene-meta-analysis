@@ -2,7 +2,7 @@
 
 ## 2026-06-23 Excel dataset coverage/manual-required checkpoint
 
-- Active version after this checkpoint: `Ver 2.42`, package `0.1.107`.
+- Active version after this checkpoint: `Ver 2.43`, package `0.1.108`.
 - Clarified the primary included-paper Excel dataset status labels:
   - `Evidence-backed`: value plus row/field-level source evidence;
   - `AI auto-filled`: value present without cell-level source evidence;
@@ -15,6 +15,8 @@
   - JBI Q1-Q9 notes can satisfy RoB evidence-location when quote/page fields are absent;
   - publication-bias SE is requested only when funnel eligibility is explicitly yes/eligible;
   - stale AI `missingCriticalFields` are ignored after the edited row has the field filled.
+- Added a data-integrity guard: saving verified Excel extraction data cannot silently reduce the included-record count.
+- Extraction row saves now carry stable row indexes and merge into existing AI/review rows, so multi-row articles are not collapsed during verification.
 
 ## 2026-06-23 JBI prevalence RoB rerun checkpoint
 

@@ -146,6 +146,7 @@ const coverageDefinitions: { status: FieldCoverageStatus; title: string; descrip
 ];
 
 const projectFileSavedEventName = "wiregene-meta-project-file-saved";
+const datasetRowIndexPayloadField = "__dataset_row_index";
 
 export function MetaExtractionDatasetPanel({ extractionSections, projectId }: MetaExtractionDatasetPanelProps) {
   const [overview, setOverview] = useState<DatasetOverview | null>(null);
@@ -271,7 +272,10 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
       const rowsForHistory = overview.records
         .filter((record) => record.historyId === selectedRecord.historyId)
         .sort((left, right) => left.rowIndex - right.rowIndex)
-        .map((record) => (record.id === selectedRecord.id ? editingRow : record.row));
+        .map((record) => ({
+          ...(record.id === selectedRecord.id ? editingRow : record.row),
+          [datasetRowIndexPayloadField]: String(record.rowIndex),
+        }));
       const payload = await readDatasetPayload(
         await fetch(datasetApiUrl(), {
           method: "PATCH",
@@ -281,12 +285,18 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
             extractionColumns,
             historyId: selectedRecord.historyId,
             rows: rowsForHistory,
+            expectedIncludedRecordCount: overview.stats.includedRecordCount,
             verified: markVerified,
             verifiedBy,
             verificationNotes,
           }),
         }),
       );
+      if (payload.stats.includedRecordCount < overview.stats.includedRecordCount) {
+        throw new Error(
+          `Extraction save returned fewer included records (${payload.stats.includedRecordCount}) than before save (${overview.stats.includedRecordCount}). Inclusion decisions were not intentionally changed; refresh the page and check reviewer/PI decisions before saving again.`,
+        );
+      }
       setOverview(payload);
       const nextRecord = payload.records.find((record) => record.id === selectedRecord.id) ?? payload.records[0];
       if (nextRecord) selectRecord(nextRecord);
@@ -418,7 +428,7 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
       </div>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Metric label="Quantitative records" value={loading ? "..." : String(overview?.stats.includedRecordCount ?? 0)} />
+        <Metric label="Included records" value={loading ? "..." : String(overview?.stats.includedRecordCount ?? 0)} />
         <Metric label="Excel rows" value={loading ? "..." : String(overview?.stats.excelRowCount ?? 0)} />
         <Metric label="Verified rows" value={loading ? "..." : String(overview?.stats.verifiedRowCount ?? 0)} />
         <Metric label="Evidence-backed fields" value={loading ? "..." : String(overview?.stats.evidenceBackedFieldCount ?? 0)} />
@@ -427,6 +437,10 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
         <Metric label="Blank editable fields" value={loading ? "..." : String(overview?.stats.blankFieldCount ?? 0)} />
         <Metric label="Editable field cells" value={loading ? "..." : String(overview?.stats.editableFieldCount ?? 0)} />
       </div>
+      <p className="mt-2 text-xs font-semibold leading-5 text-zinc-600">
+        Included records are controlled by screening reviewer/PI quantitative decisions. Saving verified Excel data changes Verified rows
+        and field flags, not study inclusion.
+      </p>
 
       <div className="mt-3 grid gap-2 lg:grid-cols-4">
         {coverageDefinitions.map((item) => (

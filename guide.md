@@ -1,6 +1,6 @@
 # Wiregene Meta 사용 가이드
 
-문서 버전: Ver 2.42
+문서 버전: Ver 2.43
 최종 업데이트: 2026-06-23
 적용 사이트: `https://search.wiregene.com`
 소스 저장소: `rhhyun/wiregene-meta-analysis`
@@ -21,6 +21,9 @@ Manual-required flags should fall after real review work:
 - `rob_overall_judgement` and `rob_jbi_overall_risk` can fill each other.
 - Publication-bias SE is required only for rows explicitly marked funnel-eligible.
 - If the extractor fills a field that AI previously listed as missing, that stale missing-field flag is cleared from the manual-required list.
+- `Save verified Excel data` does not include a new paper. It only saves extraction-row verification. Quantitative inclusion is controlled by screening reviewer/PI decisions.
+- After saving extraction verification, Included records must not decrease. If they do, the app blocks the silent refresh and asks the researcher to check reviewer/PI decisions or project scope.
+- Multi-row articles are saved by stable row index, preserving existing AI extraction rows while updating only the edited row.
 
 ### JBI prevalence RoB rerun
 
@@ -46,7 +49,7 @@ Santos et al. 2024, `Odds ratio of occurrence of pain, postural changes, and dis
 - VAS/DASH는 SD, denominator, group definition, extractable summary가 부족하면 narrative only로 둡니다.
 - 보고된 posture/practice OR는 CI, SE, exact p value, 안정적인 model definition이 없으면 pooled risk-factor estimate로 쓰지 않고 탐색적 서술 근거로만 유지합니다.
 
-빠른 현재 기준: Ver 2.42부터 Musician PRMD pain 프로젝트는 `screening 완료`가 아니라 `AI full-text triage/extraction draft 후 reviewer/PI adjudication 전 단계`로 봅니다. Title/population은 `Instrumental Musicians`로 정합화하고, Excel extraction 전 `1652 -> 259 -> 253 -> 82 -> 72/71` audit lock을 먼저 완료합니다. Primary quantitative RoB는 JBI prevalence Q1-Q9로 재평가하고, Excel dataset의 `Manual required`는 unresolved blocker만 의미합니다.
+빠른 현재 기준: Ver 2.43부터 Musician PRMD pain 프로젝트는 `screening 완료`가 아니라 `AI full-text triage/extraction draft 후 reviewer/PI adjudication 전 단계`로 봅니다. Title/population은 `Instrumental Musicians`로 정합화하고, Excel extraction 전 `1652 -> 259 -> 253 -> 82 -> 72/71` audit lock을 먼저 완료합니다. Primary quantitative RoB는 JBI prevalence Q1-Q9로 재평가하고, Excel dataset의 `Manual required`는 unresolved blocker만 의미합니다.
 
 ## 2026-06-21 Ver 2.30 업데이트: full-text 업로드 기본값은 새 article 저장
 

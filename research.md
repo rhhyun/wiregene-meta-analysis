@@ -19,6 +19,8 @@ Manual-required reduction rule:
 - `rob_supporting_quote`, `rob_page_table`, `rob_jbi_notes`, or populated JBI Q1-Q9 fields can satisfy the RoB evidence-location requirement.
 - Publication-bias standard error is required only when `publication_bias_eligible_for_funnel` is explicitly yes/eligible. It should not create a manual blocker for every individual paper before the outcome group has enough studies.
 - AI-reported `missingCriticalFields` are rechecked against the current edited row so flags disappear after the extractor fills the value.
+- Saving `Save verified Excel data` must not change quantitative inclusion. It may update extraction rows, verified status, and field flags only. If included-record count decreases after an extraction save, treat it as a data-integrity error and inspect reviewer/PI decisions or project scope before continuing.
+- Extraction-row saves must merge by stable row index and preserve existing AI extraction rows so multi-row articles do not collapse to a single row during verification.
 
 ## 2026-06-23 JBI prevalence risk-of-bias method lock
 

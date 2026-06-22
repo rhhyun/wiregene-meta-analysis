@@ -1,3 +1,30 @@
+# 2026-06-23 Excel dataset verification count guard
+
+User issue:
+
+- After refreshing the Primary quantitative included-paper Excel dataset verification panel and saving one paper as verified, the user expected the count to increase from 4 to 5, but the displayed included-record count fell to 3.
+
+Implemented:
+
+- Clarified that `Save verified Excel data` verifies extraction rows; it does not include a new study. New quantitative inclusion still comes from screening reviewer/PI decisions.
+- Renamed the metric from `Quantitative records` to `Included records` and added helper text explaining that saving extraction verification should change `Verified rows`, not inclusion.
+- Added stable row-index payload metadata for extraction-row saves.
+- Server-side extraction review saves now merge edited rows into existing AI/review rows by row index instead of replacing the row array blindly.
+- Existing AI extraction rows are used as the base when a previous review save accidentally collapsed rows, so multi-row articles can recover their structure on the next save.
+- Added a UI guard: if a save response returns fewer included records than before the save, the panel raises an error instead of silently refreshing to a smaller count.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.108`
+  - UI label: `Ver 2.43 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed.
+npm.cmd run lint: passed.
+npm.cmd run build: passed.
+git diff --check: passed.
+```
+
 # 2026-06-23 Excel dataset coverage/manual-required calibration
 
 User issue:

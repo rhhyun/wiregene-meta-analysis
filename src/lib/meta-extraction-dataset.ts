@@ -1,5 +1,6 @@
 import { orchestralPainProject } from "./meta-projects";
 import {
+  getMetaFullTextHistoryRecord,
   getMetaFullTextHistoryRecords,
   updateMetaFullTextExtractionReview,
   type MetaFullTextHistoryRecord,
@@ -97,6 +98,7 @@ const requiredManualReviewFields = [
 
 const defaultRiskOfBiasTool = "JBI Critical Appraisal Checklist for Studies Reporting Prevalence Data";
 const defaultRiskOfBiasToolVersion = "JBI prevalence checklist 2020-08";
+const datasetRowIndexPayloadField = "__dataset_row_index";
 
 const jbiRiskOfBiasItemFields = [
   "rob_jbi_q1_sample_frame",
@@ -166,8 +168,10 @@ export async function saveMetaExtractionDatasetRecord(input: {
   verifiedBy?: string;
   projectId?: string | null;
 }) {
+  const record = await getMetaFullTextHistoryRecord(input.historyId, { projectId: input.projectId });
+  if (!record) return null;
   return updateMetaFullTextExtractionReview(input.historyId, {
-    rows: input.rows,
+    rows: mergeExtractionReviewRows(record, input.rows),
     verified: Boolean(input.verified),
     verificationNotes: input.verificationNotes ?? "",
     verifiedBy: input.verifiedBy ?? "",
@@ -312,6 +316,30 @@ export function isPrimaryQuantitativeIncludedRecord(record: MetaFullTextHistoryR
     verification.reviewerOneDecision === "include_quantitative" &&
     verification.reviewerTwoDecision === "include_quantitative"
   );
+}
+
+function mergeExtractionReviewRows(record: MetaFullTextHistoryRecord, editedRows: Record<string, string>[]) {
+  const analysisRows = record.analysis.extraction.rows.length ? record.analysis.extraction.rows : [{}];
+  const reviewRows = record.extractionReview.rows;
+  const baseLength = Math.max(1, analysisRows.length, reviewRows.length);
+  const mergedRows = Array.from({ length: baseLength }, (_, index) => ({
+    ...normalizeRow(analysisRows[index] ?? {}),
+    ...normalizeRow(reviewRows[index] ?? {}),
+  }));
+
+  editedRows.forEach((row, fallbackIndex) => {
+    const normalized = normalizeRow(row);
+    const explicitIndex = Number.parseInt(normalized[datasetRowIndexPayloadField] ?? "", 10);
+    delete normalized[datasetRowIndexPayloadField];
+    const targetIndex = Number.isInteger(explicitIndex) && explicitIndex >= 0 ? explicitIndex : fallbackIndex;
+    if (!mergedRows[targetIndex]) mergedRows[targetIndex] = {};
+    mergedRows[targetIndex] = {
+      ...mergedRows[targetIndex],
+      ...normalized,
+    };
+  });
+
+  return mergedRows.filter((row) => Object.values(row).some(Boolean));
 }
 
 function finalDecision(record: MetaFullTextHistoryRecord) {
