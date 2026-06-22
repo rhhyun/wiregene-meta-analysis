@@ -1,6 +1,6 @@
 # Wiregene Meta 사용 가이드
 
-문서 버전: Ver 2.36
+문서 버전: Ver 2.37
 최종 업데이트: 2026-06-22
 적용 사이트: `https://meta.wiregene.com`  
 소스 저장소: `rhhyun/wiregene-meta-analysis`
@@ -167,6 +167,20 @@ Brusky 2010, `The High Prevalence of Injury Among Female Bassoonists`는 그래�
 - 남성에서 증상/진단 보고와 location 응답 간 누락 차이가 있으면 differential outcome missingness로 표시합니다.
 - 전체 88% PRMD는 성별 추정치와 완전히 맞지 않으므로 확정 n/N로 쓰지 않습니다.
 - Brusky 2009와 동일 IBQ 표본의 2차 분석 가능성이 있으므로 중복 코호트 여부를 확인하고 독립 표본처럼 중복 투입하지 않습니다.
+
+### Yoshimura 2006 calibration rule
+
+Yoshimura et al. 2006, `Risk Factors for Piano-related Pain among College Students`는 전체 통증·위험요인 연구 보정 예시입니다. 피아노 전공생 35명에서 전체 piano-related pain 값은 보조적으로 기록할 수 있지만, 부위·좌우별 n/N이 없으므로 primary anatomical-region/laterality prevalence meta-analysis에는 넣지 않습니다.
+
+운영 규칙은 다음과 같습니다.
+
+- 최종 상태는 `서술근거 후보`, `Primary site/laterality prevalence meta-analysis: 제외`, `Narrative risk-factor synthesis: 포함`, `Supplementary overall piano-related pain: 제한적 사용 가능`입니다.
+- 본문의 86%는 분모 35명에서 `30/35` pain while playing으로 복원할 수 있지만, 논문이 분자를 직접 제시하지 않았고 고정 recall period도 없습니다.
+- Table 4의 `32/35`는 적어도 한 통증 위치를 표시한 사람입니다. `30/35` pain while playing과 서로 다른 outcome이므로 합치거나 교환하지 않습니다.
+- 통증 위치 그림을 사용했더라도 출판 결과가 위치 개수만 보고하면 hand, wrist, forearm, shoulder, neck, trunk 또는 left/right count를 추론하지 않습니다.
+- 0-10 cm VAS, never-always scale, 연주 영향 비율은 연속형/빈도/중증도 자료입니다. 명시적 binary threshold가 없으면 `pain_n`으로 만들지 않습니다.
+- 연주 능력 저하는 별도 문항이므로 `30/35`를 strict interference-based PRMD 유병률로 코딩하지 않습니다.
+- 상관·회귀 위험요인 결과는 소표본 편의표본과 다중검정 가능성을 고려해 가설 생성 수준의 서술 근거로만 유지합니다.
 
 Ver 2.29부터 `Run selected AI review (x/y)`의 숫자는 선택 논문 AI review run의 실제 진행률입니다. `y`는 Article list에서 선택한 전체 논문 수이고, `x`는 현재 선택 run에서 완료된 논문 수입니다. 버튼을 누르는 순간 선택된 논문 ID와 full-text source가 저장된 논문 ID를 고정한 뒤 그 run의 batch queue만 세므로, 분석이 끝나는 논문마다 `1/y`, `2/y`처럼 증가합니다. full-text source가 없는 논문은 분모에는 남아 연구자가 빠진 논문을 인지할 수 있고, 분석 queue에서는 source가 저장된 논문만 순차 실행됩니다. run 전에는 현재 선택 run이 아직 시작되지 않았으므로 `0/y`에서 시작합니다. 기존처럼 AI-ready saved source 수를 분자로 쓰지 않습니다.
 

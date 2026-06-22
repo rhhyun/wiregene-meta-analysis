@@ -1,3 +1,34 @@
+# 2026-06-22 Yoshimura 2006 overall-pain risk-factor calibration guidance
+
+User issue:
+
+- Article 376 (`Yoshimura et al., 2006, Risk Factors for Piano-related Pain among College Students`) was pending.
+- Human PI verification showed it should be finalized as narrative/support: exclude from the primary anatomical-region/laterality prevalence meta-analysis, but retain for narrative risk-factor synthesis and limited supplementary overall piano-related pain if prespecified.
+
+Implemented:
+
+- Added a server-side calibration rule for cross-sectional risk-factor studies that report overall pain but not site/laterality prevalence.
+- Added overall-pain and body-map restrictions:
+  - overall pain while playing can be supplementary evidence but not a primary site/laterality row;
+  - 30/35 pain while playing and 32/35 at least one marked pain site must remain separate outcomes;
+  - body maps do not justify inferring site/laterality counts when only the number of marked sites is published;
+  - VAS/frequency/severity means and percent of performance affected must not become `pain_n` without an explicit binary threshold;
+  - small-sample correlation/regression risk-factor findings should be treated as exploratory narrative evidence.
+- Added the explicit Yoshimura 2006 calibration example to default AI judgment guidance and always-injected scoring/selection rules.
+- Added text retention keywords for piano/pianist, risk factor, correlation/regression, pain while/after playing, pain site/location, college/university, hands/fingers.
+- Added the calibration rule to `research.md`, `guide.md`, and the handoff workspace `research.md`.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.102`
+  - UI label: `Ver 2.37 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed.
+npm.cmd run lint: passed.
+npm.cmd run build: passed.
+```
+
 # 2026-06-22 primary quantitative extraction dataset filter
 
 User issue:

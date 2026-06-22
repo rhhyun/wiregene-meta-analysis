@@ -1,5 +1,16 @@
 # Wiregene Meta — 개발 작업 계획 (plan.md)
 
+## 2026-06-22 Yoshimura 2006 overall-pain risk-factor calibration checkpoint
+
+- Active version after this checkpoint: `Ver 2.37`, package `0.1.102`.
+- Added a calibration rule from article 376 / Yoshimura et al. 2006:
+  - overall pain while playing can be supplementary evidence but is not a primary site/laterality prevalence row;
+  - 30/35 pain while playing and 32/35 at least one marked pain site must remain separate outcomes;
+  - body maps do not permit inferred site/laterality counts when only number of marked pain sites is published;
+  - VAS/frequency/severity outcomes require explicit binary thresholds before any `pain_n` is created;
+  - small-sample risk-factor correlations/regressions remain exploratory narrative evidence.
+- The rule is injected into the server prompt and default AI judgment guide, and documented in `research.md` and `guide.md`.
+
 ## 2026-06-22 primary quantitative extraction dataset filter checkpoint
 
 - Active version after this checkpoint: `Ver 2.36`, package `0.1.101`.

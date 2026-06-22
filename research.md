@@ -153,6 +153,38 @@ AI performance rule derived from this case:
 - Unclear recall period or mixed case definitions such as diagnosed injury, self-reported PRMD symptom, and PRMD location should block pooling with point, 7-day, 12-month, or lifetime pain prevalence.
 - Differential subgroup missingness and possible duplicate/overlapping cohorts must be surfaced as review risks.
 
+## 2026-06-22 Yoshimura 2006 overall-pain risk-factor calibration rule
+
+Yoshimura et al. 2006, `Risk Factors for Piano-related Pain among College Students`, is a calibration example for cross-sectional risk-factor studies that report overall piano-related pain but do not report site- or laterality-specific prevalence.
+
+Locked adjudication for this calibration case:
+
+| Item | Rule |
+| --- | --- |
+| Final screening classification | Narrative/support candidate |
+| Primary anatomical-region/laterality meta-analysis | Exclude |
+| Supplementary overall-pain synthesis | Limited include if prespecified |
+| Narrative risk-factor synthesis | Include as exploratory evidence |
+| Study class | Cross-sectional correlation/risk-factor study |
+| Population | One university's college piano performance majors |
+| Instrument group | Piano |
+| Analyzed sample | 35 students |
+| Pain preselection | No |
+| Recall period | Not reported |
+| Main overall pain value | 86% of 35, reconstructable as 30/35 pain while playing |
+| Separate body-map value | 32/35 marked at least one pain site |
+| Outcome separation | 30/35 and 32/35 are separate outcomes and must not be merged |
+| Primary exclusion reason | No anatomical site-specific or laterality-specific n/N |
+| Strict PRMD issue | Pain while playing is not the same as interference-based PRMD; performance impact was measured separately |
+| Risk-factor interpretation | Small convenience sample and multiple correlation/regression tests; treat findings as hypothesis-generating |
+
+AI performance rule derived from this case:
+
+- Overall pain while playing can be recorded as supplementary evidence, but it is not a primary site/laterality prevalence row.
+- If body maps were collected but only the number of marked pain sites is reported, the AI must not infer hand, wrist, forearm, shoulder, neck, trunk, left, or right counts.
+- Distinct overall outcomes such as pain while playing and at least one pain site marked must remain separate.
+- VAS/frequency/severity means and percent of performance affected are continuous or ordinal outcomes unless a binary case threshold is explicitly defined.
+
 > 최초 작성: 2026-06-18 | 담당: JK Hyun
 
 ---
