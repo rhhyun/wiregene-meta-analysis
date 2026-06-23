@@ -1,3 +1,66 @@
+# 2026-06-24 Admin-only member management menu
+
+User issue:
+
+- Meta workspace needed a member ID creation/management menu visible only to global administrators.
+- The workflow should be simple: create an ID with an initial password and email/contact, then allow the member to use the program.
+- The menu should follow the same subpage structure as the rest of Meta, not exist as a disconnected page.
+
+Implemented:
+
+- `src/components/MetaStudyWorkspace.tsx`
+  - Added an admin-only `회원관리` left-menu item below `AI 평가 설정`.
+  - The menu is rendered only when `currentUser.isAdmin` is true.
+  - Opening a study, a new topic, AI settings, or member management now closes the other side panels cleanly.
+- `src/components/AccountManagementPanel.tsx`
+  - Reworked the panel copy and layout for Meta/Portal use.
+  - Added required `초기 PW` input with minimum 8 characters.
+  - The form now collects `ID`, `초기 PW`, `이메일/연락처`, role, and allowed sites.
+  - Registration success displays the saved ID and initial PW confirmation.
+  - Password reset and deletion remain available for stored Portal account records.
+- `src/app/api/admin/accounts/route.ts`
+  - Enabled account management API for Meta and Portal modes.
+  - Server-side authorization now uses `getCurrentWiregeneUser` and requires `isAdmin`, so direct API calls are blocked for non-admin users.
+  - POST now accepts `initialPassword`.
+- `src/lib/portal-accounts.ts`
+  - Account creation can hash and store the supplied initial password.
+  - Manually supplied initial passwords are stored with `mustChangePassword=false`; generated reset passwords remain temporary.
+  - Corrected the Meta site URL to `https://meta.wiregene.com`.
+- `src/proxy.ts`
+  - Allows `/api/admin/` in Meta mode so the admin page can call the account API after authentication.
+- `src/components/PortalDashboard.tsx`
+  - Hides the account management panel from non-admin Portal users.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.110`
+  - UI label: `Ver 2.45 | 2026 copyright by JK Hyun`
+
+Verification completed:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed
+git diff --check: passed
+npm.cmd run lint: passed
+npm.cmd run build: passed
+local next start --hostname 127.0.0.1 --port 3218 without admin auth: HTTP 200, Ver 2.45 present, 회원관리 hidden
+unauthenticated local /api/admin/accounts: HTTP 401, Basic realm="Wiregene Meta"
+temporary local admin Basic auth page check: HTTP 200, Ver 2.45 present, 회원관리 rendered
+temporary local admin /api/admin/accounts: HTTP 200, writable=true
+temporary PORTAL_ACCOUNT_STORAGE_PATH account creation check: supplied initial PW verified for site=meta
+GitHub push to main: commit 606573b pushed
+Vercel production deployment: Ready
+Deployment URL: https://wiregene-meta-analysis-grkeehf1x-rhhyuns-projects.vercel.app
+Aliases: https://meta.wiregene.com, https://wiregene-meta-analysis.vercel.app
+meta.wiregene.com auth check: HTTP 401, Basic realm="Wiregene Meta", charset="UTF-8"
+meta.wiregene.com/api/admin/accounts unauthenticated check: HTTP 401, Basic realm="Wiregene Meta", charset="UTF-8"
+Vercel logs --since 10m: only expected 401 checks for / and /api/admin/accounts
+```
+
+Regular Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 # 2026-06-23 analysis-ready Excel schema and workbook split
 
 User issue:
@@ -5069,77 +5132,6 @@ npx.cmd tsc --noEmit --pretty false: passed.
 git diff --check: passed.
 npm.cmd run lint: passed.
 npm.cmd run build: passed.
-```
-
-Regular Synology deploy/run command after GitHub push:
-
-```sh
-git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
-```
-# 2026-06-24 Admin-only member management menu
-
-User issue:
-
-- Meta workspace needed a member ID creation/management menu visible only to global administrators.
-- The workflow should be simple: create an ID with an initial password and email/contact, then allow the member to use the program.
-- The menu should follow the same subpage structure as the rest of Meta, not exist as a disconnected page.
-
-Implemented:
-
-- `src/components/MetaStudyWorkspace.tsx`
-  - Added an admin-only `회원관리` left-menu item below `AI 평가 설정`.
-  - The menu is rendered only when `currentUser.isAdmin` is true.
-  - Opening a study, a new topic, AI settings, or member management now closes the other side panels cleanly.
-- `src/components/AccountManagementPanel.tsx`
-  - Reworked the panel copy and layout for Meta/Portal use.
-  - Added required `초기 PW` input with minimum 8 characters.
-  - The form now collects `ID`, `초기 PW`, `이메일/연락처`, role, and allowed sites.
-  - Registration success displays the saved ID and initial PW confirmation.
-  - Password reset and deletion remain available for stored Portal account records.
-- `src/app/api/admin/accounts/route.ts`
-  - Enabled account management API for Meta and Portal modes.
-  - Server-side authorization now uses `getCurrentWiregeneUser` and requires `isAdmin`, so direct API calls are blocked for non-admin users.
-  - POST now accepts `initialPassword`.
-- `src/lib/portal-accounts.ts`
-  - Account creation can hash and store the supplied initial password.
-  - Manually supplied initial passwords are stored with `mustChangePassword=false`; generated reset passwords remain temporary.
-  - Corrected the Meta site URL to `https://meta.wiregene.com`.
-- `src/proxy.ts`
-  - Allows `/api/admin/` in Meta mode so the admin page can call the account API after authentication.
-- `src/components/PortalDashboard.tsx`
-  - Hides the account management panel from non-admin Portal users.
-- `guide.md`
-  - Added Ver 2.45 member-management usage and storage guidance.
-- Version bumped:
-  - `package.json` / `package-lock.json`: `0.1.110`
-  - UI label: `Ver 2.45 | 2026 copyright by JK Hyun`
-
-Verification completed before rebase onto origin/main:
-
-```text
-npx.cmd tsc --noEmit --pretty false: passed
-git diff --check: passed
-npm.cmd run lint: passed
-npm.cmd run build: passed
-local next start --hostname 127.0.0.1 --port 3218: HTTP 200, Ver 2.31 present before remote rebase
-unauthenticated local /api/admin/accounts: HTTP 401, Basic realm="Wiregene Meta"
-temporary local admin Basic auth page check: 회원관리 rendered
-temporary local admin /api/admin/accounts: HTTP 200, writable=true
-temporary PORTAL_ACCOUNT_STORAGE_PATH account creation check: supplied initial PW verified for site=meta
-```
-
-Verification completed after rebase onto origin/main:
-
-```text
-npx.cmd tsc --noEmit --pretty false: passed
-git diff --check: passed
-npm.cmd run lint: passed
-npm.cmd run build: passed
-local next start --hostname 127.0.0.1 --port 3218 without admin auth: HTTP 200, Ver 2.45 present, 회원관리 hidden
-unauthenticated local /api/admin/accounts: HTTP 401, Basic realm="Wiregene Meta"
-temporary local admin Basic auth page check: HTTP 200, Ver 2.45 present, 회원관리 rendered
-temporary local admin /api/admin/accounts: HTTP 200, writable=true
-temporary PORTAL_ACCOUNT_STORAGE_PATH account creation check: supplied initial PW verified for site=meta
 ```
 
 Regular Synology deploy/run command after GitHub push:

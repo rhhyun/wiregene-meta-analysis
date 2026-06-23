@@ -1,3 +1,13 @@
+# 2026-06-24 Ver 2.45 업데이트: 전체관리자 전용 회원관리
+
+Meta 왼쪽 메뉴에 회원관리가 추가되었습니다. 이 메뉴는 로그인한 사용자가 전체관리자일 때만 보이며, 일반 회원에게는 버튼 자체가 표시되지 않습니다. 서버 API도 같은 관리자 판정을 다시 수행하므로 화면을 우회해 /api/admin/accounts를 호출해도 전체관리자가 아니면 사용할 수 없습니다.
+
+회원 생성 시 입력하는 기본 항목은 ID, 초기 PW, 이메일/연락처입니다. 권한은 기본값이 회원이며, 필요한 경우 전체관리자로 지정할 수 있습니다. 접속 허용 사이트에서 Portal, Meta, Search, HyunLab 등 사용할 하위 사이트를 선택하면 해당 ID/PW로 이후 프로그램 이용이 가능합니다. 초기 PW는 최소 8자 이상이어야 하며, 서버에는 원문이 아니라 scrypt 해시로 저장됩니다.
+
+저장 위치는 기존 Portal account storage를 그대로 사용합니다. Synology/local Docker에서는 PORTAL_ACCOUNT_STORAGE_PATH가 가리키는 JSON 파일, Vercel/online 환경에서는 GRANT_STORAGE_BACKEND=google-drive 설정에 따라 Google Drive 저장 파일에 저장됩니다. 즉 회원관리 화면에서 만든 계정은 단순 화면 상태가 아니라 서버 저장소에 남는 회원 DB입니다.
+
+비밀번호를 잊은 경우 전체관리자가 PW 재발급을 눌러 임시 PW를 새로 발급할 수 있습니다. 잘못 만든 계정은 ID 삭제로 제거합니다. 삭제는 되돌릴 수 없으므로 연구 중 사용 중인 계정인지 확인한 뒤 진행합니다.
+
 # Wiregene Meta 사용 가이드
 
 문서 버전: Ver 2.44
@@ -664,12 +674,3 @@ AI-only 결과와 human-reviewed 결과는 병렬로 보존합니다. AI-only sn
 Included-paper Excel dataset은 primary quantitative dataset입니다. `PI final decision = include_quantitative` 또는 PI final 전 reviewer 1/2 정량 포함 합의 record만 들어갑니다. `include_narrative_support`, secondary synthesis, risk-factor-only, continuous-outcome-only, broad-region supplementary record는 full-text history에 남지만 primary Excel dataset에는 들어가지 않습니다.
 
 Risk of bias는 prevalence/cross-sectional observational evidence에 맞춰 JBI prevalence checklist, Hoy tool, AXIS, JBI analytical cross-sectional checklist를 우선 사용합니다. RoB 2/ROBINS-I는 이 primary prevalence dataset의 기본 도구가 아니며, 별도 intervention/nonrandomized-intervention 분석이 있을 때만 선택적으로 사용합니다.
-# 2026-06-24 Ver 2.45 업데이트: 전체관리자 전용 회원관리
-
-Meta 왼쪽 메뉴에 `회원관리`가 추가되었습니다. 이 메뉴는 로그인한 사용자가 `전체관리자`일 때만 보이며, 일반 회원에게는 버튼 자체가 표시되지 않습니다. 서버 API도 같은 관리자 판정을 다시 수행하므로 화면을 우회해 `/api/admin/accounts`를 호출해도 전체관리자가 아니면 사용할 수 없습니다.
-
-회원 생성 시 입력하는 기본 항목은 `ID`, `초기 PW`, `이메일/연락처`입니다. 권한은 기본값이 `회원`이며, 필요한 경우 `전체관리자`로 지정할 수 있습니다. 접속 허용 사이트에서 `Portal`, `Meta`, `Search`, `HyunLab` 등 사용할 하위 사이트를 선택하면 해당 ID/PW로 이후 프로그램 이용이 가능합니다. 초기 PW는 최소 8자 이상이어야 하며, 서버에는 원문이 아니라 scrypt 해시로 저장됩니다.
-
-저장 위치는 기존 Portal account storage를 그대로 사용합니다. Synology/local Docker에서는 `PORTAL_ACCOUNT_STORAGE_PATH`가 가리키는 JSON 파일, Vercel/online 환경에서는 `GRANT_STORAGE_BACKEND=google-drive` 설정에 따라 Google Drive 저장 파일에 저장됩니다. 즉 회원관리 화면에서 만든 계정은 단순 화면 상태가 아니라 서버 저장소에 남는 회원 DB입니다.
-
-비밀번호를 잊은 경우 전체관리자가 `PW 재발급`을 눌러 임시 PW를 새로 발급할 수 있습니다. 잘못 만든 계정은 `ID 삭제`로 제거합니다. 삭제는 되돌릴 수 없으므로 연구 중 사용 중인 계정인지 확인한 뒤 진행합니다.
