@@ -57,9 +57,10 @@ type AccountState = {
   writable?: boolean;
 };
 
-type TemporaryPasswordState = {
+type PasswordNotice = {
   username: string;
   password: string;
+  mode: "initial" | "temporary";
 } | null;
 
 export function AccountManagementPanel() {
@@ -70,10 +71,11 @@ export function AccountManagementPanel() {
     siteAccountLists: [],
   });
   const [username, setUsername] = useState("");
+  const [initialPassword, setInitialPassword] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"admin" | "user">("user");
-  const [selectedSites, setSelectedSites] = useState<string[]>(["portal", "search"]);
-  const [temporaryPassword, setTemporaryPassword] = useState<TemporaryPasswordState>(null);
+  const [selectedSites, setSelectedSites] = useState<string[]>(["portal", "meta"]);
+  const [passwordNotice, setPasswordNotice] = useState<PasswordNotice>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const managedAccounts = useMemo(
@@ -94,13 +96,19 @@ export function AccountManagementPanel() {
   async function createAccount(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitting(true);
-    setTemporaryPassword(null);
+    setPasswordNotice(null);
 
     try {
       const response = await fetch("/api/admin/accounts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, email, role, sites: selectedSites }),
+        body: JSON.stringify({
+          username,
+          initialPassword,
+          email,
+          role,
+          sites: selectedSites,
+        }),
       });
       const payload = (await response.json()) as {
         account?: AccountSummary;
@@ -108,24 +116,28 @@ export function AccountManagementPanel() {
         error?: string;
       };
 
-      if (!response.ok || !payload.account || !payload.temporaryPassword) {
+      if (!response.ok || !payload.account) {
         throw new Error(payload.error || `HTTP ${response.status}`);
       }
 
       setUsername("");
+      setInitialPassword("");
       setEmail("");
       setRole("user");
-      setSelectedSites(["portal", "search"]);
-      setTemporaryPassword({
-        username: payload.account.username,
-        password: payload.temporaryPassword,
-      });
+      setSelectedSites(["portal", "meta"]);
+      if (payload.temporaryPassword) {
+        setPasswordNotice({
+          username: payload.account.username,
+          password: payload.temporaryPassword,
+          mode: initialPassword.trim() ? "initial" : "temporary",
+        });
+      }
       await reloadAccounts();
     } catch (error) {
       setState((current) => ({
         ...current,
         status: "error",
-        message: error instanceof Error ? error.message : "Account creation failed.",
+        message: error instanceof Error ? error.message : "회원 ID 등록에 실패했습니다.",
       }));
     } finally {
       setSubmitting(false);
@@ -134,7 +146,7 @@ export function AccountManagementPanel() {
 
   async function resetPassword(account: AccountSummary) {
     if (!account.id) return;
-    setTemporaryPassword(null);
+    setPasswordNotice(null);
 
     try {
       const response = await fetch("/api/admin/accounts", {
@@ -152,25 +164,26 @@ export function AccountManagementPanel() {
         throw new Error(payload.error || `HTTP ${response.status}`);
       }
 
-      setTemporaryPassword({
+      setPasswordNotice({
         username: payload.account.username,
         password: payload.temporaryPassword,
+        mode: "temporary",
       });
       await reloadAccounts();
     } catch (error) {
       setState((current) => ({
         ...current,
         status: "error",
-        message: error instanceof Error ? error.message : "Password reset failed.",
+        message: error instanceof Error ? error.message : "비밀번호 재발급에 실패했습니다.",
       }));
     }
   }
 
   async function deleteAccount(account: AccountSummary) {
     if (!account.id) return;
-    const confirmed = window.confirm(`${account.username} ID를 Portal 계정 목록에서 삭제할까요?`);
+    const confirmed = window.confirm(`${account.username} 회원 ID를 삭제할까요? 이 작업은 되돌릴 수 없습니다.`);
     if (!confirmed) return;
-    setTemporaryPassword(null);
+    setPasswordNotice(null);
 
     try {
       const response = await fetch("/api/admin/accounts", {
@@ -192,7 +205,7 @@ export function AccountManagementPanel() {
       setState((current) => ({
         ...current,
         status: "error",
-        message: error instanceof Error ? error.message : "Account deletion failed.",
+        message: error instanceof Error ? error.message : "회원 ID 삭제에 실패했습니다.",
       }));
     }
   }
@@ -225,22 +238,16 @@ export function AccountManagementPanel() {
   }
 
   return (
-    <div className="grid gap-6">
+    <div className="grid gap-5">
       <section className="rounded-lg border border-zinc-200 bg-white p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <p className="text-sm font-semibold text-emerald-700">Access Control</p>
-            <h2 className="mt-1 text-2xl font-semibold tracking-normal text-zinc-950">ID 관리</h2>
+            <p className="text-sm font-semibold text-emerald-700">Member Management</p>
+            <h2 className="mt-1 text-2xl font-semibold tracking-normal text-zinc-950">회원관리</h2>
             <p className="mt-2 text-sm leading-6 text-zinc-600">
-              ID/PW 추가, 삭제, 변경은 portal.wiregene.com에서만 진행합니다. Meta/Search/HW ERP는 Portal 인증을 사용합니다.
+              전체관리자만 회원 ID를 등록, 삭제, 재발급할 수 있습니다. 등록된 ID는 허용된 Wiregene 하위 사이트 로그인에 사용됩니다.
             </p>
           </div>
-          <a
-            href="https://portal.wiregene.com/?wiregene_from=account-management"
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-4 text-sm font-semibold text-emerald-800 transition hover:border-emerald-300 hover:bg-emerald-100"
-          >
-            portal.wiregene.com
-          </a>
           <button
             type="button"
             onClick={() => void reloadAccounts()}
@@ -255,29 +262,33 @@ export function AccountManagementPanel() {
       <section className="grid gap-4 md:grid-cols-3">
         <StatusTile
           icon={<Users className="h-4 w-4" aria-hidden />}
-          label="Portal 계정"
+          label="등록 회원"
           value={`${managedAccounts.length}명`}
         />
         <StatusTile
           icon={<ShieldCheck className="h-4 w-4" aria-hidden />}
-          label="환경변수 ID"
+          label="환경변수 계정"
           value={`${environmentAccounts}개`}
         />
         <StatusTile
           icon={<ListChecks className="h-4 w-4" aria-hidden />}
-          label="서브사이트 목록"
+          label="연결 사이트"
           value={`${siteAccountLists.length}개`}
         />
       </section>
 
-      <SubsiteIdListSection siteAccountLists={siteAccountLists} status={state.status} />
-
-      {temporaryPassword ? (
+      {passwordNotice ? (
         <section className="rounded-lg border border-emerald-200 bg-emerald-50 p-5">
-          <p className="text-sm font-semibold text-emerald-800">임시 비밀번호 발급 완료</p>
+          <p className="text-sm font-semibold text-emerald-800">
+            {passwordNotice.mode === "initial" ? "회원 ID 등록 완료" : "임시 비밀번호 재발급 완료"}
+          </p>
           <div className="mt-3 grid gap-3 md:grid-cols-[12rem_1fr]">
-            <InfoLine label="ID" value={temporaryPassword.username} />
-            <InfoLine label="Temporary PW" value={temporaryPassword.password} strong />
+            <InfoLine label="ID" value={passwordNotice.username} />
+            <InfoLine
+              label={passwordNotice.mode === "initial" ? "초기 PW" : "Temporary PW"}
+              value={passwordNotice.password}
+              strong
+            />
           </div>
         </section>
       ) : null}
@@ -290,9 +301,9 @@ export function AccountManagementPanel() {
 
       {state.writable ? (
         <section className="rounded-lg border border-zinc-200 bg-white p-5">
-          <h3 className="text-lg font-semibold text-zinc-950">새 ID 등록</h3>
+          <h3 className="text-lg font-semibold text-zinc-950">회원 ID 생성</h3>
           <form onSubmit={createAccount} className="mt-4 grid gap-4">
-            <div className="grid gap-4 lg:grid-cols-[1fr_1fr_10rem]">
+            <div className="grid gap-4 lg:grid-cols-[1fr_1fr_1fr_10rem]">
               <label className="grid gap-2 text-sm font-semibold text-zinc-700">
                 ID
                 <input
@@ -304,7 +315,20 @@ export function AccountManagementPanel() {
                 />
               </label>
               <label className="grid gap-2 text-sm font-semibold text-zinc-700">
-                Email
+                초기 PW
+                <input
+                  value={initialPassword}
+                  onChange={(event) => setInitialPassword(event.target.value)}
+                  required
+                  type="password"
+                  minLength={8}
+                  autoComplete="new-password"
+                  className="h-10 rounded-md border border-zinc-300 px-3 text-sm font-normal outline-none focus:border-emerald-400"
+                  placeholder="8자 이상"
+                />
+              </label>
+              <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+                이메일/연락처
                 <input
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
@@ -314,20 +338,20 @@ export function AccountManagementPanel() {
                 />
               </label>
               <label className="grid gap-2 text-sm font-semibold text-zinc-700">
-                Role
+                권한
                 <select
                   value={role}
                   onChange={(event) => changeRole(event.target.value === "admin" ? "admin" : "user")}
                   className="h-10 rounded-md border border-zinc-300 bg-white px-3 text-sm font-normal outline-none focus:border-emerald-400"
                 >
-                  <option value="user">사용자</option>
-                  <option value="admin">관리자</option>
+                  <option value="user">회원</option>
+                  <option value="admin">전체관리자</option>
                 </select>
               </label>
             </div>
 
             <div>
-              <p className="text-sm font-semibold text-zinc-700">접근 가능한 사이트</p>
+              <p className="text-sm font-semibold text-zinc-700">접속 허용 사이트</p>
               <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                 {state.sites.map((site) => {
                   const checked = selectedSites.includes(site.id);
@@ -356,15 +380,17 @@ export function AccountManagementPanel() {
               className="inline-flex h-11 w-fit items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-zinc-300"
             >
               <Plus className="h-4 w-4" aria-hidden />
-              {submitting ? "등록 중" : "ID 생성"}
+              {submitting ? "등록 중" : "회원 ID 등록"}
             </button>
           </form>
         </section>
       ) : null}
 
+      <SubsiteIdListSection siteAccountLists={siteAccountLists} status={state.status} />
+
       <section className="rounded-lg border border-zinc-200 bg-white p-5">
         <div className="flex items-center justify-between gap-3">
-          <h3 className="text-lg font-semibold text-zinc-950">전체 계정 목록</h3>
+          <h3 className="text-lg font-semibold text-zinc-950">전체 회원 목록</h3>
           <span
             className={`rounded-md px-2.5 py-1 text-xs font-semibold ${
               state.status === "error"
@@ -420,9 +446,9 @@ export function AccountManagementPanel() {
             ))}
           </div>
         ) : state.status === "loading" ? (
-          <p className="mt-4 text-sm text-zinc-500">계정 정보를 불러오는 중입니다.</p>
+          <p className="mt-4 text-sm text-zinc-500">회원 정보를 불러오는 중입니다.</p>
         ) : (
-          <p className="mt-4 text-sm text-zinc-500">등록된 계정이 없습니다.</p>
+          <p className="mt-4 text-sm text-zinc-500">등록된 회원 ID가 없습니다.</p>
         )}
       </section>
     </div>
@@ -444,7 +470,7 @@ function SubsiteIdListSection({
         </span>
         <div>
           <p className="text-sm font-semibold text-emerald-700">Subsite ID List</p>
-          <h3 className="text-xl font-semibold tracking-normal text-zinc-950">서브사이트별 접근 ID</h3>
+          <h3 className="text-xl font-semibold tracking-normal text-zinc-950">사이트별 접속 ID</h3>
         </div>
       </div>
 
@@ -505,7 +531,7 @@ async function getAccountState(): Promise<AccountState> {
       accounts,
       sites,
       siteAccountLists: payload.siteAccountLists ?? buildSiteAccountLists(sites, accounts),
-      managedBy: payload.managedBy ?? "Vercel Environment Variables",
+      managedBy: payload.managedBy ?? "Portal account storage",
       writable: Boolean(payload.writable),
     };
   } catch (error) {
@@ -596,7 +622,7 @@ function sourceLabel(source: AccountSource) {
 }
 
 function roleLabel(role: AccountSummary["role"]) {
-  return role === "admin" ? "관리자" : "사용자";
+  return role === "admin" ? "전체관리자" : "회원";
 }
 
 function formatDomain(url: string) {

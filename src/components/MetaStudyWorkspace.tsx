@@ -26,11 +26,13 @@ import {
   Search,
   Target,
   Trash2,
+  Users,
   Workflow,
   type LucideIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { AccountManagementPanel } from "@/components/AccountManagementPanel";
 import { MetaAnalysisPanel } from "@/components/MetaAnalysisPanel";
 import { MetaAiSettingsPanel } from "@/components/MetaAiSettingsPanel";
 import { MetaExtractionDatasetPanel } from "@/components/MetaExtractionDatasetPanel";
@@ -1507,6 +1509,7 @@ export function MetaStudyWorkspace({
   );
   const [stage, setStage] = useState<MetaStudyStage>("overview");
   const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
+  const [accountManagementOpen, setAccountManagementOpen] = useState(false);
   const [projectMenuCollapsed, setProjectMenuCollapsed] = useState(false);
   const [showArchivedProjects, setShowArchivedProjects] = useState(false);
   const [projectSyncNotice, setProjectSyncNotice] = useState("");
@@ -1591,12 +1594,14 @@ export function MetaStudyWorkspace({
 
   function openNewTopic() {
     setAiSettingsOpen(false);
+    setAccountManagementOpen(false);
     setSelectedProjectId("new-topic");
     setStage("protocol");
   }
 
   function openProject(project: MetaStudyProject) {
     setAiSettingsOpen(false);
+    setAccountManagementOpen(false);
     setSelectedProjectId(project.id);
     setStage("overview");
   }
@@ -1658,6 +1663,7 @@ export function MetaStudyWorkspace({
     );
     setShowArchivedProjects(false);
     setAiSettingsOpen(false);
+    setAccountManagementOpen(false);
     setStage("overview");
     setProjectSyncNotice(`Restored "${projectMenuLabel(project)}".`);
   }
@@ -1707,6 +1713,7 @@ export function MetaStudyWorkspace({
       return next;
     });
     setAiSettingsOpen(false);
+    setAccountManagementOpen(false);
     setStage("protocol");
   }
 
@@ -1874,7 +1881,10 @@ export function MetaStudyWorkspace({
         {currentUser ? (
           <button
             type="button"
-            onClick={() => setAiSettingsOpen(true)}
+            onClick={() => {
+              setAiSettingsOpen(true);
+              setAccountManagementOpen(false);
+            }}
             title="AI settings"
             className={`mt-4 flex w-full items-center rounded-md border p-3 text-left transition ${
               projectMenuCollapsed ? "justify-center" : "gap-3"
@@ -1890,6 +1900,32 @@ export function MetaStudyWorkspace({
             <span className={projectMenuCollapsed ? "sr-only" : undefined}>
               <span className="block text-sm font-semibold text-zinc-950">AI 평가 설정</span>
               <span className="mt-1 block text-xs leading-5 text-zinc-500">OpenAI key / model</span>
+            </span>
+          </button>
+        ) : null}
+
+        {currentUser?.isAdmin ? (
+          <button
+            type="button"
+            onClick={() => {
+              setAccountManagementOpen(true);
+              setAiSettingsOpen(false);
+            }}
+            title="Member management"
+            className={`mt-3 flex w-full items-center rounded-md border p-3 text-left transition ${
+              projectMenuCollapsed ? "justify-center" : "gap-3"
+            } ${
+              accountManagementOpen
+                ? "border-emerald-300 bg-emerald-50"
+                : "border-zinc-200 bg-white hover:border-emerald-300 hover:bg-emerald-50"
+            }`}
+          >
+            <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-zinc-950 text-white">
+              <Users className="h-4 w-4" aria-hidden />
+            </span>
+            <span className={projectMenuCollapsed ? "sr-only" : undefined}>
+              <span className="block text-sm font-semibold text-zinc-950">회원관리</span>
+              <span className="mt-1 block text-xs leading-5 text-zinc-500">ID / 초기 PW / 이메일</span>
             </span>
           </button>
         ) : null}
@@ -1913,7 +1949,9 @@ export function MetaStudyWorkspace({
       </aside>
 
       <section className="min-w-0">
-        {aiSettingsOpen ? (
+        {accountManagementOpen && currentUser?.isAdmin ? (
+          <AccountManagementPanel />
+        ) : aiSettingsOpen ? (
           <MetaAiSettingsPanel />
         ) : selectedProject ? (
           <ProjectWorkspace key={selectedProject.id} project={selectedProject} stage={stage} setStage={setStage} initialSearchQuery={initialSearchQuery} />

@@ -135,7 +135,7 @@ export function PortalDashboard({
           </div>
         </section>
 
-        <AccountManagementPanel />
+        {currentUser?.isAdmin ? <AccountManagementPanel /> : null}
       </div>
     </main>
   );

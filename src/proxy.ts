@@ -61,7 +61,11 @@ function isPathAllowedForMode(pathname: string, mode: WiregeneAppMode) {
   if (pathname === "/" || pathname === "/api/auth/logout") return true;
 
   if (mode === "meta") {
-    return pathname.startsWith("/api/meta-analysis/") || pathname.startsWith("/api/google-drive/oauth/");
+    return (
+      pathname.startsWith("/api/meta-analysis/") ||
+      pathname.startsWith("/api/google-drive/oauth/") ||
+      pathname.startsWith("/api/admin/")
+    );
   }
 
   if (mode === "portal") {

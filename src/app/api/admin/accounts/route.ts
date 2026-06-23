@@ -1,11 +1,8 @@
 import { NextResponse } from "next/server";
 
-import { getWiregeneAppMode } from "@/lib/app-mode";
-import {
-  getBasicAuthAccountSummaries,
-  getBasicAuthCredentialsFromEnv,
-  parseBasicAuthCredential,
-} from "@/lib/basic-auth-users";
+import { appModeLabel, getWiregeneAppMode } from "@/lib/app-mode";
+import { getBasicAuthAccountSummaries } from "@/lib/basic-auth-users";
+import { getCurrentWiregeneUser } from "@/lib/auth-session";
 import {
   createPortalAccount,
   deletePortalAccount,
@@ -13,15 +10,14 @@ import {
   portalSites,
   type PortalSiteId,
   resetPortalAccountPassword,
-  verifyPortalAccountCredentials,
 } from "@/lib/portal-accounts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  if (!isPortalMode(request)) return portalOnlyResponse();
-  if (!(await isAuthenticatedAdminRequest(request))) return authRequiredResponse();
+  if (!isAccountManagementMode(request)) return accountManagementOnlyResponse();
+  if (!(await isAuthenticatedAdminRequest(request))) return authRequiredResponse(request);
 
   const mode = getWiregeneAppMode(request.headers.get("host"));
   const environmentAccounts = getBasicAuthAccountSummaries();
@@ -34,8 +30,8 @@ export async function GET(request: Request) {
       count: accounts.length,
       sites: portalSites,
       siteAccountLists: buildSiteAccountLists(accounts),
-      managedBy: mode === "portal" ? "Portal account storage + Vercel Basic Auth" : "Vercel Environment Variables",
-      writable: mode === "portal",
+      managedBy: mode === "portal" ? "Portal account storage + Vercel Basic Auth" : "Portal account storage",
+      writable: true,
     },
     {
       headers: {
@@ -46,12 +42,13 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  if (!isPortalMode(request)) return portalOnlyResponse();
-  if (!(await isAuthenticatedAdminRequest(request))) return authRequiredResponse();
+  if (!isAccountManagementMode(request)) return accountManagementOnlyResponse();
+  if (!(await isAuthenticatedAdminRequest(request))) return authRequiredResponse(request);
 
   try {
     const payload = (await request.json()) as {
       username?: string;
+      initialPassword?: string;
       email?: string;
       role?: "admin" | "user";
       sites?: string[];
@@ -61,6 +58,7 @@ export async function POST(request: Request) {
     }
     const result = await createPortalAccount({
       username: payload.username,
+      initialPassword: payload.initialPassword,
       email: payload.email,
       role: payload.role,
       sites: payload.sites,
@@ -72,8 +70,8 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  if (!isPortalMode(request)) return portalOnlyResponse();
-  if (!(await isAuthenticatedAdminRequest(request))) return authRequiredResponse();
+  if (!isAccountManagementMode(request)) return accountManagementOnlyResponse();
+  if (!(await isAuthenticatedAdminRequest(request))) return authRequiredResponse(request);
 
   try {
     const payload = (await request.json()) as {
@@ -93,8 +91,8 @@ export async function PATCH(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  if (!isPortalMode(request)) return portalOnlyResponse();
-  if (!(await isAuthenticatedAdminRequest(request))) return authRequiredResponse();
+  if (!isAccountManagementMode(request)) return accountManagementOnlyResponse();
+  if (!(await isAuthenticatedAdminRequest(request))) return authRequiredResponse(request);
 
   try {
     const payload = (await request.json()) as {
@@ -112,53 +110,39 @@ export async function DELETE(request: Request) {
   }
 }
 
-function isPortalMode(request: Request) {
-  return getWiregeneAppMode(request.headers.get("host")) === "portal";
+function isAccountManagementMode(request: Request) {
+  const mode = getWiregeneAppMode(request.headers.get("host"));
+  return mode === "portal" || mode === "meta";
 }
 
-function portalOnlyResponse() {
+function accountManagementOnlyResponse() {
   return NextResponse.json(
     {
-      error: "Writable account management is available only on portal.wiregene.com.",
+      error: "Writable account management is available only on Wiregene Portal or Wiregene Meta.",
     },
     { status: 403 },
   );
 }
 
-function authRequiredResponse() {
+function authRequiredResponse(request: Request) {
+  const mode = getWiregeneAppMode(request.headers.get("host"));
   return NextResponse.json(
     {
-      error: "Portal login is required.",
+      error: "Administrator login is required.",
     },
     {
       status: 401,
       headers: {
-        "WWW-Authenticate": 'Basic realm="Wiregene Portal", charset="UTF-8"',
+        "WWW-Authenticate": `Basic realm="${appModeLabel(mode)}", charset="UTF-8"`,
       },
     },
   );
 }
 
 async function isAuthenticatedAdminRequest(request: Request) {
-  const credentials = getBasicAuthCredentialsFromEnv();
-  const providedCredential = parseBasicAuthCredential(request.headers.get("authorization") ?? "");
-  if (!providedCredential) return false;
-
-  if (credentials.some(
-    (credential) =>
-      credential.username === providedCredential.username &&
-      credential.password === providedCredential.password,
-  )) {
-    return true;
-  }
-
-  const portalAccount = await verifyPortalAccountCredentials({
-    username: providedCredential.username,
-    password: providedCredential.password,
-    site: "portal",
-  });
-
-  return portalAccount?.role === "admin";
+  const mode = getWiregeneAppMode(request.headers.get("host"));
+  const currentUser = await getCurrentWiregeneUser(request.headers.get("authorization"), { mode });
+  return currentUser?.isAdmin === true;
 }
 
 type AdminAccountSummary = Awaited<ReturnType<typeof listPortalAccountSummaries>>[number] | ReturnType<typeof getBasicAuthAccountSummaries>[number];

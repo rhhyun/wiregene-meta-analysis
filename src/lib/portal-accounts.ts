@@ -21,7 +21,7 @@ export const portalSites = [
     id: "meta",
     label: "Meta-analysis",
     shortLabel: "Meta",
-    url: "https://search.wiregene.com",
+    url: "https://meta.wiregene.com",
   },
   {
     id: "hyunlab",
@@ -95,6 +95,7 @@ export async function listPortalAccountSummaries() {
 
 export async function createPortalAccount(input: {
   username: string;
+  initialPassword?: string;
   email?: string;
   role?: PortalRole;
   sites?: string[];
@@ -108,7 +109,8 @@ export async function createPortalAccount(input: {
   }
 
   const now = new Date().toISOString();
-  const temporaryPassword = generateTemporaryPassword();
+  const providedPassword = normalizeInitialPassword(input.initialPassword);
+  const temporaryPassword = providedPassword || generateTemporaryPassword();
   const role = input.role === "admin" ? "admin" : "user";
   const account: PortalAccount = {
     id: crypto.randomUUID(),
@@ -117,7 +119,7 @@ export async function createPortalAccount(input: {
     role,
     sites: role === "admin" ? portalSiteIds() : normalizeSites(input.sites),
     passwordHash: await hashPassword(temporaryPassword),
-    mustChangePassword: true,
+    mustChangePassword: !providedPassword,
     disabled: false,
     createdAt: now,
     updatedAt: now,
@@ -235,6 +237,13 @@ function normalizeUsername(value: unknown) {
 function normalizeEmail(value: unknown) {
   const email = typeof value === "string" ? value.trim().toLowerCase() : "";
   return email.includes("@") ? email.slice(0, 160) : "";
+}
+
+function normalizeInitialPassword(value: unknown) {
+  const password = typeof value === "string" ? value.trim() : "";
+  if (!password) return "";
+  if (password.length < 8) throw new Error("Initial password must be at least 8 characters.");
+  return password.slice(0, 256);
 }
 
 function normalizeSites(value: unknown): PortalSiteId[] {
