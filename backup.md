@@ -24,7 +24,7 @@ npx.cmd tsc --noEmit --pretty false: passed
 npm.cmd run lint: passed
 npm.cmd run build: passed
 Local production browser verification: passed at 375px width; menu visible -> hide click removes the menu and shows `왼쪽 메뉴 열기`; reopen click restores the menu; scrollWidth stayed 375px.
-Production deployment/Vercel alias verification: pending before final handoff.
+Production deployment/Vercel alias verification: passed; `vercel inspect` showed a production `Ready` deployment with alias `https://meta.wiregene.com`.
 ```
 
 Regular Synology deploy/run command after GitHub push:
