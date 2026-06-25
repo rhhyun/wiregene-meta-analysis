@@ -14,7 +14,7 @@ export function MetaAnalysisApp({
   return (
     <main className="min-h-screen bg-zinc-50 text-zinc-950">
       <header className="border-b border-zinc-200 bg-white">
-        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-5 py-6 lg:flex-row lg:items-center lg:justify-between">
+        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-3 py-4 sm:px-5 sm:py-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-3">
             <span className="inline-flex h-11 w-11 items-center justify-center rounded-md bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100">
               <BarChart3 className="h-5 w-5" aria-hidden />
@@ -38,7 +38,7 @@ export function MetaAnalysisApp({
         </div>
       </header>
 
-      <div className="mx-auto max-w-7xl px-5 py-8">
+      <div className="mx-auto max-w-7xl px-2 py-4 sm:px-5 sm:py-8">
         <MetaStudyWorkspace initialSearchQuery={initialSearchQuery} currentUser={currentUser} />
       </div>
     </main>

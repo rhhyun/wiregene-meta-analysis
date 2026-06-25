@@ -1,3 +1,24 @@
+# 2026-06-25 Ver 2.46 업데이트: Screening 모바일 compact 화면
+
+Screening 화면은 full-text 원문 업로드, AI reviewer 선택, 저장된 논문 목록, reviewer/PI 검증, extraction dataset 확인이 한곳에 모이면서 폭과 세로 길이가 커졌습니다. Ver 2.46부터는 작은 노트북과 스마트폰에서도 실제 작업을 먼저 할 수 있도록 기본 화면을 줄였습니다.
+
+기본 작업 순서는 다음과 같습니다.
+
+1. `Screening` 탭을 열고 `Saved AI review article list`까지 내려갑니다.
+2. `full-text PDF/Word`에서 파일을 선택합니다. 파일을 새 논문으로 저장하는 것이 기본값이며, 기존 record만 갱신할 때만 `Update matched existing only`를 켭니다.
+3. AI reviewer slot을 선택한 뒤 `Analyze` 또는 논문 목록의 `Run AI (x/y)`를 누릅니다.
+4. 저장된 논문 행은 번호와 논문 제목을 먼저 보여줍니다. 파일명, source 저장소, reviewer 상세 상태는 행을 열었을 때 확인합니다.
+5. 최종 검증 단계에서만 reviewer 이름, triage rule, workbook audit, extraction dataset 검증 패널을 열어 확인합니다.
+
+화면 정리 기준은 다음과 같습니다.
+
+- `Storage / workbook audit`는 기본 접힘입니다. DB bundle, 저장소 경로, workbook rule은 감사나 백업 확인이 필요할 때만 엽니다.
+- `Full-text triage queue / reviewer rule`도 기본 접힘입니다. Screening decision header, exclusion reason, reviewer rule은 평소에는 숨겨 둡니다.
+- `Included-paper Excel dataset verification`은 별도 접힘 패널로 내려가며, full-text upload와 AI review 작업을 방해하지 않습니다.
+- Reviewer 이름 저장 영역은 `Reviewer names / verification status`로 접혔습니다. AI 분석은 reviewer 이름 저장 전에도 가능하지만, 최종 human verification 전에는 이름을 저장합니다.
+- Article list 행은 `FT saved`, `FT missing`, `AI x/y`, `done/pending`처럼 짧은 배지를 먼저 보여주고, 긴 제목은 줄바꿈합니다.
+- 390px 스마트폰 폭에서 Screening 화면은 페이지 가로 스크롤 없이 동작하도록 검증했습니다.
+
 # 2026-06-24 Ver 2.45 업데이트: 전체관리자 전용 회원관리
 
 Meta 왼쪽 메뉴에 회원관리가 추가되었습니다. 이 메뉴는 로그인한 사용자가 전체관리자일 때만 보이며, 일반 회원에게는 버튼 자체가 표시되지 않습니다. 서버 API도 같은 관리자 판정을 다시 수행하므로 화면을 우회해 /api/admin/accounts를 호출해도 전체관리자가 아니면 사용할 수 없습니다.
@@ -10,9 +31,9 @@ Meta 왼쪽 메뉴에 회원관리가 추가되었습니다. 이 메뉴는 로�
 
 # Wiregene Meta 사용 가이드
 
-문서 버전: Ver 2.44
-최종 업데이트: 2026-06-23
-적용 사이트: `https://search.wiregene.com`
+문서 버전: Ver 2.46
+최종 업데이트: 2026-06-25
+적용 사이트: `https://meta.wiregene.com`
 소스 저장소: `rhhyun/wiregene-meta-analysis`
 
 ### Analysis-ready Excel export
@@ -674,3 +695,22 @@ AI-only 결과와 human-reviewed 결과는 병렬로 보존합니다. AI-only sn
 Included-paper Excel dataset은 primary quantitative dataset입니다. `PI final decision = include_quantitative` 또는 PI final 전 reviewer 1/2 정량 포함 합의 record만 들어갑니다. `include_narrative_support`, secondary synthesis, risk-factor-only, continuous-outcome-only, broad-region supplementary record는 full-text history에 남지만 primary Excel dataset에는 들어가지 않습니다.
 
 Risk of bias는 prevalence/cross-sectional observational evidence에 맞춰 JBI prevalence checklist, Hoy tool, AXIS, JBI analytical cross-sectional checklist를 우선 사용합니다. RoB 2/ROBINS-I는 이 primary prevalence dataset의 기본 도구가 아니며, 별도 intervention/nonrandomized-intervention 분석이 있을 때만 선택적으로 사용합니다.
+# 2026-06-25 Ver 2.46 업데이트: Screening 모바일 compact 화면
+
+Screening 화면은 full-text 원문 업로드, AI reviewer 선택, 저장된 논문 목록, reviewer/PI 검증, extraction dataset 확인이 한곳에 모이면서 폭과 세로 길이가 커졌습니다. Ver 2.46부터는 작은 노트북 화면과 스마트폰에서도 핵심 작업을 먼저 할 수 있도록 기본 화면을 줄였습니다.
+
+기본 사용 순서는 다음과 같습니다.
+
+1. Screening 탭을 엽니다.
+2. `Saved AI review article list` 상단의 `full-text PDF/Word`에서 파일을 선택합니다.
+3. AI reviewer slot을 선택한 뒤 `Analyze` 또는 논문 목록의 `Run AI (x/y)`를 누릅니다.
+4. 저장소, workbook audit, reviewer rule, Excel dataset verification은 필요할 때만 접힘 패널을 열어 확인합니다.
+
+화면 정리 기준:
+
+- `Storage / workbook audit`는 기본 접힘입니다. DB bundle, 저장소 경로, workbook rule은 감사나 백업 확인이 필요할 때만 엽니다.
+- `Full-text triage queue / reviewer rule`도 기본 접힘입니다. Screening decision header, exclusion reason, reviewer rule은 평소에는 숨겨 둡니다.
+- `Included-paper Excel dataset verification`은 별도 접힘 패널로 내려가며, full-text upload와 AI review 작업을 방해하지 않습니다.
+- Reviewer 이름 저장 영역은 `Reviewer names / verification status`로 접혔습니다. AI 분석은 reviewer 이름 저장 전에도 가능하지만, 최종 human verification 전에는 이름을 저장합니다.
+- 모바일에서는 stage 카드 설명, 긴 상태 설명, 일부 JBI 보조 문구가 숨겨지고, 버튼 라벨은 `Analyze`, `Run AI`, `Delete`, `JBI rerun`처럼 짧게 표시됩니다.
+- Article list 행은 번호와 논문 제목을 줄바꿈 가능한 카드로 보여주며, `FT saved`, `FT missing`, `AI x/y`, `done/pending` 배지만 먼저 표시합니다. 파일명과 상세 저장소 정보는 행을 열었을 때만 봅니다.

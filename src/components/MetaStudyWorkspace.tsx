@@ -1719,7 +1719,7 @@ export function MetaStudyWorkspace({
 
   return (
     <div
-      className={`grid gap-6 transition-[grid-template-columns] duration-200 ${
+      className={`grid min-w-0 gap-4 transition-[grid-template-columns] duration-200 sm:gap-6 ${
         projectMenuCollapsed ? "lg:grid-cols-[4.25rem_minmax(0,1fr)]" : "lg:grid-cols-[19rem_minmax(0,1fr)]"
       }`}
     >
@@ -1978,8 +1978,8 @@ function ProjectWorkspace({
   const pubMedUrl = buildPubMedSearchUrl(pubMedQuery);
 
   return (
-    <div className="grid gap-5">
-      <section className="rounded-lg border border-zinc-200 bg-white p-5">
+    <div className="grid min-w-0 gap-4 sm:gap-5">
+      <section className="rounded-lg border border-zinc-200 bg-white p-3 sm:p-5">
         <div className="grid gap-5 xl:grid-cols-[1fr_20rem]">
           <div>
             <p className="text-sm font-semibold text-emerald-700">Active meta-analysis project</p>
@@ -1995,7 +1995,7 @@ function ProjectWorkspace({
         </div>
       </section>
 
-      <nav className="grid gap-2 md:grid-cols-3 xl:grid-cols-9">
+      <nav className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9">
         {metaStudyStages.map((item) => {
           const Icon = stageIcons[item.key];
           const active = stage === item.key;
@@ -2009,14 +2009,14 @@ function ProjectWorkspace({
               }`}
             >
               <Icon className="h-4 w-4 text-emerald-700" aria-hidden />
-              <span className="mt-2 block text-sm font-semibold text-zinc-950">{item.label}</span>
-              <span className="mt-1 block text-xs leading-5 text-zinc-500">{item.detail}</span>
+                <span className="mt-2 block text-sm font-semibold text-zinc-950">{item.label}</span>
+                <span className="mt-1 hidden text-xs leading-5 text-zinc-500 sm:block">{item.detail}</span>
             </button>
           );
         })}
       </nav>
 
-      <section className="rounded-lg border border-zinc-200 bg-white p-5">
+      <section className="min-w-0 rounded-lg border border-zinc-200 bg-white p-3 sm:p-5">
         {stage === "overview" ? <OverviewStage project={project} pubMedUrl={pubMedUrl} /> : null}
         {stage === "protocol" ? <ProtocolStage project={project} /> : null}
         {stage === "search" ? <SearchStage project={project} pubMedQuery={pubMedQuery} pubMedUrl={pubMedUrl} /> : null}
@@ -2035,7 +2035,7 @@ function OverviewStage({ project, pubMedUrl }: { project: MetaStudyProject; pubM
   const copy = overviewStageCopy(project);
 
   return (
-    <div className="grid gap-5">
+    <div className="grid min-w-0 gap-4">
       <StageHeader
         eyebrow="Overview"
         title={copy.title}
@@ -2177,7 +2177,7 @@ function ProtocolStage({ project }: { project: MetaStudyProject }) {
   ] as const;
 
   return (
-    <div className="grid gap-5">
+    <div className="grid min-w-0 gap-4">
       <StageHeader
         eyebrow="PRISMA Protocol"
         title={copy.title}
@@ -2533,7 +2533,7 @@ function SearchStage({
   }
 
   return (
-    <div className="grid gap-5">
+    <div className="grid min-w-0 gap-4">
       <StageHeader
         eyebrow="Search Design"
         title={copy.title}
@@ -2990,15 +2990,26 @@ function ScreeningStage({ project }: { project: MetaStudyProject }) {
   const copy = screeningStageCopy(project);
 
   return (
-    <div className="grid gap-5">
+    <div className="grid min-w-0 gap-4">
       <StageHeader
         eyebrow="Screening"
         title={copy.title(activeUploadCount)}
         detail={copy.detail}
       />
-      <ProjectStoragePanel project={project} />
-      <WorkbookFullTextBoard project={project} />
-      <section className="rounded-md border border-zinc-200">
+      <details className="rounded-md border border-sky-200 bg-sky-50 p-3">
+        <summary className="cursor-pointer text-sm font-semibold text-sky-950">
+          Storage / workbook audit
+        </summary>
+        <div className="mt-3 grid min-w-0 gap-4">
+          <ProjectStoragePanel project={project} />
+          <WorkbookFullTextBoard project={project} />
+        </div>
+      </details>
+      <details className="rounded-md border border-zinc-200 bg-zinc-50 p-3">
+        <summary className="cursor-pointer text-sm font-semibold text-zinc-950">
+          Full-text triage queue / reviewer rule
+        </summary>
+      <section className="mt-3 rounded-md border border-zinc-200 bg-white">
         <div className="flex flex-col gap-3 border-b border-zinc-200 bg-zinc-50 p-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-sm font-semibold text-zinc-950">Full-text triage queue</p>
@@ -3022,7 +3033,7 @@ function ScreeningStage({ project }: { project: MetaStudyProject }) {
           </div>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[820px] border-collapse text-left text-sm">
+          <table className="w-full min-w-[560px] border-collapse text-left text-xs">
             <thead className="bg-white text-xs uppercase text-zinc-500">
               <tr>
                 <th className="border-b border-zinc-200 px-4 py-3">Queue</th>
@@ -3050,7 +3061,7 @@ function ScreeningStage({ project }: { project: MetaStudyProject }) {
           </table>
         </div>
       </section>
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className="mt-3 grid gap-3 lg:grid-cols-2">
         <Checklist title="Two-reviewer decision fields" items={screeningDecisionColumns} />
         <Checklist title="Fixed full-text exclusion reasons" items={fullTextExclusionReasonsForProject(project)} />
       </div>
@@ -3059,13 +3070,21 @@ function ScreeningStage({ project }: { project: MetaStudyProject }) {
           <CheckCard key={title} title={title} detail={detail} />
         ))}
       </div>
+      </details>
       <MetaFullTextAssistant
         extractionColumns={project.extractionColumns}
         focus="screening"
         projectId={project.id}
         worksheetOptions={fullTextWorksheetOptions(project)}
       />
-      <MetaExtractionDatasetPanel extractionSections={project.extractionSections} projectId={project.id} />
+      <details className="rounded-md border border-emerald-200 bg-emerald-50 p-3">
+        <summary className="cursor-pointer text-sm font-semibold text-emerald-950">
+          Included-paper Excel dataset verification
+        </summary>
+        <div className="mt-3 min-w-0">
+          <MetaExtractionDatasetPanel extractionSections={project.extractionSections} projectId={project.id} />
+        </div>
+      </details>
     </div>
   );
 }
@@ -3185,7 +3204,7 @@ function ProjectStoragePanel({ project }: { project: MetaStudyProject }) {
   const fullTextSourceFileCount = files.filter((file) => file.fileName.includes("full-text-files__")).length;
 
   return (
-    <section className="rounded-md border border-sky-200 bg-sky-50 p-4">
+    <section className="min-w-0 rounded-md border border-sky-200 bg-sky-50 p-3">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <p className="text-sm font-semibold text-sky-900">Project file storage</p>
@@ -3202,25 +3221,25 @@ function ProjectStoragePanel({ project }: { project: MetaStudyProject }) {
             type="button"
             onClick={() => void downloadDbBundle()}
             disabled={dbExportDownloading}
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-sky-700 px-3 text-sm font-semibold text-white transition hover:bg-sky-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-sky-700 px-2 text-xs font-semibold text-white transition hover:bg-sky-800 disabled:cursor-not-allowed disabled:bg-zinc-400 sm:px-3"
           >
             {dbExportDownloading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Download className="h-4 w-4" aria-hidden />}
-            Download DB bundle
+            DB bundle
           </button>
           <button
             type="button"
             onClick={() => void saveDbSnapshot()}
             disabled={dbExportSaving}
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-sky-300 bg-white px-3 text-sm font-semibold text-sky-800 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-sky-300 bg-white px-2 text-xs font-semibold text-sky-800 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60 sm:px-3"
           >
             {dbExportSaving ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Save className="h-4 w-4" aria-hidden />}
-            Save DB snapshot
+            Save DB
           </button>
           <button
             type="button"
             onClick={() => void refreshStorage()}
             disabled={loading}
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-sky-300 bg-white px-3 text-sm font-semibold text-sky-800 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-sky-300 bg-white px-2 text-xs font-semibold text-sky-800 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60 sm:px-3"
           >
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} aria-hidden />
             Refresh
@@ -4602,8 +4621,8 @@ function StageHeader({ eyebrow, title, detail }: { eyebrow: string; title: strin
   return (
     <div>
       <p className="text-sm font-semibold text-emerald-700">{eyebrow}</p>
-      <h3 className="mt-1 text-xl font-semibold tracking-normal text-zinc-950">{title}</h3>
-      <details className="mt-3 max-w-4xl rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2">
+      <h3 className="mt-1 text-lg font-semibold tracking-normal text-zinc-950 sm:text-xl">{title}</h3>
+      <details className="mt-2 max-w-4xl rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2">
         <summary className="cursor-pointer text-sm font-semibold text-zinc-700">Stage note</summary>
         <p className="mt-2 text-sm leading-6 text-zinc-600">{detail}</p>
       </details>
@@ -4613,16 +4632,16 @@ function StageHeader({ eyebrow, title, detail }: { eyebrow: string; title: strin
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-zinc-200 bg-zinc-50 p-4">
+    <div className="min-w-0 rounded-md border border-zinc-200 bg-zinc-50 p-3 sm:p-4">
       <p className="text-xs font-semibold uppercase text-zinc-500">{label}</p>
-      <p className="mt-2 text-sm font-semibold leading-6 text-zinc-950">{value}</p>
+      <p className="mt-2 break-words text-sm font-semibold leading-6 text-zinc-950">{value}</p>
     </div>
   );
 }
 
 function Checklist({ title, items }: { title: string; items: string[] }) {
   return (
-    <section className="rounded-md border border-zinc-200 p-4">
+    <section className="rounded-md border border-zinc-200 p-3 sm:p-4">
       <h3 className="text-base font-semibold text-zinc-950">{title}</h3>
       <div className="mt-3 grid gap-2">
         {items.map((item) => (
@@ -4638,7 +4657,7 @@ function Checklist({ title, items }: { title: string; items: string[] }) {
 
 function CheckCard({ title, detail }: { title: string; detail: string }) {
   return (
-    <details className="rounded-md border border-zinc-200 p-4">
+    <details className="rounded-md border border-zinc-200 p-3 sm:p-4">
       <summary className="flex cursor-pointer list-none items-start gap-2">
         <FlaskConical className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" aria-hidden />
         <p className="text-sm font-semibold text-zinc-950">{title}</p>

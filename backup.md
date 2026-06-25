@@ -1,3 +1,53 @@
+# 2026-06-25 Screening mobile compact layout
+
+User issue:
+
+- Screening accumulated too many wide panels and long controls.
+- The user needs the page to remain usable on small notebook screens and smartphones.
+
+Implemented:
+
+- `src/components/MetaAnalysisApp.tsx`
+  - Reduced mobile page/header padding while preserving desktop spacing.
+- `src/components/MetaStudyWorkspace.tsx`
+  - Reduced project workspace/card padding on small screens.
+  - Hid stage-card details on mobile.
+  - Collapsed Screening support panels by default:
+    - `Storage / workbook audit`
+    - `Full-text triage queue / reviewer rule`
+    - `Included-paper Excel dataset verification`
+  - Kept the full-text AI workbench visible as the primary Screening workflow.
+  - Shortened storage DB buttons and reduced common card padding.
+- `src/components/MetaFullTextAssistant.tsx`
+  - Reduced the main Screening assistant padding.
+  - Collapsed reviewer name/status fields by default.
+  - Shortened upload/AI action button labels to mobile-friendly text such as `Analyze`, `Run AI`, `Delete`, and `JBI rerun`.
+  - Removed several mobile-only long descriptions.
+  - Reworked saved article rows so title text wraps instead of forcing horizontal width.
+  - Shortened article badges to `FT saved`, `FT missing`, `AI x/y`, `done/pending`.
+  - Reduced mobile grid/card padding and removed fixed-width pressure from the Excel source sheet selector.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.111`
+  - UI label: `Ver 2.46 | 2026 copyright by JK Hyun`
+
+Verification status:
+
+```text
+git diff --check: passed
+npx.cmd tsc --noEmit --pretty false: passed
+npm.cmd run lint: passed
+npm.cmd run build: passed
+Local production smoke: http://127.0.0.1:3220 returned Ver 2.46
+Mobile browser verification: 390px viewport, Screening page body/document scrollWidth stayed 375px; no horizontal page overflow.
+Production deployment/Vercel alias verification: pending before final handoff.
+```
+
+Regular Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 # 2026-06-24 Admin-only member management menu
 
 User issue:

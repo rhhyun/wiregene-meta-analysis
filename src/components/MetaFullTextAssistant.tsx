@@ -2823,17 +2823,20 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
       : "PDF 또는 Word 파일에서 엑셀 템플릿에 맞는 parameter 초안을 만들고, n/total 오류와 누락 필드를 연구자가 검증하도록 표시합니다.";
 
   return (
-    <section className="rounded-md border border-emerald-200 bg-emerald-50 p-4">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+    <section className="min-w-0 rounded-md border border-emerald-200 bg-emerald-50 p-2 sm:p-3">
+      <div className="flex flex-col gap-2 xl:flex-row xl:items-start xl:justify-between">
         <div>
           <p className="text-sm font-semibold text-emerald-800">{title}</p>
-          <h3 className="mt-1 text-lg font-semibold text-zinc-950">원문 업로드 → AI 초안 → 연구자 검증</h3>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-700">{detail}</p>
+          <h3 className="mt-1 text-base font-semibold text-zinc-950 sm:text-lg">원문 업로드 → AI 초안 → 검증</h3>
+          <p className="mt-1 hidden max-w-3xl text-sm leading-6 text-zinc-700 sm:block">{detail}</p>
         </div>
       </div>
 
-      <section className="mt-4 rounded-md border border-emerald-200 bg-white p-3">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+      <details className="mt-3 rounded-md border border-emerald-200 bg-white p-3">
+        <summary className="cursor-pointer text-sm font-semibold text-zinc-950">
+          Reviewer names / verification status
+        </summary>
+        <div className="mt-3 flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
           <div className="grid flex-1 gap-3 md:grid-cols-2">
             <label className="grid gap-1 text-xs font-semibold uppercase text-zinc-500">
               reviewer 1 name
@@ -2881,9 +2884,9 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
             Reviewer names are not required to run AI full-text analysis. Save them before final human verification or PI adjudication.
           </p>
         ) : null}
-      </section>
+      </details>
 
-      <details className="mt-4 rounded-md border border-zinc-200 bg-white p-3">
+      <details className="mt-3 rounded-md border border-zinc-200 bg-white p-3">
         <summary className="cursor-pointer text-sm font-semibold text-zinc-950">
           AI reviewer setup / source status
         </summary>
@@ -3014,7 +3017,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
         </p>
         </div>
       </details>
-      <details className="mt-4 rounded-md border border-zinc-200 bg-white p-3">
+      <details className="mt-3 rounded-md border border-zinc-200 bg-white p-3">
         <summary className="cursor-pointer text-sm font-semibold text-zinc-950">
           Advanced full-text upload fields
         </summary>
@@ -3164,13 +3167,13 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
       </div>
       </details>
 
-      <section className="mt-4 rounded-md border border-emerald-200 bg-white p-3">
+      <section className="mt-3 min-w-0 rounded-md border border-emerald-200 bg-white p-2 sm:p-3">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
             <History className="h-4 w-4 text-emerald-700" aria-hidden />
             <div>
               <p className="text-sm font-semibold text-zinc-950">Saved AI review article list</p>
-              <p className="mt-0.5 text-xs font-medium leading-5 text-zinc-500">
+              <p className="mt-0.5 hidden text-xs font-medium leading-5 text-zinc-500 sm:block">
                 목록은 논문 번호와 제목만 먼저 보여줍니다. 행을 선택하면 파일명, 저장소, AI review, reviewer 상태가 아래에 열립니다.
               </p>
             </div>
@@ -3190,9 +3193,9 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
             {historyError}
           </div>
         ) : null}
-        <div className="mt-3 rounded-md border border-emerald-200 bg-white p-3">
+        <div className="mt-3 min-w-0 rounded-md border border-emerald-200 bg-white p-2 sm:p-3">
           <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
-            <div className="grid flex-1 gap-2 lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:items-end">
+            <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-end">
               <label className="grid gap-1 text-xs font-semibold uppercase text-zinc-500">
                 full-text PDF/Word
                 <input
@@ -3216,10 +3219,11 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                   selectedRunnableAiReviewerIds.length === 0 ||
                   Boolean(currentHistoryItem && !currentHistoryItem.sourceFileSaved && files.length === 1)
                 }
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-3 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
+                title={analyzeButtonLabel}
               >
                 {isAnalyzing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <SearchCheck className="h-4 w-4" aria-hidden />}
-                {analyzeButtonLabel}
+                Analyze
               </button>
               <button
                 type="button"
@@ -3230,7 +3234,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                 Clear files
               </button>
             </div>
-            <div className="min-w-0 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-semibold leading-5 text-zinc-700 xl:max-w-md">
+            <div className="min-w-0 break-words rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-semibold leading-5 text-zinc-700 xl:max-w-md">
               {selectedFileLabel} · {selectedFileDetail} · matched {batchAutoMatchCount.toLocaleString("ko-KR")}/
               {files.length.toLocaleString("ko-KR")} · AI {selectedAiReviewerLabel}
             </div>
@@ -3253,7 +3257,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
               <select
                 value={worksheetName}
                 onChange={(event) => setWorksheetName(event.target.value)}
-                className="h-9 min-w-64 rounded-md border border-zinc-300 bg-white px-3 text-xs font-semibold text-zinc-900 outline-none focus:border-emerald-500"
+                className="h-9 w-full min-w-0 rounded-md border border-zinc-300 bg-white px-3 text-xs font-semibold text-zinc-900 outline-none focus:border-emerald-500 sm:w-auto sm:min-w-64"
                 aria-label="Excel source sheet"
               >
                 {worksheetOptions.map((worksheet) => (
@@ -3346,7 +3350,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                 return (
                   <label
                     key={slot.id}
-                    className={`inline-flex min-h-10 max-w-full items-center gap-2 rounded-md border px-3 py-2 text-xs font-semibold ${
+                    className={`inline-flex min-h-9 max-w-full items-center gap-2 rounded-md border px-2 py-1.5 text-xs font-semibold sm:px-3 sm:py-2 ${
                       runnable ? "border-emerald-300 bg-white text-zinc-800" : "border-zinc-200 bg-zinc-50 text-zinc-400"
                     }`}
                   >
@@ -3369,15 +3373,15 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
               </div>
             )}
           </div>
-          <div className="mt-3 flex flex-col gap-2 rounded-md border border-emerald-200 bg-white p-3 xl:flex-row xl:items-center xl:justify-between">
+          <div className="mt-3 flex flex-col gap-2 rounded-md border border-emerald-200 bg-white p-2 sm:p-3 xl:flex-row xl:items-center xl:justify-between">
             <div className="grid gap-1">
               <p className="text-xs font-semibold leading-5 text-zinc-700">
-                Selected articles: {selectedHistoryItemsForAction.length.toLocaleString("ko-KR")} · AI-ready saved source{" "}
+                Selected {selectedHistoryItemsForAction.length.toLocaleString("ko-KR")} · ready{" "}
                 {selectedSourceSavedHistoryItemsForAction.length.toLocaleString("ko-KR")} · full-text missing{" "}
                 {selectedLegacyHistoryItemsForAction.length.toLocaleString("ko-KR")} · completed {selectedArticleAiReviewProgressLabel} · reviewers:{" "}
                 {selectedAiReviewerLabel}
               </p>
-              <p className="text-xs font-semibold leading-5 text-emerald-800">
+              <p className="hidden text-xs font-semibold leading-5 text-emerald-800 sm:block">
                 JBI RoB target: primary quantitative included {historyDecisionCounts.primary_quantitative_included.toLocaleString("ko-KR")} ·
                 source saved {historyDecisionCounts.primary_quantitative_source_saved.toLocaleString("ko-KR")} · upload needed{" "}
                 {historyDecisionCounts.primary_quantitative_missing_source.toLocaleString("ko-KR")}
@@ -3401,19 +3405,21 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                 type="button"
                 onClick={prepareRiskOfBiasReanalysisSelection}
                 disabled={primaryQuantitativeIncludedSourceSavedHistoryItems.length === 0 || isAnalyzing}
-                className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-emerald-300 bg-white px-3 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:border-zinc-200 disabled:text-zinc-400"
+                className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-emerald-300 bg-white px-2 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:border-zinc-200 disabled:text-zinc-400 sm:px-3"
+                title="Prepare JBI RoB rerun"
               >
                 <SearchCheck className="h-3.5 w-3.5" aria-hidden />
-                Prepare JBI RoB rerun
+                JBI rerun
               </button>
               <button
                 type="button"
                 onClick={() => void reanalyzeSelectedSavedSources()}
                 disabled={selectedHistoryAiReviewDisabled}
-                className="inline-flex h-8 items-center justify-center gap-2 rounded-md bg-emerald-700 px-3 text-xs font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
+                className="inline-flex h-8 items-center justify-center gap-2 rounded-md bg-emerald-700 px-2 text-xs font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-zinc-400 sm:px-3"
+                title={`Run AI review on selected (${selectedArticleAiReviewProgressLabel})`}
               >
                 {isReanalyzingSavedSource || isAnalyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden />}
-                Run AI review on selected ({selectedArticleAiReviewProgressLabel})
+                Run AI ({selectedArticleAiReviewProgressLabel})
               </button>
             </div>
           </div>
@@ -3434,7 +3440,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
               Sheet progress
             </summary>
           <div className="mt-2 overflow-x-auto">
-            <table className="w-full min-w-[760px] border-collapse text-left text-xs">
+            <table className="w-full min-w-[560px] border-collapse text-left text-xs">
               <thead className="bg-zinc-50 text-zinc-500">
                 <tr>
                   <th className="border-b border-zinc-200 px-3 py-2">Excel source sheet</th>
@@ -3461,7 +3467,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
           </div>
           </details>
         ) : null}
-        <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-3 grid grid-cols-2 gap-2 xl:grid-cols-4">
           {([
             ["include_quantitative", "정량분석후보", historyDecisionCounts.include_quantitative],
             ["uncertain", "판정보류", historyDecisionCounts.uncertain],
@@ -3472,14 +3478,14 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
               key={filter}
               type="button"
               onClick={() => setHistoryFilter(filter)}
-              className={`rounded-md border p-3 text-left transition ${
+              className={`rounded-md border p-2 text-left transition sm:p-3 ${
                 historyFilter === filter
                   ? "border-emerald-400 bg-emerald-50"
                   : "border-zinc-200 bg-white hover:border-emerald-300 hover:bg-emerald-50"
               }`}
             >
-              <span className="block text-xs font-semibold uppercase text-zinc-500">{label}</span>
-              <span className="mt-1 block text-2xl font-semibold text-zinc-950">{count.toLocaleString("ko-KR")}</span>
+              <span className="block text-[11px] font-semibold uppercase leading-4 text-zinc-500 sm:text-xs">{label}</span>
+              <span className="mt-1 block text-xl font-semibold text-zinc-950 sm:text-2xl">{count.toLocaleString("ko-KR")}</span>
             </button>
           ))}
         </div>
@@ -3509,7 +3515,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
           {historyItems.length > 0 ? (
             <>
               <div>
-                <div className="flex items-center justify-between gap-3 text-xs font-semibold uppercase text-zinc-500">
+                <div className="flex flex-col gap-1 text-xs font-semibold uppercase text-zinc-500 sm:flex-row sm:items-center sm:justify-between">
                   <span>
                     Article list ({sortedHistoryItems.length.toLocaleString("ko-KR")}/{historyItems.length.toLocaleString("ko-KR")} shown)
                   </span>
@@ -3519,7 +3525,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                     {historyItems.filter((item) => item.verificationComplete).length.toLocaleString("ko-KR")} verified
                   </span>
                 </div>
-                <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2">
+                <div className="mt-2 flex flex-col gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-2 py-2 sm:flex-row sm:items-center sm:justify-between sm:px-3">
                   <span className="text-xs font-semibold text-zinc-600">정렬 기준</span>
                   <div className="flex flex-wrap items-center gap-2">
                     {historySortOptions.map((option) => (
@@ -3539,7 +3545,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                     ))}
                   </div>
                 </div>
-                <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-md border border-zinc-200 bg-white px-3 py-2">
+                <div className="mt-2 flex flex-col gap-2 rounded-md border border-zinc-200 bg-white px-2 py-2 sm:flex-row sm:items-center sm:justify-between sm:px-3">
                   <label className="inline-flex items-center gap-2 text-xs font-semibold text-zinc-700">
                     <input
                       type="checkbox"
@@ -3548,7 +3554,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                       onChange={(event) => toggleVisibleHistoryDeleteSelection(event.target.checked)}
                       className="h-4 w-4 rounded border-zinc-300 text-emerald-700 focus:ring-emerald-600"
                     />
-                    Select shown for AI review ({selectedVisibleHistoryDeleteCount.toLocaleString("ko-KR")}/{visibleHistoryIds.length.toLocaleString("ko-KR")})
+                    Select shown ({selectedVisibleHistoryDeleteCount.toLocaleString("ko-KR")}/{visibleHistoryIds.length.toLocaleString("ko-KR")})
                   </label>
                   <div className="flex flex-wrap items-center gap-2">
                     <button
@@ -3570,7 +3576,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                       ) : (
                         <RefreshCw className="h-3.5 w-3.5" aria-hidden />
                       )}
-                      Run selected AI review ({selectedArticleAiReviewProgressLabel})
+                      Run AI ({selectedArticleAiReviewProgressLabel})
                     </button>
                     <button
                       type="button"
@@ -3583,7 +3589,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                       ) : (
                         <Trash2 className="h-3.5 w-3.5" aria-hidden />
                       )}
-                      Delete selected ({selectedHistoryIdsForDelete.length.toLocaleString("ko-KR")})
+                      Delete ({selectedHistoryIdsForDelete.length.toLocaleString("ko-KR")})
                     </button>
                   </div>
                 </div>
@@ -3598,7 +3604,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                       return (
                         <div
                           key={item.id}
-                          className={`grid w-full gap-2 px-3 py-2 text-left transition hover:bg-emerald-50 ${
+                          className={`grid w-full min-w-0 gap-2 px-2 py-2 text-left transition hover:bg-emerald-50 sm:px-3 ${
                             selected ? "bg-emerald-50 ring-1 ring-inset ring-emerald-200" : "bg-white"
                           }`}
                         >
@@ -3617,9 +3623,9 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                               aria-pressed={selected}
                               className="min-w-0 flex-1 text-left"
                             >
-                              <div className="flex items-start justify-between gap-3">
+                              <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                                 <div className="min-w-0">
-                                  <p className="min-w-0 truncate text-sm font-semibold text-zinc-950">
+                                  <p className="min-w-0 break-words text-sm font-semibold leading-5 text-zinc-950">
                                     <span className="mr-2 inline-flex min-w-8 justify-center rounded-md bg-zinc-100 px-2 py-0.5 text-xs text-zinc-700">
                                       {articleNumber}
                                     </span>
@@ -3627,25 +3633,25 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                                   </p>
                                   <p className="mt-1 text-xs font-medium text-zinc-500">1저자: {firstAuthor}</p>
                                 </div>
-                                <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                                <div className="flex flex-wrap items-center gap-1.5 sm:shrink-0 sm:justify-end">
                                   <span
-                                    className={`rounded-md px-2 py-1 text-xs font-semibold ${
+                                    className={`rounded-md px-2 py-1 text-[11px] font-semibold sm:text-xs ${
                                       item.sourceFileSaved
                                         ? "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-100"
                                         : "bg-rose-50 text-rose-800 ring-1 ring-rose-100"
                                     }`}
                                   >
-                                    {item.sourceFileSaved ? "full-text saved" : "full-text missing"}
+                                    {item.sourceFileSaved ? "FT saved" : "FT missing"}
                                   </span>
                                   <span
-                                    className={`rounded-md px-2 py-1 text-xs font-semibold ${
+                                    className={`rounded-md px-2 py-1 text-[11px] font-semibold sm:text-xs ${
                                       item.verificationComplete ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-900"
                                     }`}
                                   >
-                                    {item.verificationComplete ? "verified" : "pending"}
+                                    {item.verificationComplete ? "done" : "pending"}
                                   </span>
                                   <span
-                                    className={`rounded-md px-2 py-1 text-xs font-semibold ${
+                                    className={`rounded-md px-2 py-1 text-[11px] font-semibold sm:text-xs ${
                                       item.aiModelReviewCount >= aiComparisonProgress.target
                                         ? "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-100"
                                         : "bg-amber-50 text-amber-900 ring-1 ring-amber-100"
@@ -3653,29 +3659,29 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                                   >
                                     AI {item.aiModelReviewCount}/{aiComparisonProgress.target}
                                   </span>
-                                  <span className="rounded-md bg-zinc-100 px-2 py-1 text-xs font-semibold text-zinc-600">
+                                  <span className="rounded-md bg-zinc-100 px-2 py-1 text-[11px] font-semibold text-zinc-600 sm:text-xs">
                                     {selected ? "details open" : "open"}
                                   </span>
                                 </div>
                               </div>
                               {selected ? (
-                                <div className="mt-3 grid gap-2 rounded-md border border-emerald-100 bg-white p-3 text-xs font-semibold text-zinc-600 sm:grid-cols-2 xl:grid-cols-4">
-                                  <span className="rounded-md bg-zinc-50 px-2 py-1">{item.sourceSheet ?? "no sheet"}</span>
-                                  <span className="rounded-md bg-zinc-50 px-2 py-1">{decisionLabel(item.decision)}</span>
-                                  <span className="rounded-md bg-zinc-50 px-2 py-1">confidence {item.confidence}</span>
-                                  <span className="rounded-md bg-zinc-50 px-2 py-1">
+                                <div className="mt-3 grid min-w-0 gap-1.5 rounded-md border border-emerald-100 bg-white p-2 text-xs font-semibold text-zinc-600 sm:grid-cols-2 xl:grid-cols-4">
+                                  <span className="break-words rounded-md bg-zinc-50 px-2 py-1">{item.sourceSheet ?? "no sheet"}</span>
+                                  <span className="break-words rounded-md bg-zinc-50 px-2 py-1">{decisionLabel(item.decision)}</span>
+                                  <span className="break-words rounded-md bg-zinc-50 px-2 py-1">confidence {item.confidence}</span>
+                                  <span className="break-words rounded-md bg-zinc-50 px-2 py-1">
                                     {item.verificationMode === "ai_only" ? "AI-only verification" : "2-reviewer verification"}
                                   </span>
-                                  <span className="rounded-md bg-zinc-50 px-2 py-1">
+                                  <span className="break-words rounded-md bg-zinc-50 px-2 py-1">
                                     {item.sourceFileSaved ? `source saved: ${item.sourceStorage}` : "legacy/no source"}
                                   </span>
-                                  <span className="rounded-md bg-zinc-50 px-2 py-1">
+                                  <span className="break-words rounded-md bg-zinc-50 px-2 py-1">
                                     saved {new Date(item.savedAt).toLocaleString("ko-KR")}
                                   </span>
-                                  <span className="rounded-md bg-zinc-50 px-2 py-1 sm:col-span-2">
+                                  <span className="break-words rounded-md bg-zinc-50 px-2 py-1 sm:col-span-2">
                                     source file: {item.fileName}
                                   </span>
-                                  <span className="rounded-md bg-zinc-50 px-2 py-1">1저자: {firstAuthor}</span>
+                                  <span className="break-words rounded-md bg-zinc-50 px-2 py-1">1저자: {firstAuthor}</span>
                                 </div>
                               ) : null}
                             </button>
@@ -3692,9 +3698,9 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                 </div>
               </div>
               {currentHistoryItem ? (
-                <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3">
+                <div className="min-w-0 rounded-md border border-emerald-200 bg-emerald-50 p-2 sm:p-3">
                   <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                    <p className="truncate text-sm font-semibold text-zinc-950">
+                    <p className="break-words text-sm font-semibold leading-5 text-zinc-950">
                       Article{" "}
                       {historyArticleNumber(
                         currentHistoryItem,
@@ -3730,10 +3736,11 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                         type="button"
                         onClick={() => void saveSourceToSelectedHistory({ rerunAfterSave: true })}
                         disabled={!canUpgradeLegacyRecordWithAi}
-                        className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-900 transition hover:bg-amber-50 disabled:cursor-not-allowed disabled:border-zinc-200 disabled:text-zinc-400"
+                        className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-amber-300 bg-white px-2 text-xs font-semibold text-amber-900 transition hover:bg-amber-50 disabled:cursor-not-allowed disabled:border-zinc-200 disabled:text-zinc-400 sm:px-3"
+                        title="Save source and run AI reviewers"
                       >
                         {isSavingSourceToHistory ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Save className="h-3.5 w-3.5" aria-hidden />}
-                        Save source and run AI reviewers
+                        Save source + AI
                       </button>
                     ) : null}
                     <button
@@ -3756,7 +3763,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                       ) : (
                         <Trash2 className="h-3.5 w-3.5" aria-hidden />
                       )}
-                      Delete saved record
+                      Delete
                     </button>
                   </div>
                   <p className="mt-2 text-xs font-semibold leading-5 text-emerald-950">{savedSourceActionHelp}</p>
@@ -3811,7 +3818,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
               <div key={item.id} className={`rounded-md border p-3 ${batchStatusTone(item.status)}`}>
                 <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold">
+                    <p className="break-words text-sm font-semibold leading-5">
                       {index + 1}. {item.fileName}
                     </p>
                     <p className="mt-1 text-xs font-semibold opacity-80">
