@@ -39,7 +39,7 @@ npm.cmd run lint: passed
 npm.cmd run build: passed
 Local production smoke: http://127.0.0.1:3220 returned Ver 2.46
 Mobile browser verification: 390px viewport, Screening page body/document scrollWidth stayed 375px; no horizontal page overflow.
-Production deployment/Vercel alias verification: passed; `vercel inspect https://meta.wiregene.com --scope rhhyuns-projects` showed production `Ready` deployment `dpl_5mHPvBHrmGuG8abhDqpJibCbUiGG` with alias `https://meta.wiregene.com`.
+Production deployment/Vercel alias verification: passed; `vercel inspect https://meta.wiregene.com --scope rhhyuns-projects` showed a production `Ready` deployment with alias `https://meta.wiregene.com`.
 ```
 
 Regular Synology deploy/run command after GitHub push:
