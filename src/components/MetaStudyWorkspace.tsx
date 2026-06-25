@@ -1720,10 +1720,28 @@ export function MetaStudyWorkspace({
   return (
     <div
       className={`grid min-w-0 gap-4 transition-[grid-template-columns] duration-200 sm:gap-6 ${
-        projectMenuCollapsed ? "lg:grid-cols-[4.25rem_minmax(0,1fr)]" : "lg:grid-cols-[19rem_minmax(0,1fr)]"
+        projectMenuCollapsed ? "" : "lg:grid-cols-[19rem_minmax(0,1fr)]"
       }`}
     >
+      {projectMenuCollapsed ? (
+        <button
+          type="button"
+          onClick={() => setProjectMenuCollapsed(false)}
+          aria-controls="meta-study-menu"
+          aria-expanded={false}
+          className="sticky top-2 z-20 inline-flex w-fit items-center gap-2 rounded-md border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold text-emerald-800 shadow-sm transition hover:border-emerald-300 hover:bg-emerald-50"
+        >
+          <PanelLeftOpen className="h-4 w-4" aria-hidden />
+          왼쪽 메뉴 열기
+          <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-md bg-emerald-50 px-1.5 text-xs text-emerald-700">
+            {visibleProjects.length}
+          </span>
+        </button>
+      ) : null}
+
+      {!projectMenuCollapsed ? (
       <aside
+        id="meta-study-menu"
         className={`rounded-lg border border-zinc-200 bg-white lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto ${
           projectMenuCollapsed ? "p-2" : "p-4"
         }`}
@@ -1739,6 +1757,8 @@ export function MetaStudyWorkspace({
           <button
             type="button"
             onClick={() => setProjectMenuCollapsed((current) => !current)}
+            aria-controls="meta-study-menu"
+            aria-expanded={!projectMenuCollapsed}
             aria-label={projectMenuCollapsed ? "Expand meta study menu" : "Collapse meta study menu"}
             title={projectMenuCollapsed ? "Expand meta study menu" : "Collapse meta study menu"}
             className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-500 transition hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700"
@@ -1947,6 +1967,7 @@ export function MetaStudyWorkspace({
           </div>
         ) : null}
       </aside>
+      ) : null}
 
       <section className="min-w-0">
         {accountManagementOpen && currentUser?.isAdmin ? (

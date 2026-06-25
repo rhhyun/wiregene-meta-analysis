@@ -1,3 +1,38 @@
+# 2026-06-25 Left study menu hide/show toggle
+
+User issue:
+
+- The left meta-study menu still occupied screen space after the mobile compact Screening work.
+- The user requested a simple click-to-hide and click-to-show behavior.
+
+Implemented:
+
+- `src/components/MetaStudyWorkspace.tsx`
+  - The left study menu now unmounts when hidden instead of staying as a narrow icon column.
+  - The main workspace expands to the full available width while the menu is hidden.
+  - A small sticky `왼쪽 메뉴 열기` button remains at the top of the workspace so the menu can be restored with one click.
+  - The close/open controls use `aria-controls` and `aria-expanded` for clearer accessibility state.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.112`
+  - UI label: `Ver 2.47 | 2026 copyright by JK Hyun`
+
+Verification status:
+
+```text
+git diff --check: passed
+npx.cmd tsc --noEmit --pretty false: passed
+npm.cmd run lint: passed
+npm.cmd run build: passed
+Local production browser verification: passed at 375px width; menu visible -> hide click removes the menu and shows `왼쪽 메뉴 열기`; reopen click restores the menu; scrollWidth stayed 375px.
+Production deployment/Vercel alias verification: pending before final handoff.
+```
+
+Regular Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 # 2026-06-25 Screening mobile compact layout
 
 User issue:
