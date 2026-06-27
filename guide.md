@@ -1,3 +1,34 @@
+# 2026-06-28 Ver 2.48 업데이트: Synology Docker runtime lock
+
+Synology Docker에서 Meta를 시작할 때 반복되던 자잘한 실행 오류를 줄이기 위해 runtime lock과 preflight guard를 추가했습니다. 이제 DSM 작업 스케줄러가 실행되면 `docker compose up`을 하기 전에 먼저 환경을 검사합니다.
+
+잠금/사전점검 항목은 다음과 같습니다.
+
+- 동시에 두 개의 DSM scheduler가 실행되면 `/volume1/docker/meta/.start-lock`으로 두 번째 실행을 막습니다.
+- `APP_SOURCE_DIR`, `APP_BASE_URL`, `CONTAINER_NAME`, `WIREGENE_APP_MODE`, Meta local storage 경로가 Synology Meta 기준값에서 벗어나면 자동 보정하거나 시작 전에 중단합니다.
+- Docker daemon이 꺼져 있거나 Docker Compose가 없으면 시작하지 않고 원인을 로그에 남깁니다.
+- `docker-compose.yml`에 오래된 Synology Compose에서 깨지는 top-level `name:` 같은 항목이 들어가면 compose 실행 전에 중단합니다.
+- `HOST_PORT`가 숫자가 아니거나 이미 다른 컨테이너/호스트 프로세스에서 사용 중이면 시작하지 않습니다.
+- `/volume1/docker/meta/download/_system`과 `/volume1/docker/meta/logs`가 쓰기 가능한지 확인합니다.
+- 컨테이너가 시작 직후 죽으면 최근 `docker logs`를 scheduler log에 남기고 실패를 명확히 표시합니다.
+- Docker healthcheck가 `http://127.0.0.1:3000/` 기준으로 앱 응답 상태를 감시합니다.
+
+실제 시작 전에 점검만 하려면 DSM 작업 스케줄러 또는 SSH에서 아래 명령을 실행합니다.
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --check-only
+```
+
+정상 배포/시작 명령은 아래와 같습니다.
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+만약 예전 컨테이너가 포트를 잡고 있어서 의도적으로 교체해야 하는 경우에만 DSM scheduler 환경변수로 `META_STOP_PORT_OWNER=true`를 설정합니다. 기본값은 `false`이며, 모르는 컨테이너를 자동으로 멈추지 않습니다.
+
+`/volume1/docker/meta/.env`에 `META_START_CHECK_ONLY=true`, `META_STOP_PORT_OWNER=true`, `META_START_VERIFY_SECONDS`, `META_REQUIRE_HEALTHY`를 직접 적어도 시작 스크립트가 해당 값을 읽습니다. 단, storage mode와 Meta 전용 경로처럼 연구 데이터 보존에 직접 영향을 주는 값은 스크립트가 안전한 기본값으로 잠가 둡니다.
+
 # 2026-06-25 Ver 2.47 업데이트: 왼쪽 연구 메뉴 숨김/열기
 
 왼쪽 `진행 중인 연구` 메뉴는 화면이 좁을 때 본문 작업 공간을 많이 차지합니다. Ver 2.47부터는 왼쪽 메뉴의 접기 버튼을 누르면 메뉴가 완전히 사라지고, 본문이 전체 폭을 사용합니다.
@@ -43,8 +74,8 @@ Meta 왼쪽 메뉴에 회원관리가 추가되었습니다. 이 메뉴는 로�
 
 # Wiregene Meta 사용 가이드
 
-문서 버전: Ver 2.47
-최종 업데이트: 2026-06-25
+문서 버전: Ver 2.48
+최종 업데이트: 2026-06-28
 적용 사이트: `https://meta.wiregene.com`
 소스 저장소: `rhhyun/wiregene-meta-analysis`
 

@@ -1,3 +1,60 @@
+# 2026-06-28 Synology Docker runtime lock and preflight guard
+
+User issue:
+
+- Repeated small runtime/Docker errors such as missing script paths, wrong runtime env, invalid compose fields, port conflicts, and storage-mode drift wasted time.
+- The user requested a lock mechanism so these Docker/runtime errors do not keep reappearing during execution.
+
+Implemented:
+
+- `scripts/synology-start-meta.sh`
+  - Added an atomic scheduler start lock at `/volume1/docker/meta/.start-lock` so overlapping DSM scheduler runs cannot race each other.
+  - Added `--check-only` / `META_START_CHECK_ONLY=true` preflight mode. This validates runtime state and exits before `docker compose up`.
+  - Hard-locks Synology runtime values:
+    - `APP_SOURCE_DIR=/volume1/docker/wiregene-meta-analysis`
+    - `APP_BASE_URL=https://meta.wiregene.com`
+    - `CONTAINER_NAME=wiregene-meta`
+    - `WIREGENE_APP_MODE=meta`
+    - Synology/local storage backend/root values under `download`.
+  - Validates Docker availability, Docker daemon reachability, compose config, container name safety, numeric `HOST_PORT`, writable storage/log folders, and host port collisions before startup.
+  - Blocks old Synology docker-compose top-level `name:` errors before compose startup.
+  - Keeps stale stopped `wiregene-meta` cleanup and strengthens port checks for both Docker port owners and non-Docker host listeners.
+  - Adds post-start container verification. If the container exits immediately, the scheduler log records recent Docker logs and fails clearly.
+- `synology/docker/meta/docker-compose.yml`
+  - Added a Docker healthcheck against `http://127.0.0.1:3000/`.
+- `synology/docker/meta/.env.example`
+  - Added guard settings: `META_STOP_PORT_OWNER`, `META_START_CHECK_ONLY`, `META_START_VERIFY_SECONDS`, `META_REQUIRE_HEALTHY`.
+  - Corrected `APP_BASE_URL` to `https://meta.wiregene.com`.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.113`
+  - UI label: `Ver 2.48 | 2026 copyright by JK Hyun`
+
+Synology preflight-only command:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --check-only
+```
+
+Regular Synology deploy/run command after GitHub push:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+Verification status:
+
+```text
+git diff --check: passed
+bash -n scripts/synology-start-meta.sh: passed
+compose/env static guard check: passed
+version check: passed
+npx.cmd tsc --noEmit --pretty false: passed
+npm.cmd run lint: passed
+npm.cmd run build: passed
+Temporary local preflight run: passed by failing early with a clear "Docker was not found" guard because this Windows PC does not have Docker CLI installed.
+Synology Docker daemon/compose runtime preflight: pending on DSM; run the --check-only command below after GitHub pull.
+```
+
 # 2026-06-25 Left study menu hide/show toggle
 
 User issue:
