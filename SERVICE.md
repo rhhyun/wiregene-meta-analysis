@@ -47,6 +47,20 @@ diagnostic command once and inspect `/volume1/docker/meta/logs/meta-status.log`:
 git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-meta-status.sh
 ```
 
+If DSM must monitor the service every minute, do not use the start command.
+Use the watchdog task below. It exits `0`, does not recreate a healthy running
+container, and restarts only when the container is missing or stopped:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-meta-watchdog.sh
+```
+
+Watchdog logs are written to:
+
+```txt
+/volume1/docker/meta/logs/meta-watchdog.log
+```
+
 If the start script reports missing Basic Auth values, first pull the latest
 scripts, then choose one:
 

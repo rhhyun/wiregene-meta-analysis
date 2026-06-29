@@ -1,13 +1,16 @@
 import http from "http";
 import { AddressInfo } from "net";
+import { createHash } from "crypto";
+import { writeFileSync } from "fs";
 import { refreshGoogleDriveOauthAccessToken } from "../src/lib/google-drive-oauth";
 
 const googleOauthScopes = [
   "https://www.googleapis.com/auth/drive.file",
-  "https://www.googleapis.com/auth/gmail.send",
 ].join(" ");
 const authUrl = "https://accounts.google.com/o/oauth2/v2/auth";
 const tokenUrl = "https://oauth2.googleapis.com/token";
+const tokenOutputPath = process.env.GOOGLE_DRIVE_REFRESH_TOKEN_OUT ?? "google-drive-refresh-token.local.txt";
+const printToken = process.argv.includes("--print-token");
 
 const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID ?? "";
 const clientSecret = process.env.GOOGLE_DRIVE_CLIENT_SECRET ?? "";
@@ -69,14 +72,21 @@ const server = http.createServer(async (request, response) => {
     }
 
     await refreshGoogleDriveOauthAccessToken(payload.refresh_token);
+    writeFileSync(tokenOutputPath, `${payload.refresh_token}\n`, { encoding: "utf8" });
 
     response.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
     response.end("Google Drive authorization complete and refresh token verified. You can close this tab.");
-    console.log("\nAdd this GitHub repository secret:");
-    console.log("\nName:");
+    console.log("\nGoogle Drive authorization complete and refresh token verified.");
+    console.log(`Refresh token saved locally: ${tokenOutputPath}`);
+    console.log(`Refresh token sha256 prefix: ${createHash("sha256").update(payload.refresh_token).digest("hex").slice(0, 12)}`);
+    console.log("\nVercel/GitHub secret name:");
     console.log("GOOGLE_DRIVE_REFRESH_TOKEN");
-    console.log("\nSecret:");
-    console.log(payload.refresh_token);
+    if (printToken) {
+      console.log("\nSecret:");
+      console.log(payload.refresh_token);
+    } else {
+      console.log("\nSecret value was not printed. Re-run with --print-token only when you intentionally need terminal copy/paste.");
+    }
     console.log("\nKeep GOOGLE_DRIVE_CLIENT_ID and GOOGLE_DRIVE_CLIENT_SECRET configured too.");
   } catch (exchangeError) {
     const message = exchangeError instanceof Error ? exchangeError.message : String(exchangeError);
@@ -97,6 +107,7 @@ server.listen(0, "127.0.0.1", () => {
   url.searchParams.set("scope", googleOauthScopes);
   url.searchParams.set("access_type", "offline");
   url.searchParams.set("prompt", "consent");
+  url.searchParams.set("include_granted_scopes", "true");
 
   console.log("Open this URL in your browser, sign in, and approve Google Drive access:");
   console.log(url.toString());

@@ -38,6 +38,13 @@ dev-server.*.log
 meta-analysis-*.png
 .codex-logs/
 
+# local Google OAuth repair files
+credentials.json
+token.json
+google_drive_auth.py
+google-drive-refresh-token.local.txt
+.vercel-env-production.tmp
+
 # local database
 *.db
 *.db-shm

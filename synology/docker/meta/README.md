@@ -33,6 +33,15 @@ the diagnostic task does not create another failure notification.
 git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-meta-status.sh
 ```
 
+If DSM must run a one-minute monitor, use the watchdog instead of the start
+task. It exits successfully by design, does not recreate a healthy running
+container, and calls the start script only when the container is missing or
+stopped. It writes to `/volume1/docker/meta/logs/meta-watchdog.log`.
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-meta-watchdog.sh
+```
+
 On the first run, fill `/volume1/docker/meta/.env`, then run the same command
 again.
 

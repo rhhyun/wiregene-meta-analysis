@@ -106,6 +106,70 @@ meta.wiregene.com alias: points to the new production deployment.
 https://meta.wiregene.com HEAD response: 401, expected for authenticated app.
 ```
 
+# 2026-06-30 Synology one-minute watchdog for stopped-container alarms
+
+User issue:
+
+- Synology DSM kept sending stopped/unexpected-stop warnings about Meta at roughly one-minute intervals.
+- The same warning appeared regardless of which PC was used, so this is a NAS Docker/DSM scheduler problem, not a browser or local PC problem.
+- `backup.md` showed that the 2026-06-29 alarm guard already made normal startup non-forcing, but a one-minute DSM task still should not run the deployment/start command repeatedly.
+
+Implemented:
+
+- Added `scripts/synology-meta-watchdog.sh`.
+  - Intended for one-minute DSM monitoring.
+  - Exits `0` by design so the watchdog task itself does not create another DSM failure notification.
+  - Uses `/volume1/docker/meta/.watchdog-lock` to avoid overlapping one-minute runs.
+  - Does not recreate or restart a healthy running `wiregene-meta` container.
+  - Attempts a non-forced start only when the container is missing or stopped.
+  - Logs container state, exit code, OOMKilled, health, restart count, and recent Docker logs to `/volume1/docker/meta/logs/meta-watchdog.log`.
+  - Optional flags:
+    - `META_WATCHDOG_PULL=true` attempts `git pull --ff-only` but logs and continues on failure.
+    - `META_WATCHDOG_RESTART_UNHEALTHY=true` restarts an unhealthy-but-running container; default is false.
+- Updated Synology docs to distinguish:
+  - `synology-start-meta.sh`: manual deployment, boot-time start, intentional restart.
+  - `synology-meta-status.sh`: one-time non-failing diagnostic.
+  - `synology-meta-watchdog.sh`: safe one-minute monitor.
+- Added `.env.example` watchdog defaults.
+- Added `ERROR_LEDGER.md` entry `SYNOLOGY_META_ONE_MINUTE_STOP_ALARM`.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.118`
+  - UI label: `Ver 2.53 | 2026 copyright by JK Hyun`
+
+Immediate Synology action:
+
+1. In DSM Task Scheduler, disable any one-minute task that runs `synology-start-meta.sh` or a raw Docker start/recreate command.
+2. Keep `synology-start-meta.sh` only as manual or boot-time start.
+3. If one-minute monitoring is required, use this command instead:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-meta-watchdog.sh
+```
+
+4. If warnings continue, run the diagnostic once and inspect both logs:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-meta-status.sh
+```
+
+```text
+/volume1/docker/meta/logs/meta-watchdog.log
+/volume1/docker/meta/logs/meta-status.log
+docker logs wiregene-meta
+```
+
+Verification status:
+
+```text
+bash -n scripts/synology-start-meta.sh: passed
+bash -n scripts/synology-meta-status.sh: passed
+bash -n scripts/synology-meta-watchdog.sh: passed
+git diff --check: passed
+npx.cmd tsc --noEmit --pretty false: passed
+npm.cmd run lint: passed
+npm.cmd run build: passed
+```
+
 # 2026-06-29 Google Drive OAuth raw-error suppression
 
 User issue:
