@@ -54,6 +54,13 @@ type DatasetOverview = {
     editableFieldCount: number;
   };
   updatedAt: string;
+  storage?: {
+    unavailable?: boolean;
+    warning?: string;
+    details?: unknown;
+    reconnectUrl?: string;
+    storagePolicyUrl?: string;
+  };
 };
 
 type MetaExtractionDatasetPanelProps = {
@@ -161,6 +168,7 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
   const [xlsxDownloading, setXlsxDownloading] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const storageUnavailable = Boolean(overview?.storage?.unavailable);
 
   const sections = useMemo(() => [auditSection, ...extractionSections], [extractionSections]);
   const extractionColumns = useMemo(
@@ -217,6 +225,9 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
         );
         if (cancelled) return;
         setOverview(payload);
+        if (payload.storage?.unavailable) {
+          setError(payload.storage.warning || "Google Drive storage is unavailable. Reconnect storage and refresh.");
+        }
         const firstRecord = payload.records[0];
         if (firstRecord) selectRecord(firstRecord);
       } catch (caught) {
@@ -240,6 +251,9 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
         await fetch(datasetApiUrl(), { cache: "no-store" }),
       );
       setOverview(payload);
+      if (payload.storage?.unavailable) {
+        setError(payload.storage.warning || "Google Drive storage is unavailable. Reconnect storage and refresh.");
+      }
       const nextRecord = payload.records.find((record) => record.id === preferredId) ?? payload.records[0];
       if (nextRecord) selectRecord(nextRecord);
     } catch (caught) {
@@ -264,7 +278,7 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
   }
 
   async function saveDataset(markVerified = verified) {
-    if (!overview || !selectedRecord) return;
+    if (!overview || !selectedRecord || storageUnavailable) return;
     setSaving(true);
     setError("");
     setNotice("");
@@ -317,7 +331,7 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
   }
 
   async function saveDraftCsv() {
-    if (!overview?.csv) return;
+    if (!overview?.csv || storageUnavailable) return;
     setExportSaving(true);
     setError("");
     setNotice("");
@@ -344,7 +358,7 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
   }
 
   async function downloadXlsx() {
-    if (!overview?.records.length) return;
+    if (!overview?.records.length || storageUnavailable) return;
     setXlsxDownloading(true);
     setError("");
     setNotice("");
@@ -400,7 +414,7 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
           <button
             type="button"
             onClick={() => void downloadXlsx()}
-            disabled={!overview?.records.length || xlsxDownloading}
+            disabled={!overview?.records.length || xlsxDownloading || storageUnavailable}
             className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-3 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
           >
             {xlsxDownloading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Download className="h-4 w-4" aria-hidden />}
@@ -409,7 +423,7 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
           <button
             type="button"
             onClick={() => void copyCsv(overview?.csv ?? "", "Draft Excel CSV")}
-            disabled={!overview?.records.length}
+            disabled={!overview?.records.length || storageUnavailable}
             className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-sm font-semibold text-zinc-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <FileSpreadsheet className="h-4 w-4" aria-hidden />
@@ -418,7 +432,7 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
           <button
             type="button"
             onClick={() => void saveDraftCsv()}
-            disabled={!overview?.records.length || exportSaving}
+            disabled={!overview?.records.length || exportSaving || storageUnavailable}
             className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-sky-300 bg-white px-3 text-sm font-semibold text-sky-800 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Save className="h-4 w-4" aria-hidden />
@@ -536,6 +550,22 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
 
       {notice ? <StatusMessage tone="success" message={notice} /> : null}
       {error ? <StatusMessage tone="error" message={error} /> : null}
+      {storageUnavailable ? (
+        <div className="mt-3 flex flex-wrap gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-950">
+          <a
+            href={overview?.storage?.reconnectUrl || "/api/google-drive/oauth/start?diagnose=1"}
+            className="inline-flex h-8 items-center justify-center rounded-md border border-amber-300 bg-white px-3 transition hover:bg-amber-100"
+          >
+            Reconnect Google Drive
+          </a>
+          <a
+            href={overview?.storage?.storagePolicyUrl || "/api/meta-analysis/storage-policy?googleDriveHealth=1"}
+            className="inline-flex h-8 items-center justify-center rounded-md border border-amber-300 bg-white px-3 transition hover:bg-amber-100"
+          >
+            Storage diagnostics
+          </a>
+        </div>
+      ) : null}
 
       <div className="mt-4 grid gap-4 xl:grid-cols-[22rem_1fr]">
         <section className="rounded-md border border-emerald-200 bg-white">
@@ -587,6 +617,7 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
                   <button
                     type="button"
                     onClick={() => void copyCsv(selectedCsv, "Selected Excel row CSV")}
+                    disabled={storageUnavailable}
                     className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-sm font-semibold text-zinc-700 transition hover:border-emerald-300 hover:bg-emerald-50"
                   >
                     <FileSpreadsheet className="h-4 w-4" aria-hidden />
@@ -595,7 +626,7 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
                   <button
                     type="button"
                     onClick={() => void saveDataset(false)}
-                    disabled={saving}
+                    disabled={saving || storageUnavailable}
                     className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-emerald-300 bg-white px-3 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {saving ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Save className="h-4 w-4" aria-hidden />}
@@ -607,7 +638,7 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
                       setVerified(true);
                       void saveDataset(true);
                     }}
-                    disabled={saving}
+                    disabled={saving || storageUnavailable}
                     className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-3 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
                   >
                     {saving ? (

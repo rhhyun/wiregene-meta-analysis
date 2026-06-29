@@ -1,3 +1,33 @@
+# 2026-06-29 Google Drive OAuth unavailable hardening
+
+User issue:
+
+- Screening showed: `meta full-text history storage read failed ... Google Drive OAuth is unavailable. Diagnostic code: GOOGLE_OAUTH_INVALID_GRANT.`
+- Google OAuth invalid-grant errors have occurred repeatedly and must not break the screening workflow or risk empty fallback data being mistaken for the shared research dataset.
+
+Implemented:
+
+- Full-text history GET now treats recoverable Google Drive/OAuth read failures as a guarded `storage.unavailable` response instead of a hard 400 screening failure.
+- The saved full-text article list:
+  - displays a storage-unavailable banner with `Reconnect Google Drive` and `Storage diagnostics`;
+  - uses the last browser snapshot only as a marked read-only display copy;
+  - does not persist unavailable/empty responses into the local browser cache;
+  - disables write actions while storage is unavailable: analyze/save, source attach, AI rerun, reviewer settings save, verification save, and delete.
+- Included-paper Excel dataset GET now returns a guarded unavailable payload for panel rendering when Google Drive cannot be read.
+- Excel dataset save/export actions remain disabled/blocked until shared storage is reconnected.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.114`
+  - UI label: `Ver 2.49 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed.
+npm.cmd run lint: passed.
+npm.cmd run build: passed.
+git diff --check: passed.
+```
+
 # 2026-06-28 Synology Docker runtime lock and preflight guard
 
 User issue:

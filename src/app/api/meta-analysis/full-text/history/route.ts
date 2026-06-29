@@ -7,6 +7,7 @@ import {
   updateMetaFullTextReviewerSettings,
 } from "@/lib/meta-full-text-history";
 import { cleanMetaProjectId } from "@/lib/meta-project-scope";
+import { googleDriveFallbackWarning, isRecoverableGoogleDriveStorageError } from "@/lib/meta-storage-policy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,6 +44,33 @@ export async function GET(request: Request) {
     });
     return NextResponse.json(overview);
   } catch (error) {
+    if (isRecoverableGoogleDriveStorageError(error)) {
+      return NextResponse.json(
+        {
+          records: [],
+          reviewerSettings: {
+            reviewerOneName: "",
+            reviewerTwoName: "",
+            updatedAt: null,
+          },
+          stats: {
+            totalCount: 0,
+            verificationCompletedCount: 0,
+          },
+          storage: {
+            unavailable: true,
+            warning: googleDriveFallbackWarning(error),
+            details: metaFullTextHistoryStorageErrorDetails(error),
+            reconnectUrl: "/api/google-drive/oauth/start?diagnose=1",
+            storagePolicyUrl: "/api/meta-analysis/storage-policy?googleDriveHealth=1",
+          },
+        },
+        {
+          status: 200,
+          headers: { "cache-control": "no-store" },
+        },
+      );
+    }
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "Saved full-text analyses could not be loaded.",

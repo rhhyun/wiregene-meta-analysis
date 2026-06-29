@@ -1,5 +1,18 @@
 # Wiregene Meta — 개발 작업 계획 (plan.md)
 
+## 2026-06-29 Google Drive OAuth unavailable hardening checkpoint
+
+- Active version after this checkpoint: `Ver 2.49`, package `0.1.114`.
+- Root issue: `GOOGLE_OAUTH_INVALID_GRANT` invalidates the Google Drive refresh token, so the app cannot read shared full-text history until OAuth is reconnected.
+- Changed the full-text history GET API so recoverable Google Drive/OAuth read failures return a normal `storage.unavailable` payload instead of a hard 400 screening failure.
+- The screening full-text history panel now:
+  - shows a clear Google Drive unavailable banner with `Reconnect Google Drive` and `Storage diagnostics` links;
+  - uses the last browser snapshot only as a read-only display copy when available;
+  - does not persist an unavailable/empty response into the browser cache;
+  - disables history write actions while storage is unavailable, including analyze/save, reviewer settings save, source attach, AI rerun, verification save, and deletes.
+- The Included-paper Excel dataset GET API now returns a guarded unavailable payload for read-only panel rendering, while XLSX generation and PATCH saves remain blocked until storage is reconnected.
+- This does not make an expired Google refresh token valid again; it prevents screening from failing destructively and prevents empty local/fallback data from being mistaken for the shared Google Drive dataset.
+
 ## 2026-06-23 analysis-ready Excel schema checkpoint
 
 - Active version after this checkpoint: `Ver 2.44`, package `0.1.109`.

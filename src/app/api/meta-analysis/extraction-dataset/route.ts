@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import {
   getMetaExtractionDatasetOverview,
+  metaExtractionDatasetColumns,
   metaExtractionDatasetScope,
   saveMetaExtractionDatasetRecord,
 } from "@/lib/meta-extraction-dataset";
 import { createMetaExtractionDatasetXlsx } from "@/lib/meta-extraction-xlsx";
 import { metaFullTextHistoryStorageErrorDetails } from "@/lib/meta-full-text-history";
+import { googleDriveFallbackWarning, isRecoverableGoogleDriveStorageError } from "@/lib/meta-storage-policy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,6 +34,39 @@ export async function GET(request: Request) {
     }
     return NextResponse.json(overview);
   } catch (error) {
+    const format = url.searchParams.get("format");
+    if (format !== "xlsx" && isRecoverableGoogleDriveStorageError(error)) {
+      const columns = metaExtractionDatasetColumns(scope.extractionColumns);
+      return NextResponse.json(
+        {
+          columns,
+          records: [],
+          csv: columns.join(","),
+          stats: {
+            includedRecordCount: 0,
+            excelRowCount: 0,
+            verifiedRowCount: 0,
+            manualRequiredFieldCount: 0,
+            evidenceBackedFieldCount: 0,
+            autoFilledFieldCount: 0,
+            blankFieldCount: 0,
+            editableFieldCount: 0,
+          },
+          updatedAt: new Date().toISOString(),
+          storage: {
+            unavailable: true,
+            warning: googleDriveFallbackWarning(error),
+            details: metaFullTextHistoryStorageErrorDetails(error),
+            reconnectUrl: "/api/google-drive/oauth/start?diagnose=1",
+            storagePolicyUrl: "/api/meta-analysis/storage-policy?googleDriveHealth=1",
+          },
+        },
+        {
+          status: 200,
+          headers: { "cache-control": "no-store" },
+        },
+      );
+    }
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "Extraction dataset could not be loaded.",

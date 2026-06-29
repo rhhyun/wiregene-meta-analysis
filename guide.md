@@ -74,10 +74,20 @@ Meta 왼쪽 메뉴에 회원관리가 추가되었습니다. 이 메뉴는 로�
 
 # Wiregene Meta 사용 가이드
 
-문서 버전: Ver 2.48
-최종 업데이트: 2026-06-28
-적용 사이트: `https://meta.wiregene.com`
+문서 버전: Ver 2.49
+최종 업데이트: 2026-06-29
+적용 사이트: `https://meta.wiregene.com` (`https://search.wiregene.com` Meta mode alias)
 소스 저장소: `rhhyun/wiregene-meta-analysis`
+
+### Google Drive OAuth unavailable handling
+
+Ver 2.49 prevents Google Drive OAuth failure from breaking the screening workflow destructively.
+
+- If Google returns `GOOGLE_OAUTH_INVALID_GRANT`, the refresh token must be regenerated/reconnected. Code cannot make a revoked token valid again.
+- The saved full-text history panel now shows a storage-unavailable banner with `Reconnect Google Drive` and `Storage diagnostics`.
+- If a browser snapshot exists, it is displayed as a read-only last snapshot. It is not treated as authoritative shared storage.
+- While Google Drive is unavailable, write actions are disabled: analyze/save, source attach, AI rerun, reviewer settings save, verification save, and delete.
+- The Included-paper Excel dataset panel also blocks save/export actions until shared storage is reconnected.
 
 ### Analysis-ready Excel export
 
@@ -141,7 +151,7 @@ Santos et al. 2024, `Odds ratio of occurrence of pain, postural changes, and dis
 - VAS/DASH는 SD, denominator, group definition, extractable summary가 부족하면 narrative only로 둡니다.
 - 보고된 posture/practice OR는 CI, SE, exact p value, 안정적인 model definition이 없으면 pooled risk-factor estimate로 쓰지 않고 탐색적 서술 근거로만 유지합니다.
 
-빠른 현재 기준: Ver 2.44부터 Musician PRMD pain 프로젝트는 `screening 완료`가 아니라 `AI full-text triage/extraction draft 후 reviewer/PI adjudication 전 단계`로 봅니다. Title/population은 `Instrumental Musicians`로 정합화하고, Excel extraction 전 `1652 -> 259 -> 253 -> 82 -> 72/71` audit lock을 먼저 완료합니다. Primary quantitative RoB는 JBI prevalence Q1-Q9로 재평가하고, Excel dataset은 study-level/result-level/RoB-codebook sheet로 분리하며 `Manual required`는 unresolved blocker만 의미합니다.
+빠른 현재 기준: Ver 2.45부터 Musician PRMD pain 프로젝트는 `screening 완료`가 아니라 `AI full-text triage/extraction draft 후 reviewer/PI adjudication 전 단계`로 봅니다. Title/population은 `Instrumental Musicians`로 정합화하고, Excel extraction 전 `1652 -> 259 -> 253 -> 82 -> 72/71` audit lock을 먼저 완료합니다. Primary quantitative RoB는 JBI prevalence Q1-Q9로 재평가하고, Excel dataset은 study-level/result-level/RoB-codebook sheet로 분리하며 `Manual required`는 unresolved blocker만 의미합니다. Google Drive OAuth가 끊기면 screening은 read-only unavailable 상태로 전환하고 write 동작을 막습니다.
 
 ## 2026-06-21 Ver 2.30 업데이트: full-text 업로드 기본값은 새 article 저장
 

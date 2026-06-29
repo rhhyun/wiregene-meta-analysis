@@ -126,10 +126,19 @@ type MetaFullTextHistoryStats = {
   verificationCompletedCount: number;
 };
 
+type MetaFullTextHistoryStorageStatus = {
+  unavailable?: boolean;
+  warning?: string;
+  details?: unknown;
+  reconnectUrl?: string;
+  storagePolicyUrl?: string;
+};
+
 type MetaFullTextHistoryOverviewPayload = {
   records: MetaFullTextHistorySummary[];
   reviewerSettings?: MetaFullTextReviewerSettings;
   stats?: MetaFullTextHistoryStats;
+  storage?: MetaFullTextHistoryStorageStatus;
 };
 
 type CachedMetaFullTextHistoryOverview = MetaFullTextHistoryOverviewPayload & {
@@ -1032,6 +1041,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
   const [historyItems, setHistoryItems] = useState<MetaFullTextHistorySummary[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [historyError, setHistoryError] = useState("");
+  const [historyStorage, setHistoryStorage] = useState<MetaFullTextHistoryStorageStatus | null>(null);
   const [historyStats, setHistoryStats] = useState<MetaFullTextHistoryStats>({
     totalCount: 0,
     verificationCompletedCount: 0,
@@ -1112,6 +1122,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
     () => (currentHistoryItem ? historyItems.findIndex((item) => item.id === currentHistoryItem.id) : -1),
     [currentHistoryItem, historyItems],
   );
+  const historyStorageUnavailable = Boolean(historyStorage?.unavailable);
   const historyOriginalIndexById = useMemo(
     () => new Map(historyItems.map((item, index) => [item.id, index])),
     [historyItems],
@@ -1122,7 +1133,8 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
       files.length === 1 &&
       firstSelectedFile &&
       !isAnalyzing &&
-      !isSavingSourceToHistory,
+      !isSavingSourceToHistory &&
+      !historyStorageUnavailable,
   );
   const canUpgradeLegacyRecordWithAi = canSaveSourceToLegacyRecord && selectedRunnableAiReviewerIds.length > 0;
   const savedSourceActionDisabled =
@@ -1373,7 +1385,8 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
     selectedRunnableAiReviewerIds.length === 0 ||
     isAnalyzing ||
     isReanalyzingSavedSource ||
-    isSavingSourceToHistory;
+    isSavingSourceToHistory ||
+    historyStorageUnavailable;
   const batchFileMatches = useMemo(
     () => files.map((file) => batchMatchForFile(file, historyItems)),
     [files, historyItems],
@@ -1530,6 +1543,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
 
   const applyHistoryOverview = useCallback((payload: MetaFullTextHistoryOverviewPayload, options: { persistCache?: boolean } = {}) => {
     setHistoryItems(payload.records);
+    setHistoryStorage(payload.storage ?? null);
     setSelectedHistoryIdsForDelete((current) => {
       const validIds = new Set(payload.records.map((record) => record.id));
       return current.filter((id) => validIds.has(id));
@@ -1543,8 +1557,29 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
           Boolean(payload.reviewerSettings.reviewerTwoName.trim()),
       );
     }
-    if (options.persistCache !== false) writeCachedFullTextHistoryOverview(projectId, payload);
+    if (options.persistCache !== false && !payload.storage?.unavailable) writeCachedFullTextHistoryOverview(projectId, payload);
   }, [projectId]);
+
+  const applyHistoryUnavailablePayload = useCallback((payload: MetaFullTextHistoryOverviewPayload) => {
+    const message = payload.storage?.warning || fullTextHistoryUnavailableMessage("Google Drive storage is unavailable.");
+    const cached = readCachedFullTextHistoryOverview(projectId);
+    if (cached?.records.length) {
+      applyHistoryOverview(
+        {
+          ...cached,
+          storage: payload.storage,
+        },
+        { persistCache: false },
+      );
+      setHistoryError(
+        `${message} Showing the last browser snapshot from ${new Date(cached.cachedAt).toLocaleString()}.`,
+      );
+      return;
+    }
+
+    applyHistoryOverview(payload, { persistCache: false });
+    setHistoryError(message);
+  }, [applyHistoryOverview, projectId]);
 
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
@@ -1553,7 +1588,11 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
       const payload = await readHistoryListPayload(
         await fetch(fullTextHistoryListUrl(projectId), { cache: "no-store" }),
       );
-      applyHistoryOverview(payload);
+      if (payload.storage?.unavailable) {
+        applyHistoryUnavailablePayload(payload);
+      } else {
+        applyHistoryOverview(payload);
+      }
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Saved full-text analyses could not be loaded.";
       const cached = readCachedFullTextHistoryOverview(projectId);
@@ -1568,7 +1607,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
     } finally {
       setHistoryLoading(false);
     }
-  }, [applyHistoryOverview, projectId]);
+  }, [applyHistoryOverview, applyHistoryUnavailablePayload, projectId]);
 
   const loadAiReviewerSettings = useCallback(async () => {
     setAiSettingsLoading(true);
@@ -1601,7 +1640,13 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
         const payload = await readHistoryListPayload(
           await fetch(fullTextHistoryListUrl(projectId), { cache: "no-store" }),
         );
-        if (!cancelled) applyHistoryOverview(payload);
+        if (!cancelled) {
+          if (payload.storage?.unavailable) {
+            applyHistoryUnavailablePayload(payload);
+          } else {
+            applyHistoryOverview(payload);
+          }
+        }
       } catch (caught) {
         if (!cancelled) {
           const message = caught instanceof Error ? caught.message : "Saved full-text analyses could not be loaded.";
@@ -1624,7 +1669,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
     return () => {
       cancelled = true;
     };
-  }, [applyHistoryOverview, projectId]);
+  }, [applyHistoryOverview, applyHistoryUnavailablePayload, projectId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -2866,7 +2911,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
           <button
             type="button"
             onClick={() => void saveReviewerSettings()}
-            disabled={isSavingReviewerSettings || !reviewerOneName.trim() || !reviewerTwoName.trim()}
+            disabled={isSavingReviewerSettings || historyStorageUnavailable || !reviewerOneName.trim() || !reviewerTwoName.trim()}
             className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-3 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
           >
             {isSavingReviewerSettings ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Save className="h-4 w-4" aria-hidden />}
@@ -3190,7 +3235,23 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
         </div>
         {historyError ? (
           <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-950">
-            {historyError}
+            <p>{historyError}</p>
+            {historyStorageUnavailable ? (
+              <div className="mt-2 flex flex-wrap gap-2">
+                <a
+                  href={historyStorage?.reconnectUrl || "/api/google-drive/oauth/start?diagnose=1"}
+                  className="inline-flex h-8 items-center justify-center rounded-md border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-950 transition hover:bg-amber-100"
+                >
+                  Reconnect Google Drive
+                </a>
+                <a
+                  href={historyStorage?.storagePolicyUrl || "/api/meta-analysis/storage-policy?googleDriveHealth=1"}
+                  className="inline-flex h-8 items-center justify-center rounded-md border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-950 transition hover:bg-amber-100"
+                >
+                  Storage diagnostics
+                </a>
+              </div>
+            ) : null}
           </div>
         ) : null}
         <div className="mt-3 min-w-0 rounded-md border border-emerald-200 bg-white p-2 sm:p-3">
@@ -3215,6 +3276,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                 onClick={analyzeFullText}
                 disabled={
                   isAnalyzing ||
+                  historyStorageUnavailable ||
                   files.length === 0 ||
                   selectedRunnableAiReviewerIds.length === 0 ||
                   Boolean(currentHistoryItem && !currentHistoryItem.sourceFileSaved && files.length === 1)
@@ -3404,7 +3466,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
               <button
                 type="button"
                 onClick={prepareRiskOfBiasReanalysisSelection}
-                disabled={primaryQuantitativeIncludedSourceSavedHistoryItems.length === 0 || isAnalyzing}
+                disabled={primaryQuantitativeIncludedSourceSavedHistoryItems.length === 0 || isAnalyzing || historyStorageUnavailable}
                 className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-emerald-300 bg-white px-2 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:border-zinc-200 disabled:text-zinc-400 sm:px-3"
                 title="Prepare JBI RoB rerun"
               >
@@ -3581,7 +3643,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                     <button
                       type="button"
                       onClick={() => void deleteSelectedHistoryRecords()}
-                      disabled={selectedHistoryIdsForDelete.length === 0 || isBatchDeletingHistory || isAnalyzing || isSavingVerification}
+                      disabled={selectedHistoryIdsForDelete.length === 0 || isBatchDeletingHistory || isAnalyzing || isSavingVerification || historyStorageUnavailable}
                       className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-rose-300 bg-white px-3 text-xs font-semibold text-rose-800 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:border-zinc-200 disabled:text-zinc-400"
                     >
                       {isBatchDeletingHistory ? (
@@ -3755,7 +3817,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                     <button
                       type="button"
                       onClick={() => void deleteSavedHistoryRecord(currentHistoryItem.id)}
-                      disabled={deletingHistoryId === currentHistoryItem.id || isBatchDeletingHistory || isAnalyzing || isSavingVerification}
+                      disabled={deletingHistoryId === currentHistoryItem.id || isBatchDeletingHistory || isAnalyzing || isSavingVerification || historyStorageUnavailable}
                       className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-rose-300 bg-white px-3 text-xs font-semibold text-rose-800 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:border-zinc-200 disabled:text-zinc-400"
                     >
                       {deletingHistoryId === currentHistoryItem.id ? (
@@ -4092,7 +4154,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
               <button
                 type="button"
                 onClick={() => void saveVerification()}
-                disabled={isSavingVerification || !currentHistoryId}
+                disabled={isSavingVerification || historyStorageUnavailable || !currentHistoryId}
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-3 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
               >
                 {isSavingVerification ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Save className="h-4 w-4" aria-hidden />}
@@ -4102,7 +4164,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                 <button
                   type="button"
                   onClick={() => void restoreDualReviewerWorkflow()}
-                  disabled={isSavingVerification || !currentHistoryId}
+                  disabled={isSavingVerification || historyStorageUnavailable || !currentHistoryId}
                   className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-sky-200 bg-white px-3 text-sm font-semibold text-sky-800 transition hover:bg-sky-50 disabled:cursor-not-allowed disabled:text-zinc-400"
                 >
                   Restore reviewer 1/2 workflow
@@ -4111,7 +4173,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
                 <button
                   type="button"
                   onClick={() => void skipReviewerWorkflowForAiOnly()}
-                  disabled={isSavingVerification || !currentHistoryId || !analysis}
+                  disabled={isSavingVerification || historyStorageUnavailable || !currentHistoryId || !analysis}
                   className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 text-sm font-semibold text-amber-950 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:border-zinc-200 disabled:bg-zinc-50 disabled:text-zinc-400"
                 >
                   Skip reviewer 1/2: AI-only
