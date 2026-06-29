@@ -1,3 +1,27 @@
+# 2026-06-29 Google Drive OAuth raw-error suppression
+
+User issue:
+
+- The Screening page still showed a red raw storage message: `meta full-text history storage read failed ... operation/path/backend/message/help ... GOOGLE_OAUTH_INVALID_GRANT`.
+- The article list could be visible from the browser snapshot, but secondary history/detail calls could still surface the raw API error.
+
+Implemented:
+
+- Strengthened Google Drive recoverable-error detection to inspect nested `details`, `cause`, `error`, `response`, and body payloads.
+- Full-text history list and Included-paper Excel dataset routes now classify OAuth failures by both thrown error and normalized storage details.
+- Full-text history detail, verification, delete, source attach, and saved-source AI rerun routes now return guarded `storage.unavailable` responses for Google Drive OAuth failures.
+- Client API error formatting now replaces nested Google Drive OAuth storage diagnostics with a controlled reconnect message.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.115`
+  - UI label: `Ver 2.50 | 2026 copyright by JK Hyun`
+
+Verification:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed.
+git diff --check: passed.
+```
+
 # 2026-06-29 Google Drive OAuth unavailable hardening
 
 User issue:

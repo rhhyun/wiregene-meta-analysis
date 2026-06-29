@@ -2,7 +2,7 @@
 
 ## 2026-06-29 Google Drive OAuth unavailable hardening checkpoint
 
-- Active version after this checkpoint: `Ver 2.49`, package `0.1.114`.
+- Active version after this checkpoint: `Ver 2.50`, package `0.1.115`.
 - Root issue: `GOOGLE_OAUTH_INVALID_GRANT` invalidates the Google Drive refresh token, so the app cannot read shared full-text history until OAuth is reconnected.
 - Changed the full-text history GET API so recoverable Google Drive/OAuth read failures return a normal `storage.unavailable` payload instead of a hard 400 screening failure.
 - The screening full-text history panel now:
@@ -11,6 +11,8 @@
   - does not persist an unavailable/empty response into the browser cache;
   - disables history write actions while storage is unavailable, including analyze/save, reviewer settings save, source attach, AI rerun, verification save, and deletes.
 - The Included-paper Excel dataset GET API now returns a guarded unavailable payload for read-only panel rendering, while XLSX generation and PATCH saves remain blocked until storage is reconnected.
+- Full-text history detail, verification, delete, source-attach, and saved-source AI rerun routes now return a guarded storage-unavailable response instead of exposing raw `operation/path/backend/message/help` storage details.
+- Client API error formatting now detects nested Google Drive OAuth payloads and replaces raw storage diagnostics with a controlled reconnect message.
 - This does not make an expired Google refresh token valid again; it prevents screening from failing destructively and prevents empty local/fallback data from being mistaken for the shared Google Drive dataset.
 
 ## 2026-06-23 analysis-ready Excel schema checkpoint

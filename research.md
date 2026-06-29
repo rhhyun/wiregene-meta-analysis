@@ -7,6 +7,7 @@ Google Drive OAuth failure handling is part of the research-data safety protocol
 - `GOOGLE_OAUTH_INVALID_GRANT` means the refresh token is invalid, expired, revoked, or mismatched with the deployed OAuth client. Code cannot repair that token; the operator must reconnect Google Drive and redeploy/update environment variables when required.
 - Screening must not crash or show an empty shared dataset as if records were deleted when Google Drive cannot be read.
 - Full-text history read failures from recoverable Google Drive/OAuth errors must return `storage.unavailable=true` with reconnect and diagnostic links.
+- Nested Google Drive OAuth errors in API `details` payloads must be treated as recoverable storage-unavailable events, not shown to researchers as raw `operation/path/backend/message/help` diagnostics.
 - Browser/local cache may be shown only as a clearly marked last snapshot. It is not authoritative shared storage and must not be written back while Google Drive is unavailable.
 - While storage is unavailable, history write actions must be disabled: new analysis save, source attach, saved-source rerun, reviewer settings save, verification save, and delete.
 - Included-paper Excel dataset verification may render a guarded unavailable state, but export/save actions must remain blocked until shared storage is reconnected.

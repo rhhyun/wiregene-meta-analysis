@@ -13,6 +13,7 @@ import { readVerifiedMetaFullTextSourceFile } from "@/lib/meta-full-text-source-
 import { normalizeMetaFullTextResearcherGuidance } from "@/lib/meta-full-text-prompt-guidance";
 import { cleanMetaProjectId } from "@/lib/meta-project-scope";
 import { orchestralPainProject } from "@/lib/meta-projects";
+import { googleDriveFallbackWarning, isRecoverableGoogleDriveStorageError } from "@/lib/meta-storage-policy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -76,6 +77,8 @@ export async function POST(request: Request, context: RouteContext) {
       },
     });
   } catch (error) {
+    const storageUnavailable = fullTextStorageUnavailableResponse(error, "Saved full-text source could not be reanalyzed.");
+    if (storageUnavailable) return storageUnavailable;
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "Saved full-text source could not be reanalyzed.",
@@ -84,6 +87,28 @@ export async function POST(request: Request, context: RouteContext) {
       { status: 400 },
     );
   }
+}
+
+function fullTextStorageUnavailableResponse(error: unknown, fallbackError: string) {
+  const details = metaFullTextHistoryStorageErrorDetails(error);
+  if (!isRecoverableGoogleDriveStorageError(error) && !isRecoverableGoogleDriveStorageError(details)) return null;
+  return NextResponse.json(
+    {
+      error: fallbackError,
+      details,
+      storage: {
+        unavailable: true,
+        warning: googleDriveFallbackWarning(details),
+        details,
+        reconnectUrl: "/api/google-drive/oauth/start?diagnose=1",
+        storagePolicyUrl: "/api/meta-analysis/storage-policy?googleDriveHealth=1",
+      },
+    },
+    {
+      status: 503,
+      headers: { "cache-control": "no-store" },
+    },
+  );
 }
 
 async function parseReanalyzeRequest(request: Request): Promise<ReanalyzeRequest> {

@@ -74,20 +74,21 @@ Meta 왼쪽 메뉴에 회원관리가 추가되었습니다. 이 메뉴는 로�
 
 # Wiregene Meta 사용 가이드
 
-문서 버전: Ver 2.49
+문서 버전: Ver 2.50
 최종 업데이트: 2026-06-29
 적용 사이트: `https://meta.wiregene.com` (`https://search.wiregene.com` Meta mode alias)
 소스 저장소: `rhhyun/wiregene-meta-analysis`
 
 ### Google Drive OAuth unavailable handling
 
-Ver 2.49 prevents Google Drive OAuth failure from breaking the screening workflow destructively.
+Ver 2.50 prevents Google Drive OAuth failure from breaking the screening workflow destructively.
 
 - If Google returns `GOOGLE_OAUTH_INVALID_GRANT`, the refresh token must be regenerated/reconnected. Code cannot make a revoked token valid again.
 - The saved full-text history panel now shows a storage-unavailable banner with `Reconnect Google Drive` and `Storage diagnostics`.
 - If a browser snapshot exists, it is displayed as a read-only last snapshot. It is not treated as authoritative shared storage.
 - While Google Drive is unavailable, write actions are disabled: analyze/save, source attach, AI rerun, reviewer settings save, verification save, and delete.
 - The Included-paper Excel dataset panel also blocks save/export actions until shared storage is reconnected.
+- If an older API path returns nested Google Drive OAuth diagnostics, the UI replaces raw storage details with the same reconnect message instead of exposing `operation/path/backend/message/help` text.
 
 ### Analysis-ready Excel export
 

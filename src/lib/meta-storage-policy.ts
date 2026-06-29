@@ -122,13 +122,22 @@ function googleDriveStorageErrorCode(error: unknown) {
   return "";
 }
 
-function errorSearchText(error: unknown) {
+function errorSearchText(error: unknown, seen = new WeakSet<object>()) {
   const parts = [errorMessage(error)];
   if (error && typeof error === "object") {
-    const details = (error as { details?: unknown }).details;
-    if (details) parts.push(safeStringify(details));
-    const cause = (error as { cause?: unknown }).cause;
-    if (cause) parts.push(errorSearchText(cause));
+    if (seen.has(error)) return parts.filter(Boolean).join(" ");
+    seen.add(error);
+    const record = error as Record<string, unknown>;
+    for (const key of ["name", "code", "message", "details", "cause", "error", "errors", "response", "body"]) {
+      const value = record[key];
+      if (!value) continue;
+      if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+        parts.push(String(value));
+      } else if (typeof value === "object") {
+        parts.push(safeStringify(value));
+        parts.push(errorSearchText(value, seen));
+      }
+    }
   }
   return parts.filter(Boolean).join(" ");
 }

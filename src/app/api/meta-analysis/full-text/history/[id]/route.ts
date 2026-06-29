@@ -8,6 +8,7 @@ import {
   updateMetaFullTextVerification,
 } from "@/lib/meta-full-text-history";
 import { cleanMetaProjectId } from "@/lib/meta-project-scope";
+import { googleDriveFallbackWarning, isRecoverableGoogleDriveStorageError } from "@/lib/meta-storage-policy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,6 +26,8 @@ export async function GET(request: Request, context: RouteContext) {
     if (!record) return NextResponse.json({ error: "Saved full-text analysis was not found." }, { status: 404 });
     return NextResponse.json({ record });
   } catch (error) {
+    const storageUnavailable = fullTextStorageUnavailableResponse(error, "Saved full-text analysis could not be loaded.");
+    if (storageUnavailable) return storageUnavailable;
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "Saved full-text analysis could not be loaded.",
@@ -59,6 +62,8 @@ export async function PATCH(request: Request, context: RouteContext) {
     if (!record) return NextResponse.json({ error: "Saved full-text analysis was not found." }, { status: 404 });
     return NextResponse.json({ record });
   } catch (error) {
+    const storageUnavailable = fullTextStorageUnavailableResponse(error, "Saved full-text verification could not be updated.");
+    if (storageUnavailable) return storageUnavailable;
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "Saved full-text verification could not be updated.",
@@ -84,6 +89,8 @@ export async function DELETE(request: Request, context: RouteContext) {
       sourceFileDeleteWarning: deleted.sourceFileDeleteWarning,
     });
   } catch (error) {
+    const storageUnavailable = fullTextStorageUnavailableResponse(error, "Saved full-text analysis could not be deleted.");
+    if (storageUnavailable) return storageUnavailable;
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "Saved full-text analysis could not be deleted.",
@@ -92,4 +99,26 @@ export async function DELETE(request: Request, context: RouteContext) {
       { status: 400 },
     );
   }
+}
+
+function fullTextStorageUnavailableResponse(error: unknown, fallbackError: string) {
+  const details = metaFullTextHistoryStorageErrorDetails(error);
+  if (!isRecoverableGoogleDriveStorageError(error) && !isRecoverableGoogleDriveStorageError(details)) return null;
+  return NextResponse.json(
+    {
+      error: fallbackError,
+      details,
+      storage: {
+        unavailable: true,
+        warning: googleDriveFallbackWarning(details),
+        details,
+        reconnectUrl: "/api/google-drive/oauth/start?diagnose=1",
+        storagePolicyUrl: "/api/meta-analysis/storage-policy?googleDriveHealth=1",
+      },
+    },
+    {
+      status: 503,
+      headers: { "cache-control": "no-store" },
+    },
+  );
 }

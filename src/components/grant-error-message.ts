@@ -11,11 +11,43 @@ const friendlyApiErrors: Record<string, string> = {
 
 export function apiErrorMessage(payload: unknown, fallback: string) {
   const data = payload && typeof payload === "object" ? (payload as { error?: unknown; details?: unknown }) : {};
+  const storageUnavailable = googleDriveStorageUnavailableMessage(payload);
+  if (storageUnavailable) return storageUnavailable;
   const rawBase = typeof data.error === "string" && data.error.trim() ? data.error.trim() : fallback;
   const base = friendlyApiErrors[rawBase] ?? rawBase;
   const details = formatErrorDetails(data.details);
 
   return details ? `${base} 상세: ${details}` : base;
+}
+
+function googleDriveStorageUnavailableMessage(payload: unknown) {
+  const text = payloadSearchText(payload);
+  if (!/GOOGLE_OAUTH_|Google Drive OAuth|Google OAuth|invalid_grant|invalid_client|google-drive/i.test(text)) return "";
+  const code = /GOOGLE_OAUTH_INVALID_CLIENT|invalid_client/i.test(text)
+    ? "GOOGLE_OAUTH_INVALID_CLIENT"
+    : /GOOGLE_OAUTH_INVALID_GRANT|invalid_grant/i.test(text)
+      ? "GOOGLE_OAUTH_INVALID_GRANT"
+      : /Google OAuth/i.test(text)
+        ? "GOOGLE_OAUTH_UNAVAILABLE"
+        : "GOOGLE_DRIVE_UNAVAILABLE";
+  return `Google Drive storage is unavailable. Existing shared research data was not deleted or replaced. Reconnect Google Drive, update the matching environment variables if needed, redeploy/restart the runtime, then refresh. Diagnostic code: ${code}.`;
+}
+
+function payloadSearchText(value: unknown, seen = new WeakSet<object>()): string {
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
+  if (!value || typeof value !== "object") return "";
+  if (seen.has(value)) return "";
+  seen.add(value);
+  const parts: string[] = [];
+  for (const item of Array.isArray(value) ? value : Object.values(value as Record<string, unknown>)) {
+    parts.push(payloadSearchText(item, seen));
+  }
+  try {
+    parts.push(JSON.stringify(value));
+  } catch {
+    // Ignore non-serializable values; recursive fields above are enough for diagnostics.
+  }
+  return parts.filter(Boolean).join(" ");
 }
 
 function formatErrorDetails(details: unknown): string {

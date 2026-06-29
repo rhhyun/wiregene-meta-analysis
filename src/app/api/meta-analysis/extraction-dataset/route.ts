@@ -35,7 +35,8 @@ export async function GET(request: Request) {
     return NextResponse.json(overview);
   } catch (error) {
     const format = url.searchParams.get("format");
-    if (format !== "xlsx" && isRecoverableGoogleDriveStorageError(error)) {
+    const details = metaFullTextHistoryStorageErrorDetails(error);
+    if (format !== "xlsx" && (isRecoverableGoogleDriveStorageError(error) || isRecoverableGoogleDriveStorageError(details))) {
       const columns = metaExtractionDatasetColumns(scope.extractionColumns);
       return NextResponse.json(
         {
@@ -55,8 +56,8 @@ export async function GET(request: Request) {
           updatedAt: new Date().toISOString(),
           storage: {
             unavailable: true,
-            warning: googleDriveFallbackWarning(error),
-            details: metaFullTextHistoryStorageErrorDetails(error),
+            warning: googleDriveFallbackWarning(details),
+            details,
             reconnectUrl: "/api/google-drive/oauth/start?diagnose=1",
             storagePolicyUrl: "/api/meta-analysis/storage-policy?googleDriveHealth=1",
           },
@@ -70,7 +71,7 @@ export async function GET(request: Request) {
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "Extraction dataset could not be loaded.",
-        details: metaFullTextHistoryStorageErrorDetails(error),
+        details,
       },
       { status: 400 },
     );

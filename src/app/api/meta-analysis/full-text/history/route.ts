@@ -44,7 +44,8 @@ export async function GET(request: Request) {
     });
     return NextResponse.json(overview);
   } catch (error) {
-    if (isRecoverableGoogleDriveStorageError(error)) {
+    const details = metaFullTextHistoryStorageErrorDetails(error);
+    if (isRecoverableGoogleDriveStorageError(error) || isRecoverableGoogleDriveStorageError(details)) {
       return NextResponse.json(
         {
           records: [],
@@ -59,8 +60,8 @@ export async function GET(request: Request) {
           },
           storage: {
             unavailable: true,
-            warning: googleDriveFallbackWarning(error),
-            details: metaFullTextHistoryStorageErrorDetails(error),
+            warning: googleDriveFallbackWarning(details),
+            details,
             reconnectUrl: "/api/google-drive/oauth/start?diagnose=1",
             storagePolicyUrl: "/api/meta-analysis/storage-policy?googleDriveHealth=1",
           },
@@ -74,7 +75,7 @@ export async function GET(request: Request) {
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "Saved full-text analyses could not be loaded.",
-        details: metaFullTextHistoryStorageErrorDetails(error),
+        details,
       },
       { status: 400 },
     );
