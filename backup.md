@@ -52,7 +52,10 @@ static status/version check: passed.
 npx.cmd tsc --noEmit --pretty false: passed.
 npm.cmd run lint: passed.
 npm.cmd run build: passed.
-GitHub/Vercel push pending.
+GitHub push: passed, commit dc7b944.
+Vercel production deployment: Ready.
+meta.wiregene.com alias: points to the new production deployment.
+https://meta.wiregene.com HEAD response: 401, expected for authenticated app.
 ```
 
 # 2026-06-29 Synology false stop-alarm guard
