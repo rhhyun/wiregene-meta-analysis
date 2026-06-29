@@ -41,7 +41,9 @@ static startup alarm guard check: passed.
 npx.cmd tsc --noEmit --pretty false: passed.
 npm.cmd run lint: passed.
 npm.cmd run build: passed.
-Production deploy verification pending after GitHub push.
+Vercel production deployment: Ready.
+meta.wiregene.com alias: points to the new production deployment.
+https://meta.wiregene.com HEAD response: 401, expected for authenticated app.
 ```
 
 # 2026-06-29 Google Drive OAuth raw-error suppression
