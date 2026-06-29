@@ -61,6 +61,21 @@ Watchdog logs are written to:
 /volume1/docker/meta/logs/meta-watchdog.log
 ```
 
+If the watchdog reports `status=restarting`, `exitCode=127`, and a high
+`restartCount`, the container is in a crash loop. Apply the latest compose
+startup guard with a one-time forced recreate:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && META_FORCE_RECREATE=true /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+If exit `127` continues, remove the mounted dependency folder and rerun the
+same command once:
+
+```sh
+rm -rf /volume1/docker/wiregene-meta-analysis/node_modules && git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && META_FORCE_RECREATE=true /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 If the start script reports missing Basic Auth values, first pull the latest
 scripts, then choose one:
 

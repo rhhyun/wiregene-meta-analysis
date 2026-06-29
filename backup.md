@@ -1,3 +1,63 @@
+# 2026-06-30 Synology restart-loop exit 127 hardening
+
+User issue:
+
+- Watchdog log showed:
+  - `running=true`
+  - `status=restarting`
+  - `exitCode=127`
+  - `health=unhealthy`
+  - `restartCount=90`
+- This is not a harmless unhealthy state. It is a Docker restart loop.
+- `exitCode=127` usually means a command was not found inside the container. For this Meta compose flow, a common cause is a stale or broken mounted `node_modules` folder where `node_modules/.bin/next` is missing, so `npm run build` exits with `next: not found`.
+
+Implemented:
+
+- `scripts/synology-meta-watchdog.sh`
+  - Treats `status=restarting` as crash-loop evidence even when Docker reports `running=true`.
+  - Logs an explicit `exitCode=127` hint.
+  - Captures recent Docker logs before attempting recovery.
+  - Treats high `restartCount` plus `health=unhealthy` as crash-loop evidence using `META_WATCHDOG_RESTART_LOOP_THRESHOLD`.
+- `scripts/synology-meta-status.sh`
+  - Logs restart-loop and exit-127 diagnostic hints.
+- `synology/docker/meta/docker-compose.yml`
+  - Verifies `package.json`, `node`, and `npm` before startup.
+  - Runs dependency install when `node_modules/.bin/next` is missing, not only when `node_modules` is missing or stale.
+  - Fails with a clearer message if the Next.js binary remains missing after install.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.119`
+  - UI label: `Ver 2.54 | 2026 copyright by JK Hyun`
+
+Immediate Synology recovery command:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && META_FORCE_RECREATE=true /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+If it still exits with code 127 after this commit, remove the mounted dependency folder and rerun the forced recreate once:
+
+```sh
+rm -rf /volume1/docker/wiregene-meta-analysis/node_modules && git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && META_FORCE_RECREATE=true /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+Then keep the one-minute DSM task on watchdog only:
+
+```sh
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-meta-watchdog.sh
+```
+
+Verification status:
+
+```text
+bash -n scripts/synology-start-meta.sh: passed
+bash -n scripts/synology-meta-status.sh: passed
+bash -n scripts/synology-meta-watchdog.sh: passed
+git diff --check: passed
+npx.cmd tsc --noEmit --pretty false: passed
+npm.cmd run lint: passed
+npm.cmd run build: passed
+```
+
 # 2026-06-30 Synology one-minute Docker stopped notification triage
 
 User issue:

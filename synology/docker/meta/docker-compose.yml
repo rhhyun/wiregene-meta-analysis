@@ -37,10 +37,14 @@ services:
       - -lc
       - >
         set -eu;
+        test -f package.json || { echo "package.json was not found in /app. Check APP_SOURCE_DIR mount."; exit 66; };
+        command -v node >/dev/null 2>&1 || { echo "node command was not found in the container."; exit 127; };
+        command -v npm >/dev/null 2>&1 || { echo "npm command was not found in the container."; exit 127; };
         node -v;
         npm -v;
-        if [ ! -d node_modules ] || [ package.json -nt node_modules/.package-lock.json ] || [ package-lock.json -nt node_modules/.package-lock.json ]; then
+        if [ ! -d node_modules ] || [ ! -x node_modules/.bin/next ] || [ package.json -nt node_modules/.package-lock.json ] || [ package-lock.json -nt node_modules/.package-lock.json ]; then
           if [ -f package-lock.json ]; then npm ci --include=dev; else npm install; fi;
         fi;
+        test -x node_modules/.bin/next || { echo "Next.js binary is missing after dependency install. Remove /app/node_modules and rerun."; exit 127; };
         npm run build;
         npm run start -- --hostname 0.0.0.0 --port 3000

@@ -10,6 +10,16 @@
 - Verification command: `bash -n scripts/synology-start-meta.sh`; `bash -n scripts/synology-meta-status.sh`; `bash -n scripts/synology-meta-watchdog.sh`; run the watchdog on Synology and inspect `/volume1/docker/meta/logs/meta-watchdog.log`.
 - Affected files: `scripts/synology-start-meta.sh`; `scripts/synology-meta-status.sh`; `scripts/synology-meta-watchdog.sh`; `SERVICE.md`; `synology/docker/meta/README.md`; `synology/docker/meta/.env.example`.
 
+## 2026-06-30 - SYNOLOGY_META_RESTART_LOOP_EXIT_127
+
+- Error code: `SYNOLOGY_META_RESTART_LOOP_EXIT_127`
+- Symptom: Watchdog reports `running=true status=restarting exitCode=127 health=unhealthy restartCount=90` for `wiregene-meta`.
+- Root cause: Docker status `restarting` with high restart count is a crash loop even when `.State.Running` is `true`. Exit `127` usually means a command is missing inside the container. In this compose flow, the likely operational cause is stale or broken mounted dependencies where `node_modules` exists but `node_modules/.bin/next` is missing, so `npm run build` exits with `next: not found`.
+- Correct fix: Pull the latest repo and run one forced recreate so Synology copies the patched compose file and rebuilds dependencies when the Next.js binary is missing: `git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && META_FORCE_RECREATE=true /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh`.
+- Prevention rule: Watchdogs must classify `status=restarting` as crash-loop evidence and must not treat it as merely unhealthy-but-running. Compose startup must validate `node`, `npm`, `package.json`, and `node_modules/.bin/next` before build/start.
+- Verification command: `bash -n scripts/synology-meta-watchdog.sh`; `bash -n scripts/synology-meta-status.sh`; `bash -n scripts/synology-start-meta.sh`; `npm.cmd run build`; inspect `/volume1/docker/meta/logs/meta-watchdog.log` and `docker logs wiregene-meta` after Synology recreate.
+- Affected files: `scripts/synology-meta-watchdog.sh`; `scripts/synology-meta-status.sh`; `synology/docker/meta/docker-compose.yml`; `SERVICE.md`; `synology/docker/meta/README.md`.
+
 ## 2026-06-29 - GOOGLE_OAUTH_INVALID_GRANT
 
 - Error code: `GOOGLE_OAUTH_INVALID_GRANT`

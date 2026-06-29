@@ -10,6 +10,7 @@ CONTAINER_NAME="${CONTAINER_NAME:-wiregene-meta}"
 WATCHDOG_PULL="${META_WATCHDOG_PULL:-false}"
 RESTART_UNHEALTHY="${META_WATCHDOG_RESTART_UNHEALTHY:-false}"
 LOG_TAIL="${META_WATCHDOG_LOG_TAIL:-120}"
+RESTART_LOOP_THRESHOLD="${META_WATCHDOG_RESTART_LOOP_THRESHOLD:-3}"
 
 log() {
   mkdir -p "$LOG_DIR"
@@ -137,11 +138,34 @@ restart_count=$(docker inspect -f '{{.RestartCount}}' "$CONTAINER_NAME" 2>/dev/n
 
 log "CONTAINER_STATE: running=$running status=$status exitCode=$exit_code oomKilled=$oom_killed health=$health restartCount=$restart_count"
 
+case "$status" in
+  restarting)
+    log "ERROR: Container $CONTAINER_NAME is in a Docker restart loop. running=$running exitCode=$exit_code restartCount=$restart_count"
+    if [ "$exit_code" = "127" ]; then
+      log "ERROR_HINT: exitCode=127 usually means a command was not found inside the container, commonly a missing npm/next binary or broken node_modules install."
+    fi
+    log_docker_tail
+    start_meta_without_dsm_failure
+    ;;
+esac
+
 if [ "$running" != "true" ]; then
   log "Container $CONTAINER_NAME is not running; attempting a non-forced restart."
   log_docker_tail
   start_meta_without_dsm_failure
 fi
+
+case "$restart_count" in
+  *[!0-9]*)
+    ;;
+  *)
+    if [ "$restart_count" -ge "$RESTART_LOOP_THRESHOLD" ] && [ "$health" = "unhealthy" ]; then
+      log "ERROR: Container $CONTAINER_NAME has restartCount=$restart_count and health=unhealthy. Treating this as crash-loop evidence."
+      log_docker_tail
+      start_meta_without_dsm_failure
+    fi
+    ;;
+esac
 
 if [ "$health" = "unhealthy" ]; then
   if [ "$RESTART_UNHEALTHY" = "true" ]; then

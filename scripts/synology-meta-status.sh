@@ -93,6 +93,12 @@ if [ "$container_present" = "true" ]; then
   started_at=$(docker inspect -f '{{.State.StartedAt}}' "$CONTAINER_NAME" 2>/dev/null || printf 'unknown')
   finished_at=$(docker inspect -f '{{.State.FinishedAt}}' "$CONTAINER_NAME" 2>/dev/null || printf 'unknown')
   log "CONTAINER_STATE: running=$running status=$status exitCode=$exit_code oomKilled=$oom_killed health=$health restartCount=$restart_count"
+  if [ "$status" = "restarting" ]; then
+    log "DIAGNOSIS: Container is in a Docker restart loop."
+  fi
+  if [ "$exit_code" = "127" ]; then
+    log "DIAGNOSIS: exitCode=127 usually means a command was not found inside the container, commonly missing npm/next or broken node_modules."
+  fi
   log "CONTAINER_TIMES: startedAt=$started_at finishedAt=$finished_at"
   log "RECENT_DOCKER_LOGS_BEGIN: tail=$LOG_TAIL"
   docker logs --tail "$LOG_TAIL" "$CONTAINER_NAME" 2>&1 | while IFS= read -r line; do

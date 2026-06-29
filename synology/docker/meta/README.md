@@ -42,6 +42,21 @@ stopped. It writes to `/volume1/docker/meta/logs/meta-watchdog.log`.
 git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-meta-watchdog.sh
 ```
 
+If the watchdog reports `status=restarting`, `exitCode=127`, and a high
+`restartCount`, the container is crash-looping. Pull the latest compose guard
+and recreate the container once:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && META_FORCE_RECREATE=true /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+If exit `127` continues, remove the mounted dependency folder and rerun the
+forced recreate once:
+
+```sh
+rm -rf /volume1/docker/wiregene-meta-analysis/node_modules && git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && META_FORCE_RECREATE=true /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
 On the first run, fill `/volume1/docker/meta/.env`, then run the same command
 again.
 
