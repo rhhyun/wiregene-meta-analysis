@@ -8,6 +8,10 @@ Use this bootstrap command when the NAS source checkout may be missing or stale.
 It clones/pulls `rhhyun/wiregene-meta-analysis` first, then runs the service
 start script.
 
+Run this task manually or at NAS boot. Do not schedule it every minute. Meta is
+a long-running web service; minutely start tasks can create repeated Docker
+stop/start notifications or hide the real crash log.
+
 ```sh
 /bin/sh -c 'set -eu; export PATH="/usr/local/bin:/usr/bin:/bin:/var/packages/Git/target/bin:/volume1/@appstore/Git/bin:$PATH"; SRC="/volume1/docker/wiregene-meta-analysis"; REPO="https://github.com/rhhyun/wiregene-meta-analysis.git"; command -v git >/dev/null 2>&1 || { echo "git command not found. Install Synology Git package, then rerun."; exit 1; }; mkdir -p /volume1/docker; if [ -d "$SRC/.git" ]; then git -C "$SRC" pull --ff-only origin main; elif [ -e "$SRC" ]; then echo "$SRC exists but is not a git checkout. Move it aside or clone the repo there."; exit 1; else git clone "$REPO" "$SRC"; fi; /bin/sh "$SRC/scripts/synology-start-meta.sh"'
 ```
@@ -17,6 +21,16 @@ is already a current Git checkout.
 
 ```sh
 /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+If DSM reports that `wiregene-meta` stopped unexpectedly, run the diagnostic
+script below once. It records container state, restart count, health status,
+recent Docker logs, compose validation, and local HTTP status to
+`/volume1/docker/meta/logs/meta-status.log`. It exits successfully by design so
+the diagnostic task does not create another failure notification.
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-meta-status.sh
 ```
 
 On the first run, fill `/volume1/docker/meta/.env`, then run the same command

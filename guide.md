@@ -74,7 +74,7 @@ Meta 왼쪽 메뉴에 회원관리가 추가되었습니다. 이 메뉴는 로�
 
 # Wiregene Meta 사용 가이드
 
-문서 버전: Ver 2.51
+문서 버전: Ver 2.52
 최종 업데이트: 2026-06-29
 적용 사이트: `https://meta.wiregene.com` (`https://search.wiregene.com` Meta mode alias)
 소스 저장소: `rhhyun/wiregene-meta-analysis`
@@ -790,4 +790,31 @@ git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin
 
 ```sh
 META_FORCE_RECREATE=true git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && META_FORCE_RECREATE=true /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+# 2026-06-30 Ver 2.52 업데이트: Synology 1분 간격 Docker 중단 알림 대응
+
+Synology에서 `Docker container wiregene-meta stopped unexpectedly` 알림이 1분 간격으로 나오면 먼저 DSM 작업 스케줄러를 확인합니다. Meta는 장시간 실행되는 웹 서비스이므로 시작 명령을 1분마다 반복 실행하면 안 됩니다. 시작 작업은 수동 실행 또는 NAS 부팅 시 실행으로 둡니다.
+
+즉시 확인할 항목은 다음과 같습니다.
+
+- DSM 작업 스케줄러에서 `wiregene-meta` 또는 `synology-start-meta.sh`를 1분마다 실행하는 작업이 있으면 중지합니다.
+- 최신 스크립트를 한 번 적용합니다.
+- 그래도 컨테이너가 중단되면 진단 스크립트로 최근 Docker log를 모읍니다.
+
+최신 시작 스크립트 적용:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+중단 알림이 계속될 때 진단:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-meta-status.sh
+```
+
+진단 결과는 아래 파일에 저장됩니다.
+
+```text
+/volume1/docker/meta/logs/meta-status.log
 ```

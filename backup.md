@@ -1,3 +1,60 @@
+# 2026-06-30 Synology one-minute Docker stopped notification triage
+
+User issue:
+
+- Synology DSM shows a Docker notification every minute: `Docker container wiregene-meta stopped unexpectedly`.
+- This is different from the public `meta.wiregene.com` authentication response. It means the NAS Docker container is stopping or being restarted.
+- A one-minute interval strongly suggests the DSM Task Scheduler is configured to run the Meta start command every minute, or the container is crash-looping and the scheduler/restart policy keeps touching it.
+
+Implemented:
+
+- Added `scripts/synology-meta-status.sh`.
+  - Non-destructive diagnostic script for Synology.
+  - Records Git head/status, runtime env summary, Docker/Compose availability, compose config status, container running/status/exitCode/OOMKilled/health/restartCount, recent Docker logs, and local HTTP status.
+  - Always exits `0` so running the diagnostic task does not generate another DSM failure notification.
+  - Writes to `/volume1/docker/meta/logs/meta-status.log`.
+- Updated `synology/docker/meta/README.md` and `SERVICE.md`.
+  - Explicitly states that Meta start should be manual or boot-time, not every minute.
+  - Adds the one-line diagnostic command.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.117`
+  - UI label: `Ver 2.52 | 2026 copyright by JK Hyun`
+
+Immediate Synology actions:
+
+1. In DSM Task Scheduler, disable any `wiregene-meta` start task that runs every minute.
+2. Keep only manual or boot-time service start for Meta.
+3. Apply the latest start script:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+4. If the Docker stopped notification continues after the latest script is applied, run:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-meta-status.sh
+```
+
+Then check:
+
+```text
+/volume1/docker/meta/logs/meta-status.log
+```
+
+Verification status:
+
+```text
+bash -n scripts/synology-start-meta.sh: passed.
+bash -n scripts/synology-meta-status.sh: passed.
+git diff --check: passed.
+static status/version check: passed.
+npx.cmd tsc --noEmit --pretty false: passed.
+npm.cmd run lint: passed.
+npm.cmd run build: passed.
+GitHub/Vercel push pending.
+```
+
 # 2026-06-29 Synology false stop-alarm guard
 
 User issue:

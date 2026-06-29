@@ -31,8 +31,20 @@ Set `WIREGENE_APP_MODE=meta` in Vercel and Synology.
 Use the bootstrap command below when the NAS source checkout may be missing or
 stale. It clones or pulls the GitHub repo first, then starts the Docker service.
 
+Use this as a manual or boot-time service start task. Do not schedule it every
+minute. `meta.wiregene.com` is a long-running web service, not a minutely batch
+job; a minutely start task can repeatedly stop/recreate or restart the
+container and trigger DSM Docker notifications.
+
 ```sh
 /bin/sh -c 'set -eu; export PATH="/usr/local/bin:/usr/bin:/bin:/var/packages/Git/target/bin:/volume1/@appstore/Git/bin:$PATH"; SRC="/volume1/docker/wiregene-meta-analysis"; REPO="https://github.com/rhhyun/wiregene-meta-analysis.git"; command -v git >/dev/null 2>&1 || { echo "git command not found. Install Synology Git package, then rerun."; exit 1; }; mkdir -p /volume1/docker; if [ -d "$SRC/.git" ]; then git -C "$SRC" pull --ff-only origin main; elif [ -e "$SRC" ]; then echo "$SRC exists but is not a git checkout. Move it aside or clone the repo there."; exit 1; else git clone "$REPO" "$SRC"; fi; /bin/sh "$SRC/scripts/synology-start-meta.sh"'
+```
+
+If DSM reports `wiregene-meta` stopped unexpectedly, run the non-failing
+diagnostic command once and inspect `/volume1/docker/meta/logs/meta-status.log`:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-meta-status.sh
 ```
 
 If the start script reports missing Basic Auth values, first pull the latest
