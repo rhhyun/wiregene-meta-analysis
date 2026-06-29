@@ -1,3 +1,49 @@
+# 2026-06-29 Synology false stop-alarm guard
+
+User issue:
+
+- Synology kept sending alarms that `meta.wiregene.com` work had stopped.
+- Public `https://meta.wiregene.com` responded with HTTP `401`, which is the expected authenticated response. The public Vercel service was not down.
+- The likely Synology-side cause was the DSM scheduler start script running `docker compose up -d --force-recreate` every time. A periodic scheduler run can stop/recreate the existing container even when nothing changed, which Synology reports as a stopped task/container.
+- A second issue was that a transient Docker healthcheck `unhealthy` state failed the scheduler immediately even when `META_REQUIRE_HEALTHY=false`.
+
+Implemented:
+
+- `scripts/synology-start-meta.sh`
+  - Changed default startup from forced recreation to non-disruptive `docker compose up -d --remove-orphans`.
+  - Added `META_FORCE_RECREATE=false` as the default. Forced recreation now happens only when `/volume1/docker/meta/.env` or scheduler environment explicitly sets `META_FORCE_RECREATE=true`.
+  - Healthcheck `unhealthy` no longer fails immediately when `META_REQUIRE_HEALTHY=false`; it waits through the verification window and exits successfully if the container is still running, while logging a warning.
+  - Container exit/stopped state still fails and records recent Docker logs, because that is a real startup failure.
+- `synology/docker/meta/.env.example`
+  - Added `META_FORCE_RECREATE=false`.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.116`
+  - UI label: `Ver 2.51 | 2026 copyright by JK Hyun`
+
+Immediate Synology command to apply the fix:
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+If a one-time forced container rebuild is intentionally needed:
+
+```sh
+META_FORCE_RECREATE=true git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && META_FORCE_RECREATE=true /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+Verification status:
+
+```text
+bash -n scripts/synology-start-meta.sh: passed.
+git diff --check: passed.
+static startup alarm guard check: passed.
+npx.cmd tsc --noEmit --pretty false: passed.
+npm.cmd run lint: passed.
+npm.cmd run build: passed.
+Production deploy verification pending after GitHub push.
+```
+
 # 2026-06-29 Google Drive OAuth raw-error suppression
 
 User issue:

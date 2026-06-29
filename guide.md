@@ -74,7 +74,7 @@ Meta 왼쪽 메뉴에 회원관리가 추가되었습니다. 이 메뉴는 로�
 
 # Wiregene Meta 사용 가이드
 
-문서 버전: Ver 2.50
+문서 버전: Ver 2.51
 최종 업데이트: 2026-06-29
 적용 사이트: `https://meta.wiregene.com` (`https://search.wiregene.com` Meta mode alias)
 소스 저장소: `rhhyun/wiregene-meta-analysis`
@@ -768,3 +768,26 @@ Screening 화면은 full-text 원문 업로드, AI reviewer 선택, 저장된 �
 - Reviewer 이름 저장 영역은 `Reviewer names / verification status`로 접혔습니다. AI 분석은 reviewer 이름 저장 전에도 가능하지만, 최종 human verification 전에는 이름을 저장합니다.
 - 모바일에서는 stage 카드 설명, 긴 상태 설명, 일부 JBI 보조 문구가 숨겨지고, 버튼 라벨은 `Analyze`, `Run AI`, `Delete`, `JBI rerun`처럼 짧게 표시됩니다.
 - Article list 행은 번호와 논문 제목을 줄바꿈 가능한 카드로 보여주며, `FT saved`, `FT missing`, `AI x/y`, `done/pending` 배지만 먼저 표시합니다. 파일명과 상세 저장소 정보는 행을 열었을 때만 봅니다.
+# 2026-06-29 Ver 2.51 업데이트: Synology 중단 알람 방지
+
+Synology DSM 작업 스케줄러가 Meta 시작 스크립트를 주기적으로 실행하는 경우, 변경사항이 없는데도 컨테이너를 강제로 재생성하면 Synology가 이를 중단/재시작으로 인식해 알람을 보낼 수 있습니다. Ver 2.51부터 기본 시작 방식은 강제 재생성이 아니라 무중단에 가까운 `docker compose up -d --remove-orphans`입니다.
+
+기본 정책은 다음과 같습니다.
+
+- 일반 DSM 작업 스케줄러 명령은 기존 컨테이너가 정상 실행 중이면 불필요하게 내렸다 올리지 않습니다.
+- 강제 재생성은 기본값이 아닙니다.
+- 정말로 컨테이너를 한 번 새로 만들 필요가 있을 때만 `/volume1/docker/meta/.env` 또는 DSM scheduler 환경변수에 `META_FORCE_RECREATE=true`를 설정합니다.
+- Docker healthcheck가 일시적으로 `unhealthy`를 반환해도 `META_REQUIRE_HEALTHY=false`이면 컨테이너가 계속 실행 중인 한 DSM 작업을 실패 처리하지 않습니다.
+- 컨테이너가 실제로 종료되거나 생성되지 않은 경우에는 계속 실패 처리하고 최근 Docker log를 남깁니다.
+
+일반 실행 명령은 아래와 같습니다.
+
+```sh
+git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```
+
+강제 재생성이 필요한 특수 상황에서만 아래처럼 실행합니다.
+
+```sh
+META_FORCE_RECREATE=true git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && META_FORCE_RECREATE=true /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```

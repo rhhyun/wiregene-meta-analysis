@@ -98,7 +98,7 @@ process_env_value() {
 }
 
 seed_runtime_env_from_process() {
-  for key in APP_BASIC_AUTH_USER APP_BASIC_AUTH_PASSWORD APP_BASIC_AUTH_USERS WIREGENE_ADMIN_EMAILS APP_ADMIN_USERS APP_ADMIN_USER PORTAL_AUTH_CHECK_SECRET PORTAL_AUTH_CHECK_URL WIREGENE_AUTH_CHECK_SECRET OPENAI_API_KEY OPENAI_MODEL META_ALLOW_GOOGLE_DRIVE_STORAGE META_PROJECT_STORAGE_BACKEND META_PROJECT_STORAGE_ROOT META_PROJECT_DRIVE_PREFIX META_USER_PROJECTS_STORAGE_BACKEND META_USER_PROJECTS_FILE META_USER_PROJECTS_DRIVE_FILENAME META_USER_PROJECTS_DRIVE_FILE_ID META_AI_SETTINGS_STORAGE_BACKEND META_AI_SETTINGS_STORAGE_PATH META_AI_SETTINGS_DRIVE_FILENAME META_AI_SETTINGS_DRIVE_FILE_ID META_AI_SETTINGS_SECRET META_FULL_TEXT_HISTORY_STORAGE_BACKEND META_FULL_TEXT_HISTORY_STORAGE_PATH META_FULL_TEXT_HISTORY_DRIVE_FILENAME META_FULL_TEXT_HISTORY_DRIVE_FILE_ID META_FULL_TEXT_SOURCE_STORAGE_BACKEND META_FULL_TEXT_SOURCE_STORAGE_PATH META_START_CHECK_ONLY META_STOP_PORT_OWNER META_START_VERIFY_SECONDS META_REQUIRE_HEALTHY REPORT_STORAGE_BACKEND REPORT_STORAGE_LOCAL_PATH GOOGLE_DRIVE_CLIENT_ID GOOGLE_DRIVE_CLIENT_SECRET GOOGLE_DRIVE_REFRESH_TOKEN GOOGLE_DRIVE_FOLDER_ID GOOGLE_DRIVE_FOLDER_URL GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON; do
+  for key in APP_BASIC_AUTH_USER APP_BASIC_AUTH_PASSWORD APP_BASIC_AUTH_USERS WIREGENE_ADMIN_EMAILS APP_ADMIN_USERS APP_ADMIN_USER PORTAL_AUTH_CHECK_SECRET PORTAL_AUTH_CHECK_URL WIREGENE_AUTH_CHECK_SECRET OPENAI_API_KEY OPENAI_MODEL META_ALLOW_GOOGLE_DRIVE_STORAGE META_PROJECT_STORAGE_BACKEND META_PROJECT_STORAGE_ROOT META_PROJECT_DRIVE_PREFIX META_USER_PROJECTS_STORAGE_BACKEND META_USER_PROJECTS_FILE META_USER_PROJECTS_DRIVE_FILENAME META_USER_PROJECTS_DRIVE_FILE_ID META_AI_SETTINGS_STORAGE_BACKEND META_AI_SETTINGS_STORAGE_PATH META_AI_SETTINGS_DRIVE_FILENAME META_AI_SETTINGS_DRIVE_FILE_ID META_AI_SETTINGS_SECRET META_FULL_TEXT_HISTORY_STORAGE_BACKEND META_FULL_TEXT_HISTORY_STORAGE_PATH META_FULL_TEXT_HISTORY_DRIVE_FILENAME META_FULL_TEXT_HISTORY_DRIVE_FILE_ID META_FULL_TEXT_SOURCE_STORAGE_BACKEND META_FULL_TEXT_SOURCE_STORAGE_PATH META_START_CHECK_ONLY META_STOP_PORT_OWNER META_FORCE_RECREATE META_START_VERIFY_SECONDS META_REQUIRE_HEALTHY REPORT_STORAGE_BACKEND REPORT_STORAGE_LOCAL_PATH GOOGLE_DRIVE_CLIENT_ID GOOGLE_DRIVE_CLIENT_SECRET GOOGLE_DRIVE_REFRESH_TOKEN GOOGLE_DRIVE_FOLDER_ID GOOGLE_DRIVE_FOLDER_URL GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON; do
     value=$(process_env_value "$key")
     [ -n "$value" ] || continue
     current=$(env_value "$key")
@@ -221,6 +221,7 @@ prepare_runtime() {
   ensure_runtime_env_value META_FULL_TEXT_SOURCE_STORAGE_PATH "download/_system/full-text-files"
   ensure_runtime_env_default META_START_CHECK_ONLY "false"
   ensure_runtime_env_default META_STOP_PORT_OWNER "false"
+  ensure_runtime_env_default META_FORCE_RECREATE "false"
   ensure_runtime_env_default META_START_VERIFY_SECONDS "180"
   ensure_runtime_env_default META_REQUIRE_HEALTHY "false"
   migrate_legacy_meta_data_to_download
@@ -481,6 +482,7 @@ verify_started_container() {
   esac
   require_healthy=$(env_value META_REQUIRE_HEALTHY)
   [ -n "$require_healthy" ] || require_healthy="${META_REQUIRE_HEALTHY:-false}"
+  unhealthy_seen="false"
 
   command -v docker >/dev/null 2>&1 || return 0
   waited=0
@@ -503,9 +505,10 @@ verify_started_container() {
         return 0
         ;;
       unhealthy)
-        log "Container $container_name healthcheck is unhealthy. Last logs:"
-        docker logs --tail 80 "$container_name" 2>&1 | while IFS= read -r line; do log "DOCKER_LOG: $line"; done
-        fail "Container $container_name failed the Docker healthcheck."
+        if [ "$unhealthy_seen" != "true" ]; then
+          log "WARNING: Container $container_name healthcheck is unhealthy; waiting up to ${verify_seconds}s before deciding."
+          unhealthy_seen="true"
+        fi
         ;;
       none)
         log "Container $container_name is running."
@@ -521,7 +524,22 @@ verify_started_container() {
     docker logs --tail 80 "$container_name" 2>&1 | while IFS= read -r line; do log "DOCKER_LOG: $line"; done
     fail "Container $container_name did not become healthy within ${verify_seconds}s."
   fi
+  if [ "$unhealthy_seen" = "true" ]; then
+    log "WARNING: Container $container_name stayed unhealthy after ${verify_seconds}s, but it is still running and META_REQUIRE_HEALTHY=false. Scheduler exits successfully to avoid false Synology stop alarms. Check Docker logs manually if users report a real outage."
+    return 0
+  fi
   log "WARNING: Container $container_name is still starting after ${verify_seconds}s; it remains running. Check health with: docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' $container_name"
+}
+
+compose_up_meta() {
+  force_recreate=$(env_value META_FORCE_RECREATE)
+  [ -n "$force_recreate" ] || force_recreate="${META_FORCE_RECREATE:-false}"
+  if [ "$force_recreate" = "true" ]; then
+    log "META_FORCE_RECREATE=true; Docker Compose will recreate the Meta container."
+    compose -f "$RUNTIME_DIR/docker-compose.yml" --env-file "$RUNTIME_DIR/.env" up -d --force-recreate --remove-orphans
+    return 0
+  fi
+  compose -f "$RUNTIME_DIR/docker-compose.yml" --env-file "$RUNTIME_DIR/.env" up -d --remove-orphans
 }
 
 main() {
@@ -540,7 +558,7 @@ main() {
     return 0
   fi
   log "Starting Wiregene Meta from $RUNTIME_DIR."
-  compose -f "$RUNTIME_DIR/docker-compose.yml" --env-file "$RUNTIME_DIR/.env" up -d --force-recreate
+  compose_up_meta
   verify_started_container
   log "Wiregene Meta start requested. Check logs with: docker logs wiregene-meta"
 }
