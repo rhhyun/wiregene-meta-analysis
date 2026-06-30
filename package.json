@@ -1,6 +1,6 @@
 {
   "name": "wiregene-meta-analysis",
-  "version": "0.1.122",
+  "version": "0.1.123",
   "private": true,
   "engines": {
     "node": ">=20.9.0"
@@ -16,6 +16,7 @@
     "check:google-drive-config": "tsx scripts/check-google-drive-config.ts",
     "google-drive:oauth": "tsx scripts/google-drive-oauth.ts",
     "google-drive:oauth:vercel": "tsx scripts/google-drive-oauth.ts --vercel-production --deploy",
+    "google-drive:oauth:vercel:apply-saved": "tsx scripts/google-drive-oauth.ts --vercel-production --deploy --apply-saved-token",
     "check:zotero-config": "node scripts/check-zotero-config.mjs",
     "zotero:whoami": "node scripts/zotero-whoami.mjs"
   },

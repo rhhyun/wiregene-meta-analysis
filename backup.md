@@ -1,3 +1,76 @@
+# 2026-07-01 Google OAuth repair headers-sent fix
+
+User issue:
+
+- `npm.cmd run google-drive:oauth:vercel` successfully issued and verified a
+  new refresh token, then crashed after:
+
+```text
+Applying verified Google Drive OAuth values to Vercel Production.
+Error [ERR_HTTP_HEADERS_SENT]: Cannot write headers after they are sent to the client
+```
+
+Root cause:
+
+- The script sent a 200 browser response immediately after token verification.
+- Vercel env/deploy work then ran inside the same `try` block.
+- If Vercel apply failed, the catch block attempted to send a 500 response
+  after the 200 response had already been sent, masking the real Vercel apply
+  failure.
+
+Implemented:
+
+- `scripts/google-drive-oauth.ts`
+  - Sends the browser callback response only after Vercel apply/deploy completes.
+  - Guards error handling with `response.headersSent`.
+  - Adds `--apply-saved-token` so the already verified
+    `google-drive-refresh-token.local.txt` can be applied without repeating
+    Google OAuth consent.
+- `package.json`
+  - Added `npm.cmd run google-drive:oauth:vercel:apply-saved`.
+- Follow-up:
+  - Fixed empty Vercel scope fallback so absent `--scope` resolves to
+    `rhhyuns-projects` instead of passing an empty scope to `vercel env add`.
+
+Correct command after this failure:
+
+```powershell
+npm.cmd run google-drive:oauth:vercel:apply-saved
+```
+
+Execution result:
+
+- `npm.cmd run google-drive:oauth:vercel:apply-saved` succeeded after fixing
+  Windows `npx.cmd` stdin handling and default Vercel scope fallback.
+- Vercel Production env values were added as encrypted/sensitive variables:
+  - `GOOGLE_DRIVE_AUTH_MODE`
+  - `GOOGLE_DRIVE_CLIENT_ID`
+  - `GOOGLE_DRIVE_CLIENT_SECRET`
+  - `GOOGLE_DRIVE_REFRESH_TOKEN`
+  - `GOOGLE_DRIVE_OAUTH_EXPECTED_CLIENT_ID`
+  - `META_ALLOW_GOOGLE_DRIVE_STORAGE`
+  - `META_PROJECT_STORAGE_BACKEND`
+  - `META_USER_PROJECTS_STORAGE_BACKEND`
+  - `META_AI_SETTINGS_STORAGE_BACKEND`
+  - `META_FULL_TEXT_HISTORY_STORAGE_BACKEND`
+  - `META_FULL_TEXT_SOURCE_STORAGE_BACKEND`
+- `vercel env pull` shows these values as empty because they are Sensitive; use
+  `vercel env ls production --scope rhhyuns-projects` to verify presence.
+- Production deployment completed:
+  - Deployment id: `dpl_2QSGw7u3zAAg1WjVyckdvxvcM7dj`
+  - Production URL: `https://wiregene-meta-analysis-nm0fku6ba-rhhyuns-projects.vercel.app`
+  - Alias: `https://meta.wiregene.com`
+
+Verification status:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed
+npm.cmd run lint: passed
+npm.cmd run google-drive:oauth:vercel:apply-saved: passed
+npx.cmd vercel env ls production --scope rhhyuns-projects: Google Drive env vars present as Encrypted
+Vercel remote build/deploy: passed
+```
+
 # 2026-07-01 Google OAuth local repair invalid_request fix
 
 User issue:

@@ -14,7 +14,8 @@ const tokenOutputPath = process.env.GOOGLE_DRIVE_REFRESH_TOKEN_OUT ?? "google-dr
 const printToken = process.argv.includes("--print-token");
 const applyVercelProduction = process.argv.includes("--vercel-production");
 const deployVercelProduction = process.argv.includes("--deploy");
-const vercelScope = argValue("--scope") ?? process.env.VERCEL_SCOPE ?? "rhhyuns-projects";
+const applySavedToken = process.argv.includes("--apply-saved-token");
+const vercelScope = argValue("--scope") || process.env.VERCEL_SCOPE || "rhhyuns-projects";
 
 const localOAuthClient = readLocalGoogleOAuthClient();
 const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID ?? localOAuthClient.clientId ?? "";
@@ -30,7 +31,15 @@ if (!clientId || !clientSecret) {
   process.exit(1);
 }
 
-const server = http.createServer(async (request, response) => {
+let server: http.Server;
+
+if (applySavedToken) {
+  applySavedRefreshToken().catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  });
+} else {
+  server = http.createServer(async (request, response) => {
   const host = request.headers.host ?? "";
   const callbackUrl = new URL(request.url ?? "/", `http://${host}`);
   const code = callbackUrl.searchParams.get("code");
@@ -79,8 +88,6 @@ const server = http.createServer(async (request, response) => {
     await refreshGoogleDriveOauthAccessToken(payload.refresh_token, { clientId, clientSecret });
     writeFileSync(tokenOutputPath, `${payload.refresh_token}\n`, { encoding: "utf8" });
 
-    response.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
-    response.end("Google Drive authorization complete and refresh token verified. You can close this tab.");
     console.log("\nGoogle Drive authorization complete and refresh token verified.");
     console.log(`Refresh token saved locally: ${tokenOutputPath}`);
     console.log(`Refresh token sha256 prefix: ${createHash("sha256").update(payload.refresh_token).digest("hex").slice(0, 12)}`);
@@ -97,17 +104,26 @@ const server = http.createServer(async (request, response) => {
       applyTokenToVercelProduction(payload.refresh_token);
       if (deployVercelProduction) deployProduction();
     }
+    response.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
+    response.end(
+      applyVercelProduction
+        ? "Google Drive authorization complete. Vercel Production values were applied; check the terminal for deploy status."
+        : "Google Drive authorization complete and refresh token verified. You can close this tab.",
+    );
   } catch (exchangeError) {
     const message = exchangeError instanceof Error ? exchangeError.message : String(exchangeError);
-    response.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
-    response.end(`Token exchange failed: ${message}`);
+    if (!response.headersSent) {
+      response.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
+      response.end(`Token exchange or Vercel apply failed: ${message}`);
+    }
     console.error(`Token exchange failed: ${message}`);
+    process.exitCode = 1;
   } finally {
     server.close();
   }
-});
+  });
 
-server.listen(0, "127.0.0.1", () => {
+  server.listen(0, "127.0.0.1", () => {
   const address = server.address() as AddressInfo;
   const url = new URL(authUrl);
   url.searchParams.set("client_id", clientId);
@@ -121,12 +137,32 @@ server.listen(0, "127.0.0.1", () => {
   console.log("Open this URL in your browser, sign in, and approve Google Drive access:");
   console.log(url.toString());
   console.log("\nWaiting for OAuth callback...");
-});
+  });
+}
 
 function redirectUri(port?: number) {
   const address = server.address();
   const actualPort = port ?? (address && typeof address !== "string" ? address.port : 0);
   return `http://127.0.0.1:${actualPort}/oauth2callback`;
+}
+
+async function applySavedRefreshToken() {
+  if (!existsSync(tokenOutputPath)) {
+    throw new Error(`Saved refresh token file does not exist: ${tokenOutputPath}`);
+  }
+  const refreshToken = readFileSync(tokenOutputPath, "utf8").trim();
+  if (!refreshToken) throw new Error(`Saved refresh token file is empty: ${tokenOutputPath}`);
+
+  await refreshGoogleDriveOauthAccessToken(refreshToken, { clientId, clientSecret });
+  console.log("Saved Google Drive refresh token verified.");
+  console.log(`Refresh token sha256 prefix: ${createHash("sha256").update(refreshToken).digest("hex").slice(0, 12)}`);
+
+  if (applyVercelProduction) {
+    applyTokenToVercelProduction(refreshToken);
+    if (deployVercelProduction) deployProduction();
+  } else {
+    console.log("No Vercel action requested. Add --vercel-production to apply the saved token.");
+  }
 }
 
 function argValue(name: string) {
@@ -196,11 +232,12 @@ function runVercel(args: string[], options: { input?: string; allowFailure?: boo
   const executable = process.platform === "win32" ? "npx.cmd" : "npx";
   const result = spawnSync(executable, ["vercel", ...args], {
     input: options.input,
-    stdio: options.input ? ["pipe", "inherit", "inherit"] : "inherit",
+    stdio: options.input ? ["pipe", "pipe", "pipe"] : "inherit",
     encoding: "utf8",
-    shell: false,
+    shell: process.platform === "win32",
   });
   if (result.status !== 0 && !options.allowFailure) {
-    throw new Error(`Vercel command failed: vercel ${args.join(" ")}`);
+    const output = [result.stdout, result.stderr, result.error?.message].filter(Boolean).join("\n").trim();
+    throw new Error(`Vercel command failed: vercel ${args.join(" ")}${output ? `\n${output}` : ""}`);
   }
 }

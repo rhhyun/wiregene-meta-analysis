@@ -84,6 +84,14 @@ For Vercel Production, use the automated repair command instead:
 npm.cmd run google-drive:oauth:vercel
 ```
 
+If OAuth already completed and `google-drive-refresh-token.local.txt` was saved
+but the Vercel apply/deploy step failed, do not repeat Google consent. Apply the
+saved verified token:
+
+```powershell
+npm.cmd run google-drive:oauth:vercel:apply-saved
+```
+
 The helper saves the new refresh token to `google-drive-refresh-token.local.txt`, which is gitignored. It prints only a hash prefix by default. Use `npm.cmd run google-drive:oauth -- --print-token` only when you intentionally need terminal copy/paste.
 
 After obtaining a new token, replace production env values and redeploy production. Do not print secrets in terminal logs.

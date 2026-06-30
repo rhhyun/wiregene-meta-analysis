@@ -76,3 +76,30 @@ fell back to empty shell env variables.
 
 Fixed in `scripts/google-drive-oauth.ts` by verifying the issued refresh token
 with `{ clientId, clientSecret }`.
+
+## Headers-Sent Follow-Up And Final Apply
+
+The next repair run successfully issued and verified a refresh token, but the
+script crashed with `ERR_HTTP_HEADERS_SENT` after printing
+`Applying verified Google Drive OAuth values to Vercel Production.` The script
+had already sent the browser response before Vercel env/deploy work completed.
+
+Fixes:
+
+- Moved the callback response until after Vercel apply/deploy completes.
+- Added `--apply-saved-token` and
+  `npm.cmd run google-drive:oauth:vercel:apply-saved` so the verified
+  `google-drive-refresh-token.local.txt` can be reused without repeating Google
+  consent.
+- Fixed Windows `npx.cmd` stdin handling by running Vercel CLI through the
+  Windows shell for commands that need piped input.
+- Fixed default Vercel scope fallback to `rhhyuns-projects`.
+
+Final apply result:
+
+- `npm.cmd run google-drive:oauth:vercel:apply-saved`: passed.
+- Vercel Production env variables are present as encrypted values.
+- Production deployment completed:
+  - Deployment id: `dpl_2QSGw7u3zAAg1WjVyckdvxvcM7dj`
+  - Production URL: `https://wiregene-meta-analysis-nm0fku6ba-rhhyuns-projects.vercel.app`
+  - Alias: `https://meta.wiregene.com`

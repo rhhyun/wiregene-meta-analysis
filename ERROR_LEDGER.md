@@ -1,5 +1,25 @@
 # Error Ledger
 
+## 2026-07-01 - GOOGLE_OAUTH_REPAIR_HEADERS_SENT_AFTER_TOKEN_SUCCESS
+
+- Error code: `GOOGLE_OAUTH_REPAIR_HEADERS_SENT_AFTER_TOKEN_SUCCESS`
+- Symptom: `npm.cmd run google-drive:oauth:vercel` successfully verifies a new Google Drive refresh token and saves `google-drive-refresh-token.local.txt`, then crashes with `ERR_HTTP_HEADERS_SENT: Cannot write headers after they are sent to the client` immediately after `Applying verified Google Drive OAuth values to Vercel Production.`
+- Root cause: The local OAuth callback handler sent a 200 browser response immediately after token verification, then continued Vercel env/deploy work inside the same `try` block. If Vercel apply failed, the catch block attempted to send a 500 response after headers had already been sent, masking the real Vercel apply error and stopping the process before env values were written.
+- Correct fix: Send the HTTP callback response only after Vercel apply/deploy completes, and guard the catch block with `response.headersSent`. Add `--apply-saved-token` so a token that was already verified and saved can be applied without repeating Google OAuth consent.
+- Prevention rule: Local OAuth callback scripts must not perform long post-response operations in the same error path unless the catch block is headers-sent aware. Persisted verified tokens should have an idempotent apply path.
+- Verification command: `npx.cmd tsc --noEmit --pretty false`; `npm.cmd run lint`; `npm.cmd run google-drive:oauth:vercel:apply-saved`.
+- Affected files: `scripts/google-drive-oauth.ts`; `package.json`; `AUTH_RUNBOOK.md`.
+
+Follow-up fix: the same repair script initially resolved `vercelScope` with
+`argValue("--scope") ?? process.env.VERCEL_SCOPE ?? "rhhyuns-projects"`.
+Because `argValue("--scope")` returns an empty string when the flag is absent,
+the command became `vercel env add ... --scope ` and failed. The fallback now
+uses `argValue("--scope") || process.env.VERCEL_SCOPE || "rhhyuns-projects"`.
+
+Windows CLI fix: `spawnSync("npx.cmd", ..., { input })` failed with
+`spawnSync npx.cmd EINVAL` while direct PowerShell piping worked. The Vercel CLI
+wrapper now uses the Windows shell for commands that need stdin.
+
 ## 2026-07-01 - GOOGLE_OAUTH_LOCAL_REPAIR_INVALID_REQUEST
 
 - Error code: `GOOGLE_OAUTH_LOCAL_REPAIR_INVALID_REQUEST`
