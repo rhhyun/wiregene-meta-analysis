@@ -1,5 +1,15 @@
 # Error Ledger
 
+## 2026-07-01 - GOOGLE_OAUTH_RECONNECT_NOT_APPLIED_TO_PRODUCTION
+
+- Error code: `GOOGLE_OAUTH_RECONNECT_NOT_APPLIED_TO_PRODUCTION`
+- Symptom: User repeatedly reconnects Google Drive OAuth, but Screening continues to report `GOOGLE_OAUTH_INVALID_GRANT` or Google Drive unavailable.
+- Root cause: The OAuth callback can issue and verify a new refresh token, but it does not automatically change Vercel Production environment variables. Production can therefore keep running with old, empty, or mismatched Google Drive credentials. In the 2026-07-01 check, Vercel Production had Meta storage backends set to `google-drive` while `GOOGLE_DRIVE_CLIENT_ID`, `GOOGLE_DRIVE_CLIENT_SECRET`, `GOOGLE_DRIVE_REFRESH_TOKEN`, and Drive target values were empty; the local `token.json` refresh token also failed validation with `GOOGLE_OAUTH_INVALID_GRANT`.
+- Correct fix: Use `npm.cmd run google-drive:oauth:vercel` from the repo. The script opens local OAuth, verifies the issued token, writes the matching Vercel Production env vars, and deploys Production. For a non-OAuth durable setup, configure a Shared Drive/folder with `GOOGLE_DRIVE_AUTH_MODE=service-account`, `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON`, and `GOOGLE_DRIVE_FOLDER_ID`.
+- Prevention rule: Do not tell the operator only to reconnect Google Drive. Always verify whether the newly issued token is actually present in the target runtime env and whether the deployed runtime was restarted/redeployed. OAuth success pages must state that token issuance is not production env mutation.
+- Verification command: Pull Vercel Production env and check presence without printing secrets; run token refresh validation before applying; after deployment, POST `/api/meta-analysis/storage-policy?googleDriveHealth=1`; run `npx.cmd tsc --noEmit --pretty false`, `npm.cmd run lint`, and `npm.cmd run build` after code changes.
+- Affected files: `scripts/google-drive-oauth.ts`; `src/app/api/google-drive/oauth/callback/route.ts`; `src/lib/google-drive-config.ts`; `src/lib/meta-storage-policy.ts`; `AUTH_RUNBOOK.md`.
+
 ## 2026-07-01 - VERCEL_GOOGLE_DRIVE_UNAVAILABLE_AFTER_SYNOLOGY_HEALTHY
 
 - Error code: `VERCEL_GOOGLE_DRIVE_UNAVAILABLE_AFTER_SYNOLOGY_HEALTHY`

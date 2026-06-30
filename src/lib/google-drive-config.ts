@@ -27,12 +27,25 @@ export function googleDriveTarget() {
   );
 }
 
+export function googleDriveAuthModePreference(): GoogleDriveAuthMode | null {
+  const normalized = (process.env.GOOGLE_DRIVE_AUTH_MODE ?? "").trim().toLowerCase();
+  if (normalized === "oauth") return "oauth";
+  if (normalized === "service-account" || normalized === "service_account" || normalized === "serviceaccount") {
+    return "service-account";
+  }
+  return null;
+}
+
 export function hasCompleteGoogleDriveOauthConfig() {
   return Boolean(
     googleDriveOauthClientId() &&
       googleDriveOauthClientSecret() &&
       googleDriveOauthRefreshToken(),
   );
+}
+
+export function hasCompleteGoogleDriveServiceAccountConfig() {
+  return Boolean(googleServiceAccountJsonFromEnv() && googleDriveTarget());
 }
 
 export function hasAnyGoogleDriveOauthConfig() {
@@ -44,8 +57,14 @@ export function hasAnyGoogleDriveOauthConfig() {
 }
 
 export function getGoogleDriveAuthMode(): GoogleDriveAuthMode | null {
+  const preferredMode = googleDriveAuthModePreference();
+  if (preferredMode === "oauth") return hasCompleteGoogleDriveOauthConfig() ? "oauth" : null;
+  if (preferredMode === "service-account") {
+    return hasCompleteGoogleDriveServiceAccountConfig() ? "service-account" : null;
+  }
+
   if (hasCompleteGoogleDriveOauthConfig()) return "oauth";
-  if (googleServiceAccountJsonFromEnv() && googleDriveTarget()) return "service-account";
+  if (hasCompleteGoogleDriveServiceAccountConfig()) return "service-account";
   return null;
 }
 
@@ -56,8 +75,13 @@ export function validateGoogleDriveScheduledConfig() {
   const hasServiceAccount = Boolean(googleServiceAccountJsonFromEnv());
   const hasTarget = Boolean(googleDriveTarget());
   const hasOauth = hasCompleteGoogleDriveOauthConfig();
+  const preferredMode = googleDriveAuthModePreference();
 
   if (!process.env.NCBI_EMAIL) missing.push("NCBI_EMAIL");
+
+  if ((process.env.GOOGLE_DRIVE_AUTH_MODE ?? "").trim() && !preferredMode) {
+    failures.push("GOOGLE_DRIVE_AUTH_MODE must be either oauth or service-account.");
+  }
 
   if (hasAnyGoogleDriveOauthConfig() && !hasOauth) {
     if (!googleDriveOauthClientId()) missing.push("GOOGLE_DRIVE_CLIENT_ID");
@@ -65,10 +89,22 @@ export function validateGoogleDriveScheduledConfig() {
     if (!googleDriveOauthRefreshToken()) missing.push("GOOGLE_DRIVE_REFRESH_TOKEN");
   }
 
-  if (hasOauth) {
+  if (preferredMode === "oauth" && !hasOauth) {
+    failures.push(
+      "GOOGLE_DRIVE_AUTH_MODE=oauth is set, but GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET, or GOOGLE_DRIVE_REFRESH_TOKEN is missing.",
+    );
+  }
+
+  if (preferredMode === "service-account" && !hasCompleteGoogleDriveServiceAccountConfig()) {
+    failures.push(
+      "GOOGLE_DRIVE_AUTH_MODE=service-account is set, but GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON and GOOGLE_DRIVE_FOLDER_ID/GOOGLE_DRIVE_DATABASE_FILE_ID are not both configured.",
+    );
+  }
+
+  if (hasOauth && preferredMode !== "service-account") {
     if (hasServiceAccount) {
       warnings.push(
-        "OAuth Drive credentials are configured, so GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON will be ignored.",
+        "OAuth Drive credentials are configured, so GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON will be ignored unless GOOGLE_DRIVE_AUTH_MODE=service-account is set.",
       );
     }
   } else if (hasServiceAccount) {

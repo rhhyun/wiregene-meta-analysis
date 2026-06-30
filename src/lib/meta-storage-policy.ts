@@ -1,4 +1,4 @@
-import { getGoogleDriveAuthMode } from "./google-drive-config";
+import { getGoogleDriveAuthMode, googleDriveAuthModePreference } from "./google-drive-config";
 import { BRIEFING_VERSION_LABEL } from "./version";
 
 export type MetaJsonStorageBackend = "local-json" | "google-drive";
@@ -81,6 +81,8 @@ export function metaStoragePolicySummary() {
     version: BRIEFING_VERSION_LABEL,
     runtime: isServerlessRuntime() ? "serverless" : "local-node",
     googleDriveAuthConfigured: Boolean(getGoogleDriveAuthMode()),
+    googleDriveAuthMode: getGoogleDriveAuthMode(),
+    googleDriveAuthModePreference: googleDriveAuthModePreference(),
     googleDriveStorageAllowed: metaGoogleDriveStorageAllowed(),
     operatorNote:
       "Meta research workflows should use local storage on Synology/local Docker. Enable Google Drive storage only intentionally with META_ALLOW_GOOGLE_DRIVE_STORAGE=true.",

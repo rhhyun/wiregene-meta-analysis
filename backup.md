@@ -1,3 +1,73 @@
+# 2026-07-01 Google Drive OAuth reconnect loop root cause
+
+User issue:
+
+- Google Drive OAuth had been reconnected multiple times, but Screening still showed Google Drive unavailable / `GOOGLE_OAUTH_INVALID_GRANT`.
+- Repeating "Reconnect Google Drive" was not an adequate fix because the reconnect action and Vercel Production environment mutation were separate operations.
+
+Evidence checked:
+
+- `npx.cmd vercel env pull .vercel-env-production.tmp --environment=production --yes --scope rhhyuns-projects` succeeded.
+- Secret-safe env inspection showed:
+  - `META_PROJECT_STORAGE_BACKEND=google-drive`
+  - `META_USER_PROJECTS_STORAGE_BACKEND=google-drive`
+  - `META_FULL_TEXT_HISTORY_STORAGE_BACKEND=google-drive`
+  - `META_FULL_TEXT_SOURCE_STORAGE_BACKEND=google-drive`
+  - `GOOGLE_DRIVE_CLIENT_ID` empty
+  - `GOOGLE_DRIVE_CLIENT_SECRET` empty
+  - `GOOGLE_DRIVE_REFRESH_TOKEN` empty
+  - `GOOGLE_DRIVE_FOLDER_ID` / `GOOGLE_DRIVE_FOLDER_URL` empty
+- Local `token.json` existed but failed refresh validation with `GOOGLE_OAUTH_INVALID_GRANT`.
+
+Implemented:
+
+- `scripts/google-drive-oauth.ts`
+  - Can now read `credentials.json` as a local fallback for OAuth client id/secret.
+  - Added `--vercel-production` to apply the newly verified token and matching variables to Vercel Production.
+  - Added `--deploy` to redeploy Production after env update.
+- `package.json`
+  - Added `npm.cmd run google-drive:oauth:vercel` as the one-command Production repair flow.
+- `src/lib/google-drive-config.ts`
+  - Added `GOOGLE_DRIVE_AUTH_MODE=oauth|service-account`.
+  - `service-account` mode can now be forced so stale OAuth env values do not override service-account storage.
+- `src/app/api/google-drive/oauth/callback/route.ts`
+  - OAuth success page now states that token issuance does not update Vercel Production by itself.
+  - Displays a non-secret refresh-token fingerprint for post-deploy comparison.
+- `AUTH_RUNBOOK.md` / `ERROR_LEDGER.md`
+  - Updated with the corrected root cause and repair path.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.121`
+  - UI label: `Ver 2.56 | 2026 copyright by JK Hyun`
+
+Correct repair command:
+
+```powershell
+npm.cmd run google-drive:oauth:vercel
+```
+
+This still requires the operator to approve Google OAuth in the browser once,
+but after callback it validates the token, writes the correct Vercel Production
+env vars, and deploys Production automatically.
+
+More durable non-OAuth option:
+
+```text
+GOOGLE_DRIVE_AUTH_MODE=service-account
+GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON=...
+GOOGLE_DRIVE_FOLDER_ID=...
+```
+
+Use only with a Shared Drive or folder that is explicitly shared with the
+service account.
+
+Verification status:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed
+npm.cmd run lint: passed
+npm.cmd run build: passed
+```
+
 # 2026-07-01 Vercel Google Drive unavailable banner after Synology recovery
 
 User issue:

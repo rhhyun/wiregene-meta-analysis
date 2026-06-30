@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createHash } from "crypto";
 
 import { getWiregeneAppMode } from "@/lib/app-mode";
 import { getCurrentWiregeneUser } from "@/lib/auth-session";
@@ -108,6 +109,7 @@ function successPage({
   redirectUri: string;
   temporaryClient: GoogleDriveOAuthClientCredentials | null;
 }) {
+  const tokenFingerprint = createHash("sha256").update(refreshToken).digest("hex").slice(0, 12);
   const envBlock = [
     ...(temporaryClient
       ? [
@@ -140,15 +142,18 @@ function successPage({
 </head>
 <body>
   <p style="font-weight:700;color:#047857">Wiregene Meta Google Drive OAuth</p>
-  <h1>Google Drive connection verified</h1>
+  <h1>Google Drive token issued</h1>
   <div class="ok">
     <p>The refresh token was issued and verified with the current Web OAuth client and Google Drive permission.</p>
+    <p><strong>This page does not change Vercel Production by itself.</strong> Screening will keep failing until these values are saved in Vercel Production Environment Variables and Production is redeployed.</p>
     <p>Client ID: <code>${escapeHtml(temporaryClient ? maskGoogleDriveClientIdValue(temporaryClient.clientId) : maskGoogleDriveClientId())}</code></p>
     <p>Callback URI: <code>${escapeHtml(redirectUri)}</code></p>
+    <p>New refresh token fingerprint: <code>${escapeHtml(tokenFingerprint)}</code></p>
   </div>
   <h2>Values to add to Vercel Production Environment Variables</h2>
   <textarea readonly>${escapeHtml(envBlock)}</textarea>
   <p>After saving these values in Vercel, redeploy Production. <code>GOOGLE_DRIVE_CLIENT_ID</code>, <code>GOOGLE_DRIVE_CLIENT_SECRET</code>, <code>GOOGLE_DRIVE_OAUTH_EXPECTED_CLIENT_ID</code>, and this refresh token must belong to the same Web OAuth client. Meta production uses the fixed callback URI in code, so <code>GOOGLE_DRIVE_OAUTH_REDIRECT_URI</code> is no longer required for production.</p>
+  <p>For the local one-command repair flow, run <code>npm.cmd run google-drive:oauth:vercel</code> from the repository. It verifies the new token, writes the matching Vercel Production variables, and deploys Production.</p>
   <p><a href="/api/meta-analysis/storage-policy">Check storage policy</a> · <a href="/">Return to Meta</a></p>
 </body>
 </html>`;

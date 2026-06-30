@@ -8,6 +8,11 @@ Use this when Screening or extraction dataset storage reports `GOOGLE_OAUTH_INVA
 
 `GOOGLE_OAUTH_INVALID_GRANT` means the Google refresh token cannot be used. Common causes are token revocation, OAuth client mismatch, expired/rotated credentials, or a production environment that still has an old token. This is not repairable inside a request handler.
 
+Opening the OAuth reconnect page is not sufficient by itself. The callback page
+issues and verifies a new refresh token, but Vercel Production continues using
+the old or empty environment variables until the new values are saved in Vercel
+Production and Production is redeployed.
+
 If Synology Docker is healthy but the Screening page still says Google Drive
 storage is unavailable, the browser is viewing a serverless/Vercel Google Drive
 storage backend, not the NAS-local storage backend. A healthy Synology container
@@ -23,12 +28,31 @@ NAS-local data.
 
 ### Recovery Steps
 
-1. Open `/api/google-drive/oauth/start?diagnose=1` on the same deployment target that is failing.
-2. Complete Google authorization with the Drive account that owns or can write to the configured storage folder.
-3. Save the regenerated refresh token into the target runtime environment as `GOOGLE_DRIVE_REFRESH_TOKEN`.
-4. Confirm the matching OAuth client values are set for the same runtime: `GOOGLE_DRIVE_CLIENT_ID`, `GOOGLE_DRIVE_CLIENT_SECRET`, and `GOOGLE_DRIVE_FOLDER_ID`.
-5. Redeploy Vercel or restart Synology/local Docker after changing environment variables.
-6. Open `/api/meta-analysis/storage-policy?googleDriveHealth=1` and confirm Google Drive health before running Screening write actions.
+1. Prefer the one-command local repair flow:
+
+```powershell
+npm.cmd run google-drive:oauth:vercel
+```
+
+This opens a local Google OAuth URL, verifies the new refresh token, writes the
+matching Google Drive values to Vercel Production, and deploys Production.
+
+2. If using the web callback manually, open `/api/google-drive/oauth/start?diagnose=1` on the failing deployment target.
+3. Complete Google authorization with the Drive account that owns or can write to the configured storage folder.
+4. Copy the generated values into Vercel Production Environment Variables. Do not stop after the callback page says the token was issued.
+5. Confirm the matching OAuth client values are set for the same runtime: `GOOGLE_DRIVE_AUTH_MODE=oauth`, `GOOGLE_DRIVE_CLIENT_ID`, `GOOGLE_DRIVE_CLIENT_SECRET`, `GOOGLE_DRIVE_REFRESH_TOKEN`, `GOOGLE_DRIVE_OAUTH_EXPECTED_CLIENT_ID`, and optional `GOOGLE_DRIVE_FOLDER_ID`.
+6. Redeploy Vercel or restart Synology/local Docker after changing environment variables.
+7. POST `/api/meta-analysis/storage-policy?googleDriveHealth=1` and confirm Google Drive health before running Screening write actions.
+
+### Current Failure Pattern To Check First
+
+If `META_*_STORAGE_BACKEND=google-drive` is set but
+`GOOGLE_DRIVE_CLIENT_ID`, `GOOGLE_DRIVE_CLIENT_SECRET`, and
+`GOOGLE_DRIVE_REFRESH_TOKEN` are empty, reconnecting in the browser will not fix
+Screening. The production runtime has no usable Google Drive credentials.
+
+If a local `token.json` exists, validate it before copying it anywhere. An old
+local token can also fail with `GOOGLE_OAUTH_INVALID_GRANT`.
 
 ### Vercel Production Checks
 
@@ -54,6 +78,12 @@ For local OAuth repair, load matching local OAuth client values first, then run:
 npm.cmd run google-drive:oauth
 ```
 
+For Vercel Production, use the automated repair command instead:
+
+```powershell
+npm.cmd run google-drive:oauth:vercel
+```
+
 The helper saves the new refresh token to `google-drive-refresh-token.local.txt`, which is gitignored. It prints only a hash prefix by default. Use `npm.cmd run google-drive:oauth -- --print-token` only when you intentionally need terminal copy/paste.
 
 After obtaining a new token, replace production env values and redeploy production. Do not print secrets in terminal logs.
@@ -73,6 +103,20 @@ npx.cmd vercel env rm GOOGLE_DRIVE_OAUTH_EXPECTED_CLIENT_ID production --yes --s
 
 npx.cmd vercel deploy --prod --yes --scope rhhyuns-projects
 ```
+
+### Service Account Option
+
+To avoid user-refresh-token expiry/revocation entirely, use a Google service
+account with a Shared Drive or a folder shared with the service account. Set:
+
+```text
+GOOGLE_DRIVE_AUTH_MODE=service-account
+GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON=...
+GOOGLE_DRIVE_FOLDER_ID=...
+```
+
+When `GOOGLE_DRIVE_AUTH_MODE=service-account` is set, the app does not choose
+OAuth even if old OAuth variables remain in the environment.
 
 ### Secret Handling
 
