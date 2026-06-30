@@ -60,6 +60,13 @@ type DatasetOverview = {
     details?: unknown;
     reconnectUrl?: string;
     storagePolicyUrl?: string;
+    policy?: {
+      runtime?: "serverless" | "local-node" | string;
+      backends?: {
+        fullTextHistory?: string;
+        fullTextSource?: string;
+      };
+    };
   };
 };
 
@@ -75,6 +82,17 @@ type ProjectFileSavePayload = {
   };
   error?: string;
 };
+
+function datasetStorageRuntimeNotice(overview: DatasetOverview | null) {
+  const policy = overview?.storage?.policy;
+  if (!overview?.storage?.unavailable || !policy) return "";
+  const historyBackend = policy.backends?.fullTextHistory || "unknown";
+  const sourceBackend = policy.backends?.fullTextSource || "unknown";
+  if (policy.runtime === "serverless") {
+    return `Current runtime: Vercel/serverless; full-text history=${historyBackend}, source=${sourceBackend}. Synology Docker may be healthy, but this page still requires a valid Google Drive OAuth token unless opened from the NAS Docker deployment.`;
+  }
+  return `Current runtime: local/Synology; full-text history=${historyBackend}, source=${sourceBackend}. If Google Drive is still used here, check META_ALLOW_GOOGLE_DRIVE_STORAGE and Meta storage backend env values.`;
+}
 
 const auditSection: ExtractionSection = {
   section: "Saved audit trail",
@@ -169,6 +187,7 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const storageUnavailable = Boolean(overview?.storage?.unavailable);
+  const storageRuntimeNotice = datasetStorageRuntimeNotice(overview);
 
   const sections = useMemo(() => [auditSection, ...extractionSections], [extractionSections]);
   const extractionColumns = useMemo(
@@ -551,7 +570,13 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
       {notice ? <StatusMessage tone="success" message={notice} /> : null}
       {error ? <StatusMessage tone="error" message={error} /> : null}
       {storageUnavailable ? (
-        <div className="mt-3 flex flex-wrap gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-950">
+        <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-950">
+          {storageRuntimeNotice ? (
+            <p className="mb-2 rounded border border-amber-200 bg-white px-2 py-1.5 text-[11px] leading-5 text-amber-900">
+              {storageRuntimeNotice}
+            </p>
+          ) : null}
+          <div className="flex flex-wrap gap-2">
           <a
             href={overview?.storage?.reconnectUrl || "/api/google-drive/oauth/start?diagnose=1"}
             className="inline-flex h-8 items-center justify-center rounded-md border border-amber-300 bg-white px-3 transition hover:bg-amber-100"
@@ -564,6 +589,7 @@ export function MetaExtractionDatasetPanel({ extractionSections, projectId }: Me
           >
             Storage diagnostics
           </a>
+          </div>
         </div>
       ) : null}
 

@@ -1,3 +1,42 @@
+# 2026-07-01 Vercel Google Drive unavailable banner after Synology recovery
+
+User issue:
+
+- Screening still showed `Google Drive storage is unavailable ... GOOGLE_OAUTH_INVALID_GRANT` in the saved AI review article list after Synology Docker had been recovered and healthy.
+- This is a different layer from the Synology Docker crash-loop. A healthy Synology container does not repair the Vercel/serverless Google Drive OAuth token.
+
+Implemented:
+
+- `src/lib/meta-storage-policy.ts`
+  - Google Drive unavailable warning now includes runtime-specific guidance.
+  - On Vercel/serverless it explicitly states that Synology Docker health does not repair the Google OAuth token and that NAS-local data requires opening the Synology Docker deployment.
+- Full-text history and extraction dataset unavailable responses now include `metaStoragePolicySummary()` in `storage.policy`.
+- `MetaFullTextAssistant` and `MetaExtractionDatasetPanel`
+  - Show runtime/backend context in the warning banner:
+    - runtime
+    - full-text history backend
+    - full-text source backend
+    - serverless vs local/Synology interpretation
+- `AUTH_RUNBOOK.md` and `ERROR_LEDGER.md` updated with the rule:
+  - If Synology is healthy but the browser still shows Google Drive unavailable, the user is looking at the serverless/Vercel Google Drive backend or that backend still needs OAuth reconnection.
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.120`
+  - UI label: `Ver 2.55 | 2026 copyright by JK Hyun`
+
+Operational interpretation:
+
+- If the banner says `Current runtime: Vercel/serverless`, fix Google Drive OAuth or open the Synology/NAS Docker URL.
+- If the banner says `Current runtime: local/Synology` and still shows Google Drive, inspect `/volume1/docker/meta/.env` for `META_ALLOW_GOOGLE_DRIVE_STORAGE` and Meta storage backend values.
+
+Verification status:
+
+```text
+npx.cmd tsc --noEmit --pretty false: passed
+npm.cmd run lint: passed
+npm.cmd run build: passed
+git diff --check: passed
+```
+
 # 2026-06-30 Synology restart-loop exit 127 hardening
 
 User issue:

@@ -7,7 +7,7 @@ import {
   updateMetaFullTextReviewerSettings,
 } from "@/lib/meta-full-text-history";
 import { cleanMetaProjectId } from "@/lib/meta-project-scope";
-import { googleDriveFallbackWarning, isRecoverableGoogleDriveStorageError } from "@/lib/meta-storage-policy";
+import { googleDriveFallbackWarning, isRecoverableGoogleDriveStorageError, metaStoragePolicySummary } from "@/lib/meta-storage-policy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -64,6 +64,7 @@ export async function GET(request: Request) {
             details,
             reconnectUrl: "/api/google-drive/oauth/start?diagnose=1",
             storagePolicyUrl: "/api/meta-analysis/storage-policy?googleDriveHealth=1",
+            policy: metaStoragePolicySummary(),
           },
         },
         {

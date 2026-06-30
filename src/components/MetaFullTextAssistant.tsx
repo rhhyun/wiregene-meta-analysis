@@ -132,6 +132,19 @@ type MetaFullTextHistoryStorageStatus = {
   details?: unknown;
   reconnectUrl?: string;
   storagePolicyUrl?: string;
+  policy?: {
+    version?: string;
+    runtime?: "serverless" | "local-node" | string;
+    googleDriveAuthConfigured?: boolean;
+    googleDriveStorageAllowed?: boolean;
+    backends?: {
+      project?: string;
+      userProjects?: string;
+      aiSettings?: string;
+      fullTextHistory?: string;
+      fullTextSource?: string;
+    };
+  };
 };
 
 type MetaFullTextHistoryOverviewPayload = {
@@ -301,6 +314,17 @@ function writeCachedFullTextHistoryOverview(projectId: string, payload: MetaFull
 
 function fullTextHistoryUnavailableMessage(message: string) {
   return `${message} Existing full-text analysis records are not deleted; they are temporarily unavailable because shared storage could not be read. Reconnect Google Drive or use Synology/local Docker storage, then refresh.`;
+}
+
+function fullTextStorageRuntimeNotice(storage: MetaFullTextHistoryStorageStatus | null) {
+  const policy = storage?.policy;
+  if (!storage?.unavailable || !policy) return "";
+  const historyBackend = policy.backends?.fullTextHistory || "unknown";
+  const sourceBackend = policy.backends?.fullTextSource || "unknown";
+  if (policy.runtime === "serverless") {
+    return `Current runtime: Vercel/serverless; full-text history=${historyBackend}, source=${sourceBackend}. Synology Docker may be healthy, but this browser page is still blocked until Google Drive OAuth is reconnected. Synology local data is available only from the NAS Docker deployment, not from this serverless Google Drive backend.`;
+  }
+  return `Current runtime: local/Synology; full-text history=${historyBackend}, source=${sourceBackend}. If this local screen still calls Google Drive, check META_ALLOW_GOOGLE_DRIVE_STORAGE and Meta storage backend env values.`;
 }
 
 function fullTextHistoryRecordUrl(id: string, projectId: string, action?: "reanalyze" | "source") {
@@ -1123,6 +1147,7 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
     [currentHistoryItem, historyItems],
   );
   const historyStorageUnavailable = Boolean(historyStorage?.unavailable);
+  const historyStorageRuntimeNotice = fullTextStorageRuntimeNotice(historyStorage);
   const historyOriginalIndexById = useMemo(
     () => new Map(historyItems.map((item, index) => [item.id, index])),
     [historyItems],
@@ -3236,6 +3261,11 @@ export function MetaFullTextAssistant({ extractionColumns, focus, projectId, wor
         {historyError ? (
           <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-950">
             <p>{historyError}</p>
+            {historyStorageRuntimeNotice ? (
+              <p className="mt-2 rounded border border-amber-200 bg-white px-2 py-1.5 text-[11px] leading-5 text-amber-900">
+                {historyStorageRuntimeNotice}
+              </p>
+            ) : null}
             {historyStorageUnavailable ? (
               <div className="mt-2 flex flex-wrap gap-2">
                 <a

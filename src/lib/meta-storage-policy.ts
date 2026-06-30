@@ -46,7 +46,10 @@ export function isRecoverableGoogleDriveStorageError(error: unknown) {
 
 export function googleDriveFallbackWarning(error: unknown) {
   const code = googleDriveStorageErrorCode(error);
-  return `Google Drive storage is unavailable. Existing shared research data was not deleted or replaced; reconnect Google Drive or use the Synology/local Docker deployment before continuing shared work.${code ? ` Diagnostic code: ${code}.` : ""}`;
+  const runtimeNote = isServerlessRuntime()
+    ? " This screen is using the Vercel/serverless shared Google Drive backend; a healthy Synology local container does not repair this Google OAuth token. To use Synology local storage, open the NAS Docker deployment instead of this serverless page."
+    : " This local runtime should normally use Synology/local storage; if Google Drive appears here, check META_ALLOW_GOOGLE_DRIVE_STORAGE and the Meta storage backend env values.";
+  return `Google Drive storage is unavailable. Existing shared research data was not deleted or replaced; reconnect Google Drive or use the Synology/local Docker deployment before continuing shared work.${runtimeNote}${code ? ` Diagnostic code: ${code}.` : ""}`;
 }
 
 export function isGoogleOauthStorageProblem(error: unknown) {

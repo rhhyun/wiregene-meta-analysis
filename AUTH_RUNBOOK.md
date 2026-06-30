@@ -8,6 +8,13 @@ Use this when Screening or extraction dataset storage reports `GOOGLE_OAUTH_INVA
 
 `GOOGLE_OAUTH_INVALID_GRANT` means the Google refresh token cannot be used. Common causes are token revocation, OAuth client mismatch, expired/rotated credentials, or a production environment that still has an old token. This is not repairable inside a request handler.
 
+If Synology Docker is healthy but the Screening page still says Google Drive
+storage is unavailable, the browser is viewing a serverless/Vercel Google Drive
+storage backend, not the NAS-local storage backend. A healthy Synology container
+does not repair Vercel Google OAuth. Either reconnect Google Drive for the
+serverless deployment or open the Synology/NAS Docker deployment URL for
+NAS-local data.
+
 ### Expected App Behavior
 
 - Full-text history read returns `storage.unavailable=true` with reconnect and diagnostics links instead of a hard Screening crash.

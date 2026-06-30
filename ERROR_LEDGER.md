@@ -1,5 +1,15 @@
 # Error Ledger
 
+## 2026-07-01 - VERCEL_GOOGLE_DRIVE_UNAVAILABLE_AFTER_SYNOLOGY_HEALTHY
+
+- Error code: `VERCEL_GOOGLE_DRIVE_UNAVAILABLE_AFTER_SYNOLOGY_HEALTHY`
+- Symptom: Screening page still shows `Google Drive storage is unavailable ... GOOGLE_OAUTH_INVALID_GRANT` after Synology Docker was recovered and healthy.
+- Root cause: The browser is viewing a serverless/Vercel page whose full-text history backend is Google Drive. Synology Docker health only proves the NAS-local deployment is healthy; it does not repair Vercel's Google OAuth refresh token or migrate the browser session to NAS-local storage.
+- Correct fix: Either reconnect Google Drive for the serverless deployment or open the Synology/NAS Docker deployment URL when the intended storage is `/volume1/docker/meta/download`.
+- Prevention rule: Storage-unavailable banners must include runtime/backend context. When runtime is `serverless`, the UI must explicitly say that Synology Docker health is separate from the Vercel Google Drive backend.
+- Verification command: `npx.cmd tsc --noEmit --pretty false`; `npm.cmd run lint`; `npm.cmd run build`; open the Screening saved-list banner and confirm it shows runtime/backends.
+- Affected files: `src/lib/meta-storage-policy.ts`; `src/app/api/meta-analysis/full-text/history/route.ts`; `src/app/api/meta-analysis/extraction-dataset/route.ts`; `src/components/MetaFullTextAssistant.tsx`; `src/components/MetaExtractionDatasetPanel.tsx`; `AUTH_RUNBOOK.md`.
+
 ## 2026-06-30 - SYNOLOGY_META_ONE_MINUTE_STOP_ALARM
 
 - Error code: `SYNOLOGY_META_ONE_MINUTE_STOP_ALARM`
