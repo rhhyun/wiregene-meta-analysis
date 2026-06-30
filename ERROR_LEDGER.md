@@ -1,5 +1,15 @@
 # Error Ledger
 
+## 2026-07-01 - GOOGLE_OAUTH_LOCAL_REPAIR_INVALID_REQUEST
+
+- Error code: `GOOGLE_OAUTH_LOCAL_REPAIR_INVALID_REQUEST`
+- Symptom: `npm.cmd run google-drive:oauth:vercel` opens the local Google OAuth URL and waits for callback, but then fails with `Token exchange failed: Google Drive OAuth is unavailable. Diagnostic code: GOOGLE_OAUTH_INVALID_REQUEST.`
+- Root cause: The repair script loaded `GOOGLE_DRIVE_CLIENT_ID` and `GOOGLE_DRIVE_CLIENT_SECRET` from local `credentials.json` for the authorization-code exchange, but the subsequent refresh-token verification called `refreshGoogleDriveOauthAccessToken(payload.refresh_token)` without passing those same client credentials. When the shell env did not contain Google Drive OAuth values, verification retried with empty client id/secret and Google returned `invalid_request`.
+- Correct fix: Verify the newly issued refresh token with the same client id/secret used for code exchange: `refreshGoogleDriveOauthAccessToken(payload.refresh_token, { clientId, clientSecret })`.
+- Prevention rule: OAuth repair scripts must treat client id, client secret, and refresh token as an inseparable credential set during exchange, verification, Vercel env update, and deployment. Never mix local fallback credentials with empty runtime env during verification.
+- Verification command: `npx.cmd tsc --noEmit --pretty false`; `npm.cmd run lint`; rerun `npm.cmd run google-drive:oauth:vercel`.
+- Affected files: `scripts/google-drive-oauth.ts`.
+
 ## 2026-07-01 - GOOGLE_OAUTH_RECONNECT_NOT_APPLIED_TO_PRODUCTION
 
 - Error code: `GOOGLE_OAUTH_RECONNECT_NOT_APPLIED_TO_PRODUCTION`

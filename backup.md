@@ -1,3 +1,45 @@
+# 2026-07-01 Google OAuth local repair invalid_request fix
+
+User issue:
+
+- Running `npm.cmd run google-drive:oauth:vercel` reached `Waiting for OAuth callback...`
+  and then failed with:
+
+```text
+Token exchange failed: Google Drive OAuth is unavailable. Diagnostic code: GOOGLE_OAUTH_INVALID_REQUEST.
+```
+
+Root cause:
+
+- The script used `credentials.json` for OAuth code exchange, but verified the
+  issued refresh token without passing the same client id/secret.
+- Because the shell environment did not contain `GOOGLE_DRIVE_CLIENT_ID` and
+  `GOOGLE_DRIVE_CLIENT_SECRET`, the verification request used empty OAuth
+  client credentials and Google returned `invalid_request`.
+
+Implemented:
+
+- `scripts/google-drive-oauth.ts`
+  - Refresh-token verification now calls:
+    `refreshGoogleDriveOauthAccessToken(payload.refresh_token, { clientId, clientSecret })`
+- Version bumped:
+  - `package.json` / `package-lock.json`: `0.1.122`
+  - UI label: `Ver 2.57 | 2026 copyright by JK Hyun`
+
+Correct retry command:
+
+```powershell
+npm.cmd run google-drive:oauth:vercel
+```
+
+Verification status:
+
+```text
+Explicit refresh-token verification with client id/secret: returned GOOGLE_OAUTH_INVALID_GRANT, not GOOGLE_OAUTH_INVALID_REQUEST, as expected for the old revoked local token.
+npx.cmd tsc --noEmit --pretty false: passed
+npm.cmd run lint: passed
+```
+
 # 2026-07-01 Google Drive OAuth reconnect loop root cause
 
 User issue:

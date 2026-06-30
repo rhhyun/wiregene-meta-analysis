@@ -76,7 +76,7 @@ const server = http.createServer(async (request, response) => {
       );
     }
 
-    await refreshGoogleDriveOauthAccessToken(payload.refresh_token);
+    await refreshGoogleDriveOauthAccessToken(payload.refresh_token, { clientId, clientSecret });
     writeFileSync(tokenOutputPath, `${payload.refresh_token}\n`, { encoding: "utf8" });
 
     response.writeHead(200, { "content-type": "text/plain; charset=utf-8" });

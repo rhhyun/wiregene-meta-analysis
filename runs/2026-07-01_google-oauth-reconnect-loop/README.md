@@ -59,3 +59,20 @@ The code fix was deployed to Vercel Production:
 
 This deployment does not restore Google Drive access by itself because the
 Production Google Drive credential variables were empty at inspection time.
+
+## Follow-Up Fix
+
+After running `npm.cmd run google-drive:oauth:vercel`, the local repair flow
+failed at callback with:
+
+```text
+Token exchange failed: Google Drive OAuth is unavailable. Diagnostic code: GOOGLE_OAUTH_INVALID_REQUEST.
+```
+
+The root cause was local-script credential mixing. The script read
+`credentials.json` for the authorization-code exchange, but did not pass the
+same client id/secret into refresh-token verification. Verification therefore
+fell back to empty shell env variables.
+
+Fixed in `scripts/google-drive-oauth.ts` by verifying the issued refresh token
+with `{ clientId, clientSecret }`.
