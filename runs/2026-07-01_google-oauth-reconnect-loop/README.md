@@ -48,3 +48,14 @@ Then open Screening and run storage diagnostics, or POST:
 ```powershell
 Invoke-WebRequest -UseBasicParsing -Method POST -Uri "https://meta.wiregene.com/api/meta-analysis/storage-policy?googleDriveHealth=1"
 ```
+
+## Deployment
+
+The code fix was deployed to Vercel Production:
+
+- Deployment id: `dpl_BJdrw8GkZrBP8Xoz1RzHMYMfcSYh`
+- Production URL: `https://wiregene-meta-analysis-6jio9ezdu-rhhyuns-projects.vercel.app`
+- Alias: `https://meta.wiregene.com`
+
+This deployment does not restore Google Drive access by itself because the
+Production Google Drive credential variables were empty at inspection time.

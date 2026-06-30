@@ -66,7 +66,17 @@ Verification status:
 npx.cmd tsc --noEmit --pretty false: passed
 npm.cmd run lint: passed
 npm.cmd run build: passed
+npx.cmd vercel deploy --prod --yes --scope rhhyuns-projects: passed
+Production deployment: dpl_BJdrw8GkZrBP8Xoz1RzHMYMfcSYh
+Production URL: https://wiregene-meta-analysis-6jio9ezdu-rhhyuns-projects.vercel.app
+Alias: https://meta.wiregene.com
 ```
+
+Remaining operational blocker:
+
+- Production code is deployed, but Google Drive access is not restored until a
+  fresh OAuth consent is completed through `npm.cmd run google-drive:oauth:vercel`
+  or service-account variables are configured.
 
 # 2026-07-01 Vercel Google Drive unavailable banner after Synology recovery
 
