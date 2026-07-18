@@ -1,5 +1,11 @@
 # Synology Meta and Portal Split
 
+> **Current deployment notice (Ver 2.59):** this file records the historical
+> service split. Its combined Meta/Portal/briefing scheduler examples are
+> deprecated and must not be registered in DSM. Meta's active standard is
+> [`DEPLOYMENT.md`](../DEPLOYMENT.md) and uses only
+> `synology-start-meta.sh --deploy|--rollback|--verify-only`.
+
 This repository now keeps two operating boundaries for Wiregene:
 
 ```text
@@ -29,42 +35,45 @@ repository split.
 
 ## Meta Service
 
-Use this DSM Task Scheduler command if the meta source checkout may not exist
-yet. It clones or pulls the service repo before starting Docker.
+The source checkout and runtime directory remain separate. Use the repository's
+normal GitHub-to-Synology sync process to install/update the wrapper, then keep
+the DSM deploy command limited to:
 
 ```sh
-/bin/sh -c 'set -eu; export PATH="/usr/local/bin:/usr/bin:/bin:/var/packages/Git/target/bin:/volume1/@appstore/Git/bin:$PATH"; SRC="/volume1/docker/wiregene-meta-analysis"; REPO="https://github.com/rhhyun/wiregene-meta-analysis.git"; command -v git >/dev/null 2>&1 || { echo "git command not found. Install Synology Git package, then rerun."; exit 1; }; mkdir -p /volume1/docker; if [ -d "$SRC/.git" ]; then git -C "$SRC" pull --ff-only origin main; elif [ -e "$SRC" ]; then echo "$SRC exists but is not a git checkout. Move it aside or clone the repo there."; exit 1; else git clone "$REPO" "$SRC"; fi; /bin/sh "$SRC/scripts/synology-start-meta.sh"'
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --deploy
 ```
 
-The direct command below is valid only after the source checkout exists:
+Rollback and read-only verification:
 
 ```sh
-/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --rollback
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --verify-only
 ```
 
 On the first run, fill `/volume1/docker/meta/.env`, then run the same command
 again.
 
-If the first run stops with `No complete Basic Auth credential found`, either
-migrate existing auth values:
+If existing auth values must be migrated, run the helper once before deploy:
 
 ```sh
-git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-migrate-auth-env.sh && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-migrate-auth-env.sh
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --deploy
 ```
 
-or seed new values through the scheduler environment:
+Do not place credentials in a shared scheduler command. Set auth, admin, and
+OpenAI values in `/volume1/docker/meta/.env`.
 
-```sh
-APP_BASIC_AUTH_USER='YOUR_LOGIN_ID' APP_BASIC_AUTH_PASSWORD='YOUR_PASSWORD' WIREGENE_ADMIN_EMAILS='YOUR_ADMIN_EMAIL' /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```text
+APP_BASIC_AUTH_USER=YOUR_LOGIN_ID
+APP_BASIC_AUTH_PASSWORD=YOUR_PASSWORD
+WIREGENE_ADMIN_EMAILS=YOUR_ADMIN_EMAIL
+OPENAI_API_KEY=YOUR_OPENAI_API_KEY
+OPENAI_MODEL=gpt-5-nano
 ```
 
-For accurate AI-assisted full-text screening/extraction, seed OpenAI once. With
+For accurate AI-assisted full-text screening/extraction, configure OpenAI. With
 OpenAI enabled, the full-text assistant also returns a Hyunlab-style quality
 review with score, grade, improvement guidance, and criteria-level checks.
-
-```sh
-git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && OPENAI_API_KEY='YOUR_OPENAI_API_KEY' OPENAI_MODEL='gpt-5-nano' /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
-```
 
 If `OPENAI_API_KEY` is not set, the full-text assistant still extracts text but
 uses fallback rules only and records a low quality-review score requiring human
@@ -116,59 +125,24 @@ portal.wiregene.com -> NAS_IP:3002
 
 ## Scheduler
 
-No new recurring Synology scheduler is required for `meta` or `portal`; they
-are web services. Keep the existing research briefing scheduled task if it is
-already registered:
+Meta, Portal, and research briefing are independent services. Never combine
+their start/generate commands in one DSM task. The only active Meta task is
+manual or boot-time:
+
+```sh
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --deploy
+```
+
+Meta rollback and read-only verification are separate explicit modes:
 
 ```text
-/bin/sh /volume1/docker/research-briefing-platform/scripts/synology-briefing-generate.sh
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --rollback
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --verify-only
 ```
 
-If Synology is used as the primary runtime instead of Vercel, add boot-time
-tasks for the two Docker services. The combined DSM Task Scheduler command is:
-
-```text
-/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
-/bin/sh /volume1/docker/wiregene-portal/scripts/synology-start-portal.sh
-```
-
-Separate DSM Task Scheduler commands are also available after the source
-checkouts already exist:
-
-```sh
-/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
-/bin/sh /volume1/docker/wiregene-portal/scripts/synology-start-portal.sh
-```
-
-On the first run, each script creates `/volume1/docker/meta/.env` or
-`/volume1/docker/portal/.env` from the package example and exits. Fill the
-auth/admin values in the generated `.env` files, then run the scheduler task
-again.
-
-If the existing login ID/password values are already stored in the old
-Synology environment and are not known to the operator, do not print or retype
-the password. Run the migration helper instead:
-
-```sh
-/bin/sh /volume1/docker/research-briefing-platform/scripts/synology-migrate-auth-env.sh
-/bin/sh /volume1/docker/research-briefing-platform/scripts/synology-bootstrap-service-repos.sh
-/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
-/bin/sh /volume1/docker/wiregene-portal/scripts/synology-start-portal.sh
-```
-
-The helper fills only missing auth/admin keys in `/volume1/docker/meta/.env`
-and `/volume1/docker/portal/.env`. Existing non-empty values are kept, and
-secret values are not printed to the terminal. Before writing, the helper
-creates timestamped `.bak.YYYYMMDDHHMMSS` backups and applies `chmod 600` when
-the filesystem permits it. It reports only `SET` or `MISSING` readiness.
-
-If no existing `WIREGENE_ADMIN_EMAILS`, `APP_ADMIN_USERS`, or `APP_ADMIN_USER`
-value exists and the primary Basic Auth user should become the portal admin,
-rerun the helper explicitly with:
-
-```sh
-AUTH_FALLBACK_ADMIN_FROM_USER=true /bin/sh /volume1/docker/research-briefing-platform/scripts/synology-migrate-auth-env.sh
-```
+Portal and briefing must follow their own repository's deploy standard, lock,
+timeout, health, and logging policy. Historical commands below this notice must
+not be copied into an active Meta scheduler.
 
 ## Work Backup Handoff
 
@@ -191,27 +165,6 @@ if [ ! -d "$APP_DIR/.git" ]; then
   git clone "$REPO_URL" "$APP_DIR"
 fi
 git -C "$APP_DIR" pull --ff-only origin main
-/bin/sh "$APP_DIR/scripts/synology-write-backup-md.sh"
-```
-
-If the combined meta/portal start task should refresh the local handoff note
-only after a successful start, DSM Task Scheduler can use:
-
-```sh
-APP_DIR=/volume1/docker/research-briefing-platform
-REPO_URL=https://github.com/rhhyun/research-briefing-platform.git
-if [ ! -d "$APP_DIR/.git" ]; then
-  if [ -e "$APP_DIR" ]; then
-    echo "ERROR: $APP_DIR exists but is not a Git checkout."
-    echo "Move it aside or set APP_DIR to the real checkout path."
-    exit 1
-  fi
-  git clone "$REPO_URL" "$APP_DIR"
-fi
-git -C "$APP_DIR" pull --ff-only origin main
-/bin/sh "$APP_DIR/scripts/synology-bootstrap-service-repos.sh" &&
-/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh &&
-/bin/sh /volume1/docker/wiregene-portal/scripts/synology-start-portal.sh &&
 /bin/sh "$APP_DIR/scripts/synology-write-backup-md.sh"
 ```
 

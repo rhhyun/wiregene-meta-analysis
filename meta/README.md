@@ -35,14 +35,25 @@ Use the Synology Docker package in:
 synology/docker/meta
 ```
 
-The Docker package mounts the shared source directory and starts the same app
-with `WIREGENE_APP_MODE=meta`.
+GitHub Actions builds the production image. Synology pulls that image and starts
+it detached; it does not install dependencies or build the application on the
+NAS. The full standard is in [`DEPLOYMENT.md`](../DEPLOYMENT.md).
 
 DSM Task Scheduler boot-time command:
 
 ```text
-/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --deploy
 ```
+
+Rollback and read-only verification:
+
+```text
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --rollback
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --verify-only
+```
+
+Keep the deploy task manual or boot-time. Portal, briefing, workers, queues, and
+migrations use separate service tasks; they are not chained to Meta deploy.
 
 ## Boundary Rules
 

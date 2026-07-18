@@ -1,5 +1,17 @@
 # Error Ledger
 
+## 2026-07-18 - SYNOLOGY_SCHEDULER_TASK_NEVER_FINISHES
+
+- Error code: `SYNOLOGY_SCHEDULER_TASK_NEVER_FINISHES`
+- Symptom: DSM reports `Scheduled Task skipped because the task was already running`; after repeated Wiregene deploy tasks, Task Scheduler edit/save can also stop responding until reboot.
+- Root cause: the former Meta runtime built the Next.js app on the NAS, deploy commands had no overall timeout, scheduler log and Docker log growth was unbounded, periodic watchdog commands performed Git/deploy work, and the directory lock cleanup attempted `rmdir` while its PID file still existed. Legacy host `nohup` and combined Meta/Portal/briefing instructions also blurred the service boundary.
+- Correct fix: GitHub Actions builds an immutable production image. DSM runs only `scripts/synology-start-meta.sh --deploy`, which delegates to `scripts/synology-deploy.sh` for lock/trap/timeout, Docker path discovery, `docker compose pull`, `docker compose up -d --remove-orphans`, bounded logs, container/health URL verification, and rollback recording.
+- First-migration guard: A legacy source-build container cannot be rolled back by tagging its generic Node base image. Preserve `docker-compose.legacy-rollback.yml`, verify its existing `.next` artifact, create a no-build `next start` override, atomically record `rollback_mode=legacy`, and require an isolated no-volume/no-host-port image probe before production cutover. Later image deployments use `rollback_mode=image` and the local `nas-rollback` tag.
+- Prevention rule: deploy is manual or boot-time, never minutely. Monitor, Portal, briefing, worker, queue, and migration tasks are independent. Never run NAS-side npm/build, follow-mode logs, host `nohup` servers, destructive prune, `compose down -v`, or automatic data deletion from a deploy task.
+- Rollback command: `/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --rollback`.
+- Verification command: `/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --verify-only`; `/usr/syno/bin/synoschedtask --get`; confirm no scheduler shell/Git/npm/build child remains after deploy.
+- Affected files: `scripts/synology-deploy.sh`; `scripts/synology-start-meta.sh`; `synology/docker/meta/deploy.env`; `synology/docker/meta/docker-compose.yml`; `.github/workflows/container-image.yml`; `DEPLOYMENT.md`; Synology deployment documentation.
+
 ## 2026-07-01 - GOOGLE_OAUTH_REPAIR_HEADERS_SENT_AFTER_TOKEN_SUCCESS
 
 - Error code: `GOOGLE_OAUTH_REPAIR_HEADERS_SENT_AFTER_TOKEN_SUCCESS`
@@ -55,19 +67,19 @@ wrapper now uses the Windows shell for commands that need stdin.
 - Error code: `SYNOLOGY_META_ONE_MINUTE_STOP_ALARM`
 - Symptom: Synology DSM repeatedly reports that `wiregene-meta` stopped unexpectedly, often at one-minute intervals and across client PCs.
 - Root cause: A DSM Task Scheduler job can run the Meta start command every minute. Older startup flow used forced Docker recreation, and any repeated start/recreate or crash-loop can produce DSM container stop notifications. This is a NAS runtime/scheduler issue, not a browser-PC issue.
-- Correct fix: Keep `scripts/synology-start-meta.sh` for manual deployment, boot-time start, or intentional restart only. For one-minute monitoring, run `scripts/synology-meta-watchdog.sh`, which exits `0`, does not recreate a healthy running container, and restarts only when the container is missing or stopped.
-- Prevention rule: Do not use `docker compose up --force-recreate` in periodic DSM tasks. Periodic DSM tasks must be diagnostic/watchdog tasks that log errors and exit successfully unless a human intentionally runs a deployment/rebuild command.
-- Verification command: `bash -n scripts/synology-start-meta.sh`; `bash -n scripts/synology-meta-status.sh`; `bash -n scripts/synology-meta-watchdog.sh`; run the watchdog on Synology and inspect `/volume1/docker/meta/logs/meta-watchdog.log`.
+- Correct fix: Superseded by the Ver 2.59 image deployment standard. Keep `scripts/synology-start-meta.sh --deploy` manual or boot-time and remove all minutely deploy/Git pull jobs. Use `--verify-only` for an explicit read-only check.
+- Prevention rule: Do not use `docker compose up --force-recreate` or a deploy wrapper in periodic DSM tasks. Monitoring must never perform Git pull, image deployment, NAS build, or hide a failed deploy as success.
+- Verification command: `sh -n scripts/synology-deploy.sh`; `sh -n scripts/synology-start-meta.sh`; run `--verify-only`; inspect `/usr/syno/bin/synoschedtask --get` for old minutely jobs.
 - Affected files: `scripts/synology-start-meta.sh`; `scripts/synology-meta-status.sh`; `scripts/synology-meta-watchdog.sh`; `SERVICE.md`; `synology/docker/meta/README.md`; `synology/docker/meta/.env.example`.
 
 ## 2026-06-30 - SYNOLOGY_META_RESTART_LOOP_EXIT_127
 
 - Error code: `SYNOLOGY_META_RESTART_LOOP_EXIT_127`
 - Symptom: Watchdog reports `running=true status=restarting exitCode=127 health=unhealthy restartCount=90` for `wiregene-meta`.
-- Root cause: Docker status `restarting` with high restart count is a crash loop even when `.State.Running` is `true`. Exit `127` usually means a command is missing inside the container. In this compose flow, the likely operational cause is stale or broken mounted dependencies where `node_modules` exists but `node_modules/.bin/next` is missing, so `npm run build` exits with `next: not found`.
-- Correct fix: Pull the latest repo and run one forced recreate so Synology copies the patched compose file and rebuilds dependencies when the Next.js binary is missing: `git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && META_FORCE_RECREATE=true /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh`.
-- Prevention rule: Watchdogs must classify `status=restarting` as crash-loop evidence and must not treat it as merely unhealthy-but-running. Compose startup must validate `node`, `npm`, `package.json`, and `node_modules/.bin/next` before build/start.
-- Verification command: `bash -n scripts/synology-meta-watchdog.sh`; `bash -n scripts/synology-meta-status.sh`; `bash -n scripts/synology-start-meta.sh`; `npm.cmd run build`; inspect `/volume1/docker/meta/logs/meta-watchdog.log` and `docker logs wiregene-meta` after Synology recreate.
+- Root cause: Docker status `restarting` with high restart count is a crash loop even when `.State.Running` is `true`. The former source-mounted runtime could also enter exit `127` when NAS-built dependencies were incomplete.
+- Correct fix: Do not delete `node_modules` and rebuild on the NAS. Deploy the prebuilt production image with `--deploy`; if the new image fails health verification, use `--rollback`.
+- Prevention rule: Watchdogs must classify `status=restarting` as crash-loop evidence and must not trigger a repeated build/recreate loop. Image build validation belongs in GitHub Actions.
+- Verification command: run `--verify-only`; inspect `docker logs --tail 100 wiregene-meta`; confirm the deployed image ID/tag and health endpoint.
 - Affected files: `scripts/synology-meta-watchdog.sh`; `scripts/synology-meta-status.sh`; `synology/docker/meta/docker-compose.yml`; `SERVICE.md`; `synology/docker/meta/README.md`.
 
 ## 2026-06-29 - GOOGLE_OAUTH_INVALID_GRANT

@@ -1,10 +1,6 @@
 #!/bin/sh
-set -u
+set -eu
 
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-status=0
-
-/bin/sh "$SCRIPT_DIR/synology-start-meta.sh" || status=$?
-/bin/sh "$SCRIPT_DIR/synology-start-portal.sh" || status=$?
-
-exit "$status"
+echo "ERROR: Combined Meta/Portal deployment is disabled in this repository." >&2
+echo "Run the bounded Meta task here and the Portal repository task separately." >&2
+exit 64

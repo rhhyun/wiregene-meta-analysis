@@ -4,7 +4,7 @@ Standalone repository exported from `research-briefing-platform`.
 
 ## Service Boundary
 
-- Host: https://search.wiregene.com
+- Host: https://meta.wiregene.com
 - App mode: meta
 - Synology source directory: /volume1/docker/wiregene-meta-analysis
 - Runtime directory: /volume1/docker/meta
@@ -28,63 +28,92 @@ Set `WIREGENE_APP_MODE=meta` in Vercel and Synology.
 
 ## Synology DSM Task Scheduler
 
-Use the bootstrap command below when the NAS source checkout may be missing or
-stale. It clones or pulls the GitHub repo first, then starts the Docker service.
+The authoritative deployment standard is [DEPLOYMENT.md](DEPLOYMENT.md). Meta
+uses a prebuilt production image. GitHub Actions performs dependency install and
+build; the NAS performs image pull, detached Compose start, and health
+verification only.
 
-Use this as a manual or boot-time service start task. Do not schedule it every
-minute. `meta.wiregene.com` is a long-running web service, not a minutely batch
-job; a minutely start task can repeatedly stop/recreate or restart the
-container and trigger DSM Docker notifications.
+Use the existing Meta sync/deploy task in DSM Task Scheduler. Set it to manual
+or boot-time, never every minute. Its complete command must be one line:
 
-```sh
-/bin/sh -c 'set -eu; export PATH="/usr/local/bin:/usr/bin:/bin:/var/packages/Git/target/bin:/volume1/@appstore/Git/bin:$PATH"; SRC="/volume1/docker/wiregene-meta-analysis"; REPO="https://github.com/rhhyun/wiregene-meta-analysis.git"; command -v git >/dev/null 2>&1 || { echo "git command not found. Install Synology Git package, then rerun."; exit 1; }; mkdir -p /volume1/docker; if [ -d "$SRC/.git" ]; then git -C "$SRC" pull --ff-only origin main; elif [ -e "$SRC" ]; then echo "$SRC exists but is not a git checkout. Move it aside or clone the repo there."; exit 1; else git clone "$REPO" "$SRC"; fi; /bin/sh "$SRC/scripts/synology-start-meta.sh"'
-```
-
-If DSM reports `wiregene-meta` stopped unexpectedly, run the non-failing
-diagnostic command once and inspect `/volume1/docker/meta/logs/meta-status.log`:
+Run it after the GitHub `Container image` workflow has published the current
+commit's `sha-<full-sha>` image. If the image is not ready, deploy fails before
+replacing the current container.
 
 ```sh
-git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-meta-status.sh
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --deploy
 ```
 
-If DSM must monitor the service every minute, do not use the start command.
-Use the watchdog task below. It exits `0`, does not recreate a healthy running
-container, and restarts only when the container is missing or stopped:
+The public interface is:
 
 ```sh
-git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-meta-watchdog.sh
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --deploy
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --rollback
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --verify-only
 ```
 
-Watchdog logs are written to:
+No argument is equivalent to `--deploy`. The wrapper delegates common lock,
+trap, timeout, Docker path discovery, pull/up, health, log, and rollback behavior
+to `scripts/synology-deploy.sh`. A failure returns non-zero. Persistent data and
+the runtime `.env` are never pruned as part of deploy or rollback.
 
-```txt
-/volume1/docker/meta/logs/meta-watchdog.log
-```
+Meta's site-only values are in `synology/docker/meta/deploy.env`: GHCR image,
+runtime paths, container, host port `3001`, `/api/health`, and deployment
+deadlines. Common policy remains in the engine and is not duplicated per site.
 
-If the watchdog reports `status=restarting`, `exitCode=127`, and a high
-`restartCount`, the container is in a crash loop. Apply the latest compose
-startup guard with a one-time forced recreate:
+On the first migration from the old source-mounted Node container, deploy saves
+`/volume1/docker/meta/docker-compose.legacy-rollback.yml`, verifies the running
+container already has a usable `.next` artifact, creates a no-build rollback
+override, and atomically records `rollback_mode=legacy` in
+`/volume1/docker/meta/.rollback-state`. It probes the new image in a unique
+isolated container with no volume or host port before touching production. A
+failed probe leaves the old production container unchanged. `--rollback`
+automatically uses the saved legacy compose and existing build artifact for
+this first transition; after a later normal image deployment records
+`rollback_mode=image`, the same command uses the local
+`wiregene-meta-analysis:nas-rollback` application image instead. See
+`DEPLOYMENT.md` for the exact distinction.
+
+If DSM reports `wiregene-meta` stopped unexpectedly, run verify-only once and
+inspect the bounded deployment log and recent Docker log:
 
 ```sh
-git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && META_FORCE_RECREATE=true /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --verify-only
+docker logs --tail 100 wiregene-meta
 ```
 
-If exit `127` continues, remove the mounted dependency folder and rerun the
-same command once:
+Do not add `git pull` to a one-minute monitor and do not run deploy periodically.
+To inspect the actual DSM registrations, run:
 
 ```sh
-rm -rf /volume1/docker/wiregene-meta-analysis/node_modules && git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && META_FORCE_RECREATE=true /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+/usr/syno/bin/synoschedtask --get
 ```
 
-If the start script reports missing Basic Auth values, first pull the latest
-scripts, then choose one:
+Disable any task that runs raw `docker compose up`, `npm install`, `npm run
+build`, `docker compose build`, `docker logs -f`, `tail -f`, or
+`synology-start-meta.sh` every minute. Portal, briefing, worker, queue, and
+migration work must use separate tasks.
+
+After deployment, no scheduler shell, Git, npm, or build process should remain:
 
 ```sh
-git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-migrate-auth-env.sh && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+ps | grep -E 'synology-(start-meta|deploy)|git .*wiregene-meta-analysis|npm (ci|install|run build)|next dev' | grep -v grep
+docker ps --filter name=wiregene-meta
 ```
 
+The first command must have no output. The second must show one healthy Meta
+container. The container is the intended long-running service; scheduler child
+processes are not.
+
+## Authentication and AI Configuration
+
+Keep secrets in `/volume1/docker/meta/.env`, not in the Task Scheduler command.
+If existing authentication values must be migrated, run the migration helper
+once, then deploy:
+
 ```sh
-APP_BASIC_AUTH_USER='YOUR_LOGIN_ID' APP_BASIC_AUTH_PASSWORD='YOUR_PASSWORD' WIREGENE_ADMIN_EMAILS='YOUR_ADMIN_EMAIL' /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-migrate-auth-env.sh
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --deploy
 ```
 
 Alternatively, Meta can rely on `portal.wiregene.com` central authentication.
@@ -103,18 +132,10 @@ into `/volume1/docker/meta/.env` automatically. If no auth value is found, the
 script now starts the container with a warning instead of blocking deployment;
 configure authentication before exposing the service publicly.
 
-For full-text article screening/extraction accuracy, configure OpenAI. When
-enabled, the full-text workflow uses OpenAI Structured Outputs to produce both
-the eligibility/extraction draft and a Hyunlab-style quality review
-(`score`, `grade`, `summary`, `improvement`, and criteria-level comments).
-
-```sh
-git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && OPENAI_API_KEY='YOUR_OPENAI_API_KEY' OPENAI_MODEL='gpt-5-nano' /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
-```
-
-Without `OPENAI_API_KEY`, the full-text assistant uses conservative fallback
-rules, marks the result `aiUsed=false`, and assigns a low quality-review score
-requiring human verification.
+For full-text article screening/extraction accuracy, set `OPENAI_API_KEY` and
+`OPENAI_MODEL` in the runtime `.env`, then run `--deploy`. Without an API key,
+the full-text assistant uses conservative fallback rules and requires human
+verification.
 
 Meta administrators can also open **AI 평가 설정** inside `meta.wiregene.com`
 and save the OpenAI key/model there. The saved key is encrypted in

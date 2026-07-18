@@ -1,3 +1,126 @@
+# 2026-07-18 Ver 2.59 Synology finite-time image deployment standard
+
+User issue:
+
+- After repeatedly running Wiregene DSM Task Scheduler deploy jobs, jobs remained
+  active and later runs reported `Scheduled Task skipped because the task was
+  already running`.
+- DSM Task Scheduler edit/save could remain unavailable until NAS reboot, then
+  fail again after another deployment run.
+
+Repository boundary:
+
+- The canonical checkout is
+  `C:\Users\rhhyu\Documents\GitHub\wiregene-meta-analysis`.
+- `C:\Users\rhhyu\Documents\Meta.wiregene.com` is a handoff workspace and must
+  not be edited as the application repository.
+
+Audit findings:
+
+- The old compose runtime used `node:24-bookworm-slim`, mounted source, and ran
+  dependency install plus Next.js build on the NAS.
+- Deploy/Git/Docker work had no total timeout and scheduler/Docker logs were not
+  fully bounded.
+- Start/watchdog lock cleanup attempted to remove a non-empty lock directory,
+  so the PID file could leave a stale lock after normal exit.
+- A one-minute watchdog command also performed Git/deploy work and could remain
+  active longer than its schedule interval.
+- Legacy Meta documentation still contained NAS rebuild, `nohup` host server,
+  and combined Meta/Portal/briefing task paths.
+
+Ver 2.59 target state:
+
+- GitHub Actions builds and publishes the production image.
+- Synology performs image pull and
+  `docker compose up -d --remove-orphans` only.
+- `scripts/synology-deploy.sh` owns common lock/trap/timeout, Docker path
+  resolution, bounded logging, health verification, failure propagation, and
+  rollback state.
+- Hard timeout is normalized to exit `124`; if grace expiry forces `SIGKILL`,
+  the supervisor verifies that the worker PID is dead before removing only the
+  known lock metadata files.
+- `scripts/synology-start-meta.sh` is the Meta site wrapper. Its public modes
+  are `--deploy` (default), `--rollback`, and `--verify-only`.
+- `synology/docker/meta/deploy.env` contains only site values: GHCR image,
+  runtime/compose/env paths, container, port `3001`, `/api/health`, and the
+  `600s` deploy / `180s` verify deadlines.
+- Deploy runs `git pull --ff-only` inside the lock and selects the immutable
+  `sha-<full-sha>` image matching Git HEAD; a missing/unpublished image fails
+  before replacing the existing container.
+- The wrapper executes a one-use runtime snapshot of the common engine, so the
+  locked Git pull cannot mutate the script that is currently running; the
+  snapshot is removed by success, failure, and signal cleanup traps.
+- First legacy migration preserves
+  `/volume1/docker/meta/docker-compose.legacy-rollback.yml`, verifies the
+  running container already has its `.next` artifact, creates an atomic
+  no-build rollback override, and only then writes `.rollback-state` with
+  `rollback_mode=legacy`. The new image must pass a unique isolated probe with
+  no data volume or host port before the production container is touched.
+- During that first transition, the same `--rollback` command selects the saved
+  legacy compose. After a successful prebuilt-image cycle, rollback state is
+  `image` and `--rollback` selects local
+  `wiregene-meta-analysis:nas-rollback`; normal rollback performs no npm/build.
+- Docker logs rotate at `max-size: 10m`, `max-file: 3`.
+- The web container uses limited `on-failure:3`; it does not use
+  `restart: always`.
+- Persistent data under `/volume1/docker/meta/download`, `data`, and `.env` is
+  never pruned by deploy or rollback.
+- Meta deploy does not start Portal, briefing, worker, queue, or migrations.
+- Historical cross-site Synology entrypoints retained in the Meta checkout now
+  fail closed immediately and point operators to the owning Portal or research
+  briefing repository; this prevents old Meta scheduler paths from starting
+  foreground servers or NAS builds.
+
+Primary documentation:
+
+- `DEPLOYMENT.md`: authoritative common/site boundary, before/after comparison,
+  DSM command, rollback, verification, task audit, and residual process checks.
+- `SERVICE.md` and `synology/docker/meta/README.md`: Meta operator entrypoints.
+- `ERROR_LEDGER.md`: durable record for
+  `SYNOLOGY_SCHEDULER_TASK_NEVER_FINISHES`.
+
+Final DSM Task Scheduler command:
+
+```sh
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --deploy
+```
+
+Set the existing Meta sync/deploy task to manual or NAS boot-time. Do not create
+a minutely deployment task. Inspect actual registrations before deployment:
+
+```sh
+/usr/syno/bin/synoschedtask --get
+```
+
+Rollback and verification:
+
+```sh
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --rollback
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --verify-only
+docker logs --tail 100 wiregene-meta
+```
+
+Residual scheduler process check after deploy:
+
+```sh
+ps | grep -E 'synology-(start-meta|deploy)|git .*wiregene-meta-analysis|npm (ci|install|run build)|next dev' | grep -v grep
+docker ps --filter name=wiregene-meta
+```
+
+The first command must have no output. The second must show one healthy Meta
+container. Do not run historical `rm -rf .../node_modules`, NAS npm/build,
+`docker compose build`, follow-mode logs, or combined Meta/Portal/briefing
+commands.
+
+Handoff status:
+
+- Package version: `0.1.124`.
+- UI version: `Ver 2.59`.
+- Local documentation and version updates are prepared in the canonical repo.
+- GitHub push and live Synology execution/verification must be reported as
+  separate outcomes; do not claim NAS completion until DSM has run the command
+  and `--verify-only` passes.
+
 # 2026-07-01 Google OAuth repair headers-sent fix
 
 User issue:

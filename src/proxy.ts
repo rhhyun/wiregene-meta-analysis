@@ -10,6 +10,10 @@ import {
 type WiregeneAppMode = ReturnType<typeof getWiregeneAppMode>;
 
 export async function proxy(request: NextRequest) {
+  if (request.nextUrl.pathname === "/api/health") {
+    return NextResponse.next();
+  }
+
   const mode = getWiregeneAppMode(request.headers.get("host"));
 
   if (isPortalAuthCheckPath(request.nextUrl.pathname, mode)) {

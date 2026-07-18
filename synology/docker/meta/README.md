@@ -4,57 +4,72 @@ This package runs `meta.wiregene.com` as a separate Synology Docker service.
 
 ## Install / Start From DSM Task Scheduler
 
-Use this bootstrap command when the NAS source checkout may be missing or stale.
-It clones/pulls `rhhyun/wiregene-meta-analysis` first, then runs the service
-start script.
+See the repository root [DEPLOYMENT.md](../../../DEPLOYMENT.md) for the complete
+Wiregene standard. GitHub Actions builds the production image. The NAS must not
+run `npm install`, `npm ci`, `npm run build`, or `docker compose build`.
 
-Run this task manually or at NAS boot. Do not schedule it every minute. Meta is
-a long-running web service; minutely start tasks can create repeated Docker
-stop/start notifications or hide the real crash log.
+In DSM Task Scheduler, use the existing Meta sync/deploy task and keep it manual
+or boot-time. Do not schedule deployment every minute.
 
 ```sh
-/bin/sh -c 'set -eu; export PATH="/usr/local/bin:/usr/bin:/bin:/var/packages/Git/target/bin:/volume1/@appstore/Git/bin:$PATH"; SRC="/volume1/docker/wiregene-meta-analysis"; REPO="https://github.com/rhhyun/wiregene-meta-analysis.git"; command -v git >/dev/null 2>&1 || { echo "git command not found. Install Synology Git package, then rerun."; exit 1; }; mkdir -p /volume1/docker; if [ -d "$SRC/.git" ]; then git -C "$SRC" pull --ff-only origin main; elif [ -e "$SRC" ]; then echo "$SRC exists but is not a git checkout. Move it aside or clone the repo there."; exit 1; else git clone "$REPO" "$SRC"; fi; /bin/sh "$SRC/scripts/synology-start-meta.sh"'
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --deploy
 ```
 
-The direct command below works only after `/volume1/docker/wiregene-meta-analysis`
-is already a current Git checkout.
+Public operations:
 
 ```sh
-/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --deploy
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --rollback
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --verify-only
 ```
 
-If DSM reports that `wiregene-meta` stopped unexpectedly, run the diagnostic
-script below once. It records container state, restart count, health status,
-recent Docker logs, compose validation, and local HTTP status to
-`/volume1/docker/meta/logs/meta-status.log`. It exits successfully by design so
-the diagnostic task does not create another failure notification.
+No argument is equivalent to `--deploy`. All modes use the common
+`scripts/synology-deploy.sh` lock/trap/timeout engine. Docker logs use
+`max-size: 10m` and `max-file: 3`; scheduler logs are bounded by the deploy
+engine. Failed external commands return non-zero.
+
+Site-only defaults live in `synology/docker/meta/deploy.env`: image repository
+`ghcr.io/rhhyun/wiregene-meta-analysis` (`main` seed, deploy selects the
+Git HEAD `sha-<full-sha>` image), local rollback image
+`wiregene-meta-analysis:nas-rollback`, host port `3001`, health path
+`/api/health`, total timeout `600s`, health verification `180s`, and deploy log
+rotation `10 MB`/`3`. The web container uses limited `on-failure:3`, not an
+unbounded `restart: always` loop.
+
+For the first transition from the old source-build container, the engine saves
+`docker-compose.legacy-rollback.yml`, verifies the running container already has
+its `.next` build artifact, creates a no-build rollback override, and then
+atomically records `rollback_mode=legacy` in `.rollback-state`. It probes the
+new image without production volumes or a host port before cutover. The same
+`--rollback` command restores the saved legacy definition using only those
+pre-existing artifacts. Later normal deployments record `rollback_mode=image`
+and roll back to the local prebuilt `nas-rollback` tag. See `DEPLOYMENT.md` for
+the one-time legacy exception.
+
+If DSM reports a stopped or unhealthy container, do not rebuild dependencies on
+the NAS. Verify first:
 
 ```sh
-git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-meta-status.sh
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --verify-only
+docker logs --tail 100 wiregene-meta
 ```
 
-If DSM must run a one-minute monitor, use the watchdog instead of the start
-task. It exits successfully by design, does not recreate a healthy running
-container, and calls the start script only when the container is missing or
-stopped. It writes to `/volume1/docker/meta/logs/meta-watchdog.log`.
+Inspect the live DSM registrations with:
 
 ```sh
-git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-meta-watchdog.sh
+/usr/syno/bin/synoschedtask --get
 ```
 
-If the watchdog reports `status=restarting`, `exitCode=127`, and a high
-`restartCount`, the container is crash-looping. Pull the latest compose guard
-and recreate the container once:
+Disable any minutely deploy/start task and any task containing raw foreground
+servers, follow-mode logs, or NAS-side build commands. Meta deployment must not
+start Portal or research briefing jobs.
+
+After deploy, the first command below should produce no output; the second
+should show exactly one healthy Meta container:
 
 ```sh
-git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && META_FORCE_RECREATE=true /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
-```
-
-If exit `127` continues, remove the mounted dependency folder and rerun the
-forced recreate once:
-
-```sh
-rm -rf /volume1/docker/wiregene-meta-analysis/node_modules && git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && META_FORCE_RECREATE=true /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+ps | grep -E 'synology-(start-meta|deploy)|git .*wiregene-meta-analysis|npm (ci|install|run build)|next dev' | grep -v grep
+docker ps --filter name=wiregene-meta
 ```
 
 On the first run, fill `/volume1/docker/meta/.env`, then run the same command
@@ -132,13 +147,17 @@ of the following.
 Migrate auth values from an existing Synology search/briefing environment:
 
 ```sh
-git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-migrate-auth-env.sh && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-migrate-auth-env.sh
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --deploy
 ```
 
 Or seed a new Basic Auth pair without editing the file manually:
 
-```sh
-APP_BASIC_AUTH_USER='YOUR_LOGIN_ID' APP_BASIC_AUTH_PASSWORD='YOUR_PASSWORD' WIREGENE_ADMIN_EMAILS='YOUR_ADMIN_EMAIL' /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```text
+# Set these in /volume1/docker/meta/.env, never in a shared scheduler command.
+APP_BASIC_AUTH_USER=YOUR_LOGIN_ID
+APP_BASIC_AUTH_PASSWORD=YOUR_PASSWORD
+WIREGENE_ADMIN_EMAILS=YOUR_ADMIN_EMAIL
 ```
 
 If you do not want a local Meta Basic Auth password in `/volume1/docker/meta/.env`,
@@ -160,8 +179,10 @@ For accurate full-text article screening/extraction, set an OpenAI API key in
 With OpenAI enabled, the assistant also returns a Hyunlab-style quality review
 with score, grade, improvement guidance, and criteria-level checks:
 
-```sh
-git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && OPENAI_API_KEY='YOUR_OPENAI_API_KEY' OPENAI_MODEL='gpt-5-nano' /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```text
+# Set these in /volume1/docker/meta/.env, then run --deploy.
+OPENAI_API_KEY=YOUR_OPENAI_API_KEY
+OPENAI_MODEL=gpt-5-nano
 ```
 
 If `OPENAI_API_KEY` is empty, the full-text assistant still runs but uses
@@ -215,18 +236,20 @@ protocol draft, selected databases, DB query overrides, search import rows, and
 screening workbook board. Other services can discover project endpoints at
 `/api/meta-analysis/workspace/manifest`.
 
-If port `3001` is already used, the script prints the running container that
-owns the port and stops before changing anything. If that old container should
-be replaced by Meta, rerun:
+If port `3001` is already used, the deploy stops safely before changing the
+unrelated owner. Do not use automatic port-owner stopping in a scheduled task.
+Identify the owner, resolve it separately, or configure a free port in
+`/volume1/docker/meta/.env`.
 
-```sh
-git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && META_STOP_PORT_OWNER=true /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+```text
+HOST_PORT=3003
 ```
 
-To test Meta on another temporary port instead:
+Then deploy and verify:
 
 ```sh
-git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && HOST_PORT=3003 /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --deploy
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --verify-only
 ```
 
 The default service listens on host port `3001`.

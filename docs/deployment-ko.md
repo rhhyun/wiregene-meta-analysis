@@ -1,4 +1,27 @@
-# 외부 배포 가이드: Vercel + GitHub Actions + Google Drive
+# Synology Meta 배포 안내 - Ver 2.59
+
+> 이 문서 아래의 `research-briefing-platform`, `synology-web-start.sh`, NAS
+> `npm install`/`npm run build`, host `nohup` 관련 내용은 과거 Search/briefing
+> 배포 기록이며 Meta active deployment에 사용하지 않습니다. 현재 Meta 기준은
+> [`../DEPLOYMENT.md`](../DEPLOYMENT.md)입니다.
+
+Synology Meta는 GitHub Actions가 만든 production image만 pull합니다. DSM 작업
+스케줄러에는 다음 한 줄을 수동 또는 부팅 시 작업으로 등록합니다.
+
+```sh
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --deploy
+```
+
+```sh
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --rollback
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --verify-only
+```
+
+Meta 작업에서 Portal, briefing, worker, queue, migration을 함께 실행하지
+않습니다. NAS에서 dependency install/build를 실행하거나 `nohup` host server를
+남기지 않습니다.
+
+# 과거 배포 가이드: Vercel + GitHub Actions + Google Drive
 
 이 프로젝트는 두 부분으로 나누어 운영합니다.
 
@@ -163,7 +186,7 @@ GRANT_KEYWORD_PRESET_STORAGE_PATH=.data/grant-keyword-presets.json
 GRANT_SEARCH_RFP_PREVIEW_LIMIT=4
 ```
 
-`GRANT_STORAGE_BACKEND`가 비어 있으면 `REPORT_STORAGE_BACKEND` 값을 따릅니다. 시놀로지처럼 디스크가 있는 Docker 환경에서는 `REPORT_STORAGE_BACKEND=local-json` 또는 비어 있는 `GRANT_STORAGE_BACKEND`를 사용해 `.data`에 저장합니다. `scripts/synology-web-start.sh`는 시작 시 `.data`와 `.logs`를 만들고 Docker 컨테이너에 위 환경변수를 전달합니다.
+`GRANT_STORAGE_BACKEND`가 비어 있으면 `REPORT_STORAGE_BACKEND` 값을 따릅니다. 시놀로지처럼 디스크가 있는 Docker 환경에서는 `REPORT_STORAGE_BACKEND=local-json` 또는 비어 있는 `GRANT_STORAGE_BACKEND`를 사용해 `.data`에 저장합니다. 과거 `scripts/synology-web-start.sh` 방식은 Search/briefing 기록이며 Meta에서는 사용하지 않습니다.
 
 Vercel처럼 `/var/task`에 쓸 수 없는 서버리스 환경에서는 grant 저장도 Google Drive를 써야 합니다. Vercel Environment Variables에 아래처럼 설정합니다.
 
@@ -180,7 +203,7 @@ GOOGLE_DRIVE_FOLDER_NAME=Research Briefing Platform
 
 `GRANT_SEARCH_RFP_PREVIEW_LIMIT`는 검색 결과에서 PDF/HWPX/공고문 자동요약을 붙일 상위 과제 수입니다. 기본값 4를 권장합니다. 값을 너무 크게 올리면 외부 공고 사이트 다운로드와 Vercel 함수 시간이 늘어납니다.
 
-저장 API 회귀 검증은 Node.js 20 이상이 있는 환경에서 다음 명령으로 실행합니다. 시놀로지 호스트 Node.js가 18이면 이 검증 명령은 로컬 개발 PC에서 먼저 실행하고, NAS에서는 `scripts/synology-web-start.sh`로 Docker 웹 컨테이너를 재시작해 반영합니다.
+저장 API 회귀 검증은 Node.js 20 이상이 있는 개발 PC 또는 CI에서 다음 명령으로 실행합니다. NAS에서 npm을 실행하지 않습니다. 검증된 image를 배포한 뒤 Meta의 `--verify-only`로 runtime을 확인합니다.
 
 ```sh
 npm run verify:grants

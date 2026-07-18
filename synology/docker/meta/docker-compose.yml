@@ -1,10 +1,9 @@
 version: "3.3"
 services:
   meta:
-    image: node:24-bookworm-slim
+    image: ${META_IMAGE:-ghcr.io/rhhyun/wiregene-meta-analysis:main}
     container_name: ${CONTAINER_NAME:-wiregene-meta}
-    restart: unless-stopped
-    working_dir: /app
+    restart: "on-failure:3"
     ports:
       - "${HOST_PORT:-3001}:3000"
     env_file:
@@ -12,14 +11,11 @@ services:
     environment:
       NODE_ENV: production
       NEXT_TELEMETRY_DISABLED: "1"
-      HOME: /tmp
-      npm_config_cache: /tmp/.npm
       WIREGENE_APP_MODE: meta
       PORT: "3000"
       REPORT_STORAGE_BACKEND: ${REPORT_STORAGE_BACKEND:-local-json}
-      REPORT_STORAGE_LOCAL_PATH: ${REPORT_STORAGE_LOCAL_PATH:-.data/meta/research-briefing-storage.json}
+      REPORT_STORAGE_LOCAL_PATH: ${REPORT_STORAGE_LOCAL_PATH:-download/_system/research-briefing-storage.json}
     volumes:
-      - ${APP_SOURCE_DIR:-/volume1/docker/wiregene-meta-analysis}:/app
       - ./data:/app/.data/meta
       - ./download:/app/download
       - ./logs:/app/.logs/meta
@@ -27,24 +23,13 @@ services:
       test:
         - CMD-SHELL
         - >
-          node -e "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.status < 500 ? 0 : 1)).catch(()=>process.exit(1))"
-      interval: 30s
-      timeout: 10s
-      retries: 10
-      start_period: 120s
-    command:
-      - sh
-      - -lc
-      - >
-        set -eu;
-        test -f package.json || { echo "package.json was not found in /app. Check APP_SOURCE_DIR mount."; exit 66; };
-        command -v node >/dev/null 2>&1 || { echo "node command was not found in the container."; exit 127; };
-        command -v npm >/dev/null 2>&1 || { echo "npm command was not found in the container."; exit 127; };
-        node -v;
-        npm -v;
-        if [ ! -d node_modules ] || [ ! -x node_modules/.bin/next ] || [ package.json -nt node_modules/.package-lock.json ] || [ package-lock.json -nt node_modules/.package-lock.json ]; then
-          if [ -f package-lock.json ]; then npm ci --include=dev; else npm install; fi;
-        fi;
-        test -x node_modules/.bin/next || { echo "Next.js binary is missing after dependency install. Remove /app/node_modules and rerun."; exit 127; };
-        npm run build;
-        npm run start -- --hostname 0.0.0.0 --port 3000
+          node -e "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.status === 200 ? 0 : 1)).catch(()=>process.exit(1))"
+      interval: 20s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

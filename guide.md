@@ -1,4 +1,31 @@
-# 2026-06-28 Ver 2.48 업데이트: Synology Docker runtime lock
+# 2026-07-18 Ver 2.59 업데이트: 유한시간 Synology image 배포 표준
+
+Synology Meta의 active deployment는 [`DEPLOYMENT.md`](DEPLOYMENT.md)를
+따릅니다. GitHub Actions가 production image를 build하며 NAS에서는 image pull,
+`docker compose up -d --remove-orphans`, health 검증만 수행합니다.
+
+DSM 작업 스케줄러의 최종 명령은 다음 한 줄입니다. 수동 또는 NAS 부팅 시에만
+실행하고 1분 반복 작업으로 등록하지 않습니다.
+
+```sh
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --deploy
+```
+
+```sh
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --rollback
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --verify-only
+```
+
+공통 `scripts/synology-deploy.sh`가 lock/trap/timeout, Docker PATH 탐색,
+pull/up, log rotation, health, rollback을 담당합니다. Meta wrapper에는 앱 이름,
+경로, image, port, health URL, 필수 환경변수만 둡니다. Meta deploy에서 Portal,
+briefing, worker, queue, migration을 함께 시작하지 않습니다.
+
+NAS에서 `npm install`, `npm ci`, `npm run build`, `docker compose build`를
+실행하거나 `nohup npm run start`를 남기는 과거 방식은 금지합니다. 아래 Ver
+2.48/2.51/2.52 Synology 구간은 장애 이력 보존용이며 명령 예시는 deprecated입니다.
+
+# 2026-06-28 Ver 2.48 업데이트: Synology Docker runtime lock (deprecated history)
 
 Synology Docker에서 Meta를 시작할 때 반복되던 자잘한 실행 오류를 줄이기 위해 runtime lock과 preflight guard를 추가했습니다. 이제 DSM 작업 스케줄러가 실행되면 `docker compose up`을 하기 전에 먼저 환경을 검사합니다.
 
@@ -16,13 +43,13 @@ Synology Docker에서 Meta를 시작할 때 반복되던 자잘한 실행 오류
 실제 시작 전에 점검만 하려면 DSM 작업 스케줄러 또는 SSH에서 아래 명령을 실행합니다.
 
 ```sh
-git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --check-only
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --verify-only
 ```
 
 정상 배포/시작 명령은 아래와 같습니다.
 
 ```sh
-git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --deploy
 ```
 
 만약 예전 컨테이너가 포트를 잡고 있어서 의도적으로 교체해야 하는 경우에만 DSM scheduler 환경변수로 `META_STOP_PORT_OWNER=true`를 설정합니다. 기본값은 `false`이며, 모르는 컨테이너를 자동으로 멈추지 않습니다.
@@ -768,7 +795,7 @@ Screening 화면은 full-text 원문 업로드, AI reviewer 선택, 저장된 �
 - Reviewer 이름 저장 영역은 `Reviewer names / verification status`로 접혔습니다. AI 분석은 reviewer 이름 저장 전에도 가능하지만, 최종 human verification 전에는 이름을 저장합니다.
 - 모바일에서는 stage 카드 설명, 긴 상태 설명, 일부 JBI 보조 문구가 숨겨지고, 버튼 라벨은 `Analyze`, `Run AI`, `Delete`, `JBI rerun`처럼 짧게 표시됩니다.
 - Article list 행은 번호와 논문 제목을 줄바꿈 가능한 카드로 보여주며, `FT saved`, `FT missing`, `AI x/y`, `done/pending` 배지만 먼저 표시합니다. 파일명과 상세 저장소 정보는 행을 열었을 때만 봅니다.
-# 2026-06-29 Ver 2.51 업데이트: Synology 중단 알람 방지
+# 2026-06-29 Ver 2.51 업데이트: Synology 중단 알람 방지 (deprecated history)
 
 Synology DSM 작업 스케줄러가 Meta 시작 스크립트를 주기적으로 실행하는 경우, 변경사항이 없는데도 컨테이너를 강제로 재생성하면 Synology가 이를 중단/재시작으로 인식해 알람을 보낼 수 있습니다. Ver 2.51부터 기본 시작 방식은 강제 재생성이 아니라 무중단에 가까운 `docker compose up -d --remove-orphans`입니다.
 
@@ -776,22 +803,22 @@ Synology DSM 작업 스케줄러가 Meta 시작 스크립트를 주기적으로 
 
 - 일반 DSM 작업 스케줄러 명령은 기존 컨테이너가 정상 실행 중이면 불필요하게 내렸다 올리지 않습니다.
 - 강제 재생성은 기본값이 아닙니다.
-- 정말로 컨테이너를 한 번 새로 만들 필요가 있을 때만 `/volume1/docker/meta/.env` 또는 DSM scheduler 환경변수에 `META_FORCE_RECREATE=true`를 설정합니다.
+- `META_FORCE_RECREATE=true`는 Ver 2.59 active deployment에서 deprecated입니다. 새 image가 실패하면 `--rollback`을 사용합니다.
 - Docker healthcheck가 일시적으로 `unhealthy`를 반환해도 `META_REQUIRE_HEALTHY=false`이면 컨테이너가 계속 실행 중인 한 DSM 작업을 실패 처리하지 않습니다.
 - 컨테이너가 실제로 종료되거나 생성되지 않은 경우에는 계속 실패 처리하고 최근 Docker log를 남깁니다.
 
 일반 실행 명령은 아래와 같습니다.
 
 ```sh
-git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --deploy
 ```
 
 강제 재생성이 필요한 특수 상황에서만 아래처럼 실행합니다.
 
 ```sh
-META_FORCE_RECREATE=true git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && META_FORCE_RECREATE=true /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --rollback
 ```
-# 2026-06-30 Ver 2.52 업데이트: Synology 1분 간격 Docker 중단 알림 대응
+# 2026-06-30 Ver 2.52 업데이트: Synology 1분 간격 Docker 중단 알림 대응 (deprecated history)
 
 Synology에서 `Docker container wiregene-meta stopped unexpectedly` 알림이 1분 간격으로 나오면 먼저 DSM 작업 스케줄러를 확인합니다. Meta는 장시간 실행되는 웹 서비스이므로 시작 명령을 1분마다 반복 실행하면 안 됩니다. 시작 작업은 수동 실행 또는 NAS 부팅 시 실행으로 둡니다.
 
@@ -804,7 +831,7 @@ Synology에서 `Docker container wiregene-meta stopped unexpectedly` 알림이 1
 최신 시작 스크립트 적용:
 
 ```sh
-git -C /volume1/docker/wiregene-meta-analysis pull --ff-only origin main && /bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh
+/bin/sh /volume1/docker/wiregene-meta-analysis/scripts/synology-start-meta.sh --deploy
 ```
 
 중단 알림이 계속될 때 진단:
